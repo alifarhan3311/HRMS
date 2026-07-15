@@ -21,8 +21,8 @@ export default function ProtectedRoute({ children }) {
   });
 
   useEffect(() => {
-    if (data?.data) {
-      dispatch(setCredentials(data.data));
+    if (data?.data?.user) {
+      dispatch(setCredentials(data.data.user));
     }
   }, [data, dispatch]);
 

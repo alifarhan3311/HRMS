@@ -1,62 +1,109 @@
-# HRMS — Project Skeleton
+# HRMS
 
-This is the **wired skeleton** for the full Enterprise HRMS: every module and
-feature folder exists, every file imports/exports correctly, and the request
-path — route → middleware → controller → service → repository → model — is
-real, working code for each module (not `// TODO` placeholders). What's
-**not** filled in yet is deep business logic specific to each domain (late-policy
-math, multi-stage leave approval rules, payroll formulas, animated dashboards).
+An enterprise HR management system built as a MERN application. The project
+uses a layered backend (`route -> middleware -> controller -> service ->
+repository -> model`) and a feature-based React frontend.
 
-## What's included right now
+## Current state
 
-**Backend** (`server/src/modules/`): `auth`, `employees`, `attendance`,
-`leaves`, `payroll`, `expenses`, `projects` — each with:
-`model.js · repository.js · service.js · controller.js · routes.js · validation.js`
+### Backend
 
-- `auth` additionally has a **real, working login flow**: bcrypt password
-  check, HttpOnly cookie-based access/refresh tokens, session storage, logout,
-  and `/me`. This is the one module you can actually test end-to-end today.
-- Shared backend: `config/` (redis, rate limiter, bullmq, mailer, socket.io),
-  `middlewares/auth.middleware.js` (JWT + RBAC + IDOR guard), `utils/crypto.js`
-  (AES-256-GCM field encryption), `utils/logger.js`, `database/db.js`, `app.js`, `server.js`.
+The Express API lives in `server/src` and currently includes:
 
-**Frontend** (`client/src/features/`): `auth`, `dashboard`, `employees`,
-`attendance`, `leaves`, `payroll`, `expenses`, `projects` — each with:
-`api/*.api.js` (RTK Query) · `store/*.slice.js` · `routes/*.routes.js` ·
-`validation/*.validation.js` · `pages/*ListPage.jsx`
+- Authentication: login, logout, `/me`, refresh-token sessions, bcrypt password
+  checks, and HttpOnly cookie-based JWT authentication.
+- Employees: CRUD, search and filters, status changes, promotion and salary
+  history, department statistics, encrypted CNIC and salary fields, and soft
+  deactivation.
+- Attendance: sign-in/out, late and early-leave calculations, monthly summaries,
+  manual corrections, regularization requests and reviews, tenant-aware access,
+  and validated request inputs.
+- Leaves: applications, approval/rejection/cancellation flows, and pending
+  approvals.
+- Payroll, expenses, and projects: domain models, API workflows, and role-based
+  operations.
+- Dashboard aggregation and holiday endpoints.
+- Shared infrastructure for MongoDB, Redis-backed rate limiting, BullMQ, email,
+  Socket.IO, logging, encryption, RBAC, and tenant/IDOR protection.
 
-- `auth` has a real login page wired to the login mutation + session slice.
-- Shared frontend: `services/apiSlice.js` (single shared RTK Query cache),
-  `utils/axios.js` (cookie auth + silent refresh), `store/index.js`,
-  `components/common/AppLayout.jsx`, `components/ui/Button.jsx` (pattern for
-  the rest of the atomic component library), `routes.jsx`, `App.jsx`, `main.jsx`.
+API routes are mounted below `/api/v1`; `/health` is public.
 
-**Infra**: `docker-compose.yml`, `server/Dockerfile`, `server/.env.example`,
-`client/.env.example`, both `package.json` files.
+### Frontend
 
-## What's still a stub (by design, ready to fill next)
+The Vite/React application lives in `client/src` and includes:
 
-- Business rules inside each module's `service.js` (currently generic CRUD).
-- Real UI beyond the raw JSON-dump list pages — dashboards, tables, charts,
-  animated modals per your Section 2 component folders.
-- The 40+ full Mongoose schemas from Section 2 — currently one core schema
-  per module is defined; supporting schemas (Company, Branch, Department,
-  Asset, Document, Notification, etc.) come next.
-- Recruitment, onboarding, documents, assets, resignation, performance,
-  training, engagement, reports, company-settings, audit-logs modules — not
-  yet scaffolded; same generator pattern extends to these on request.
+- Redux Toolkit and a shared RTK Query cache.
+- Cookie authentication with silent access-token refresh.
+- Role-aware protected routes and navigation.
+- Dashboards for admin, HR, and employee roles.
+- Working pages for employees, attendance, leaves, payroll, expenses, projects,
+  reports, settings, and notifications.
+- Reusable UI primitives, responsive layouts, dark mode, charts, dialogs, and
+  toast notifications.
 
-## Running it locally
+Some settings, reports, and notification experiences currently have frontend UI
+without complete dedicated backend modules.
+
+## Project layout
+
+```text
+client/                    React 18 + Vite + Tailwind
+  src/features/            Feature pages, API endpoints, routes, and state
+  src/components/          Shared layout and UI components
+server/                    Node.js + Express + Mongoose
+  src/modules/             Domain modules and layered business logic
+  src/middlewares/         Authentication, authorization, tenant, validation
+  scripts/seed.js          Development demo users
+docker-compose.yml         MongoDB, Redis, API, and web application
+```
+
+## Run with Docker
+
+1. Copy `server/.env.example` to `server/.env`.
+2. Replace all placeholder secrets with strong values. Each documented 64-character
+   hex secret can be generated with `openssl rand -hex 32`.
+3. Start the stack:
 
 ```bash
-cp server/.env.example server/.env   # then fill in real secrets
 docker compose up --build
 ```
 
-Backend on `:5000`, frontend on `:5173`, MongoDB on `:27017`, Redis on `:6379`.
+The frontend runs on `http://localhost:5173`, the API on
+`http://localhost:5000`, MongoDB on `27017`, and Redis on `6379`.
 
-## Suggested next step
+To create development demo accounts after the services are running:
 
-Fill in `employees` and `attendance` business logic first (they're the
-dependency root for payroll, leaves, and dashboards), then move to the
-dashboard aggregation queries and real UI.
+```bash
+docker compose exec server npm run seed
+```
+
+The seed command prints the demo credentials it creates. Do not use those
+credentials outside a local development environment.
+
+## Local verification
+
+```bash
+cd server
+npm ci
+
+cd ../client
+npm ci
+npm run build
+node check-imports.cjs
+```
+
+The API requires valid environment secrets and running MongoDB/Redis services for
+end-to-end execution.
+
+## Next priorities
+
+1. Add automated unit and integration tests for authentication, tenant isolation,
+   employees, and attendance.
+2. Apply the shared Joi validation middleware to leaves, payroll, expenses, and
+   projects; several older validation schemas are still permissive.
+3. Move office hours, grace periods, leave rules, and payroll formulas from
+   environment defaults into company settings.
+4. Complete backend modules for settings, notifications, reports, recruitment,
+   onboarding, documents, assets, performance, training, and audit logs.
+5. Review and upgrade vulnerable/deprecated npm dependencies with regression
+   testing before applying breaking major-version updates.

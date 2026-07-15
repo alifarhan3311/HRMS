@@ -125,10 +125,29 @@ async function getTodayAttendance(employeeId) {
   return repository.findByEmployeeAndDate(employeeId, today);
 }
 
+async function getAttendanceById(id) {
+  const record = await repository.findById(id);
+  if (!record) throw createHttpError(404, 'Attendance record not found.');
+  return record;
+}
+
 // -------------------------------------------------------------------------
 // Monthly Summary
 // -------------------------------------------------------------------------
-async function getMonthlySummary(employeeId, year, month) {
+async function getMonthlySummary(employeeId, year, month, actor) {
+  if (String(employeeId) !== String(actor.id)) {
+    const canViewOthers = ['super_admin', 'admin', 'hr', 'manager', 'team_lead'].includes(actor.role);
+    if (!canViewOthers) {
+      throw createHttpError(403, 'You can only view your own attendance summary.');
+    }
+
+    const employee = await Employee.findById(employeeId).select('companyId');
+    const sameCompany = employee && String(employee.companyId) === String(actor.companyId);
+    if (!employee || (actor.role !== 'super_admin' && !sameCompany)) {
+      throw createHttpError(404, 'Employee not found.');
+    }
+  }
+
   const records = await repository.getMonthlySummary(employeeId, year, month);
   const summary = { present: 0, absent: 0, late: 0, half_day: 0, on_leave: 0, holiday: 0 };
   records.forEach((r) => { if (summary[r.status] !== undefined) summary[r.status]++; });
@@ -178,18 +197,24 @@ async function manualCorrection(id, payload, actor) {
 
   const { signInTime, signOutTime, status, notes } = payload;
   const update = { notes };
+  const correctedSignIn = signInTime ? new Date(signInTime) : record.signInTime;
+  const correctedSignOut = signOutTime ? new Date(signOutTime) : record.signOutTime;
+
+  if (correctedSignIn && correctedSignOut && correctedSignOut <= correctedSignIn) {
+    throw createHttpError(422, 'Sign-out time must be after sign-in time.');
+  }
 
   if (signInTime) {
-    update.signInTime = new Date(signInTime);
+    update.signInTime = correctedSignIn;
     update.lateMinutes = calcLateMinutes(signInTime);
     update.status = update.lateMinutes > 0 ? 'late' : (status || 'present');
   }
   if (signOutTime) {
-    update.signOutTime = new Date(signOutTime);
+    update.signOutTime = correctedSignOut;
     update.earlyLeaveMinutes = calcEarlyLeaveMinutes(signOutTime);
-    if (update.signInTime || record.signInTime) {
-      update.totalHours = calcTotalHours(update.signInTime || record.signInTime, signOutTime);
-    }
+  }
+  if ((signInTime || signOutTime) && correctedSignIn && correctedSignOut) {
+    update.totalHours = calcTotalHours(correctedSignIn, correctedSignOut);
   }
   if (status) update.status = status;
 
@@ -251,6 +276,7 @@ module.exports = {
   signIn,
   signOut,
   getTodayAttendance,
+  getAttendanceById,
   getMonthlySummary,
   listAttendances,
   manualCorrection,

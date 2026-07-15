@@ -6,7 +6,7 @@
  * unified across the whole app (e.g. approving a leave can invalidate
  * both 'Leaves' and 'Dashboard' tags in one place).
  */
-import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
+import { createApi } from '@reduxjs/toolkit/query/react';
 import axiosInstance from '../utils/axios';
 
 // Custom base query that routes through our existing axios instance so we
@@ -14,12 +14,29 @@ import axiosInstance from '../utils/axios';
 // instead of duplicating it in a separate fetchBaseQuery config.
 const axiosBaseQuery =
   () =>
-  async ({ url, method = 'GET', body, params }) => {
+  async (request) => {
+    const {
+      url,
+      method = 'GET',
+      body,
+      params,
+    } = typeof request === 'string' ? { url: request } : request;
+
     try {
       const result = await axiosInstance({ url, method, data: body, params });
       return { data: result.data };
     } catch (axiosError) {
-      return { error: { status: axiosError.status, data: axiosError.message } };
+      return {
+        error: {
+          status: axiosError.status ?? 'FETCH_ERROR',
+          data: {
+            error: {
+              message: axiosError.message || 'Unable to complete the request.',
+              code: axiosError.code,
+            },
+          },
+        },
+      };
     }
   };
 

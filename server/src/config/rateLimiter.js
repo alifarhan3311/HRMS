@@ -9,13 +9,17 @@ const logger    = require('../utils/logger');
 
 let RedisStore;
 let redisClient;
+const useRedisStore = process.env.NODE_ENV === 'production'
+  || process.env.REDIS_RATE_LIMIT_ENABLED === 'true';
 
 // Attempt to load Redis-backed store; gracefully degrade if unavailable
-try {
-  RedisStore  = require('rate-limit-redis');
-  redisClient = require('./redis');
-} catch (err) {
-  logger.warn('[rateLimiter] rate-limit-redis not available, using in-memory store', { err: err.message });
+if (useRedisStore) {
+  try {
+    ({ RedisStore } = require('rate-limit-redis'));
+    redisClient = require('./redis');
+  } catch (err) {
+    logger.warn('[rateLimiter] rate-limit-redis not available, using in-memory store', { err: err.message });
+  }
 }
 
 function buildLimiter({ windowMs, max, message }) {
@@ -24,6 +28,7 @@ function buildLimiter({ windowMs, max, message }) {
     max,
     standardHeaders: true,
     legacyHeaders: false,
+    passOnStoreError: true,
     message: { success: false, error: { message } },
     // Skip storing in Redis if client isn't connected
     skip: () => false,
@@ -31,14 +36,10 @@ function buildLimiter({ windowMs, max, message }) {
 
   if (RedisStore && redisClient) {
     try {
-      // rate-limit-redis v4 uses { sendCommand } — v3 uses { client }
-      // Support both API shapes
-      const storeOptions = typeof RedisStore === 'function'
-        ? { sendCommand: (...args) => redisClient.call(...args) }
-        : { client: redisClient };
-
-      // Detect v4 constructor shape (expects { sendCommand })
-      const store = new RedisStore(storeOptions);
+      // Adapt ioredis to the rate-limit-redis v4 command interface.
+      const store = new RedisStore({
+        sendCommand: (...args) => redisClient.call(...args),
+      });
       options.store = store;
     } catch (err) {
       logger.warn('[rateLimiter] Could not init RedisStore, falling back to memory', { err: err.message });

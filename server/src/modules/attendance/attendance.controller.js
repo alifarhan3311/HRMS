@@ -34,7 +34,8 @@ const monthlySummary = asyncHandler(async (req, res) => {
   const result = await service.getMonthlySummary(
     employeeId,
     Number(year) || new Date().getFullYear(),
-    Number(month) || new Date().getMonth() + 1
+    Number(month) || new Date().getMonth() + 1,
+    req.user
   );
   res.status(200).json({ success: true, data: result });
 });
@@ -45,7 +46,7 @@ const list = asyncHandler(async (req, res) => {
 });
 
 const getById = asyncHandler(async (req, res) => {
-  const record = await service.listAttendances({ id: req.params.id }, req.user);
+  const record = await service.getAttendanceById(req.params.id);
   res.status(200).json({ success: true, data: record });
 });
 

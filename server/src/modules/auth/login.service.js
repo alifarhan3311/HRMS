@@ -113,4 +113,21 @@ async function logout({ rawRefreshToken }) {
   }
 }
 
-module.exports = { login, refresh, logout };
+async function getCurrentUser(employeeId) {
+  const employee = await Employee.findById(employeeId)
+    .select('fullName role companyId branchId status');
+
+  if (!employee || employee.status !== 'active') {
+    throw createHttpError(401, 'Account no longer active.');
+  }
+
+  return {
+    id: employee._id,
+    fullName: employee.fullName,
+    role: employee.role,
+    companyId: employee.companyId,
+    branchId: employee.branchId,
+  };
+}
+
+module.exports = { login, refresh, logout, getCurrentUser };
