@@ -1,0 +1,221 @@
+/**
+ * features/settings/pages/SettingsPage.jsx
+ * Company settings management — office timings, grace period, weekends,
+ * SMTP, public holidays link, and company profile.
+ */
+import { useState } from 'react';
+import { motion } from 'framer-motion';
+import { Settings, Building2, Clock, Mail, Globe, ShieldCheck, Save } from 'lucide-react';
+import { toast } from '../../../utils/toast';
+import { Input, Select } from '../../../components/ui/Input';
+import Button from '../../../components/ui/Button';
+
+const TABS = [
+  { id: 'company',  label: 'Company',  icon: Building2 },
+  { id: 'timing',   label: 'Timing',   icon: Clock },
+  { id: 'email',    label: 'Email',    icon: Mail },
+  { id: 'security', label: 'Security', icon: ShieldCheck },
+];
+
+function TabButton({ active, onClick, icon: Icon, label }) {
+  return (
+    <button onClick={onClick}
+      className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all w-full
+        ${active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
+      <Icon className="h-4 w-4 shrink-0" />
+      {label}
+    </button>
+  );
+}
+
+function SectionCard({ title, children }) {
+  return (
+    <div className="glass-card p-6 space-y-5">
+      <h3 className="font-semibold text-base border-b border-border pb-3">{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState('company');
+  const [saved, setSaved] = useState(false);
+
+  const [companyForm, setCompanyForm] = useState({
+    name: 'My Company', website: '', industry: '', address: '', timezone: 'Asia/Karachi',
+  });
+  const [timingForm, setTimingForm] = useState({
+    officeStart: '09:00', officeEnd: '18:00', graceMinutes: '15',
+    weekendDays: ['Saturday', 'Sunday'],
+  });
+  const [emailForm, setEmailForm] = useState({
+    smtpHost: '', smtpPort: '587', smtpUser: '', smtpFrom: '', enableNotifications: true,
+  });
+  const [securityForm, setSecurityForm] = useState({
+    sessionTimeout: '60', maxLoginAttempts: '5', passwordExpiry: '90', mfaEnabled: false,
+  });
+
+  function handleSave() {
+    setSaved(true);
+    toast.success('Settings saved successfully');
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+  function toggleWeekend(day) {
+    setTimingForm(p => ({
+      ...p,
+      weekendDays: p.weekendDays.includes(day)
+        ? p.weekendDays.filter(d => d !== day)
+        : [...p.weekendDays, day],
+    }));
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+        className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Settings className="h-6 w-6" /> Settings
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Configure company settings and system preferences</p>
+        </div>
+        <Button variant="primary" size="sm" className="gap-1.5" onClick={handleSave}>
+          <Save className="h-4 w-4" /> {saved ? 'Saved!' : 'Save Changes'}
+        </Button>
+      </motion.div>
+
+      <div className="grid gap-6 lg:grid-cols-[200px_1fr]">
+        {/* Sidebar tabs */}
+        <div className="space-y-1">
+          {TABS.map(tab => (
+            <TabButton key={tab.id} active={activeTab === tab.id}
+              onClick={() => setActiveTab(tab.id)} icon={tab.icon} label={tab.label} />
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="space-y-5">
+          {activeTab === 'company' && (
+            <motion.div key="company" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
+              <SectionCard title="Company Information">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <Input label="Company Name" value={companyForm.name}
+                      onChange={e => setCompanyForm(p => ({ ...p, name: e.target.value }))} />
+                  </div>
+                  <Input label="Website" placeholder="https://company.com" value={companyForm.website}
+                    onChange={e => setCompanyForm(p => ({ ...p, website: e.target.value }))} />
+                  <Input label="Industry" placeholder="Software, Healthcare..." value={companyForm.industry}
+                    onChange={e => setCompanyForm(p => ({ ...p, industry: e.target.value }))} />
+                  <div className="col-span-2">
+                    <Input label="Office Address" value={companyForm.address}
+                      onChange={e => setCompanyForm(p => ({ ...p, address: e.target.value }))}
+                      placeholder="Full office address" />
+                  </div>
+                  <Select label="Timezone" value={companyForm.timezone}
+                    onChange={e => setCompanyForm(p => ({ ...p, timezone: e.target.value }))}>
+                    <option value="Asia/Karachi">Asia/Karachi (PKT UTC+5)</option>
+                    <option value="Asia/Dubai">Asia/Dubai (GST UTC+4)</option>
+                    <option value="UTC">UTC</option>
+                  </Select>
+                </div>
+              </SectionCard>
+            </motion.div>
+          )}
+
+          {activeTab === 'timing' && (
+            <motion.div key="timing" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+              className="space-y-5">
+              <SectionCard title="Office Hours">
+                <div className="grid grid-cols-3 gap-4">
+                  <Input label="Office Start Time" type="time" value={timingForm.officeStart}
+                    onChange={e => setTimingForm(p => ({ ...p, officeStart: e.target.value }))} />
+                  <Input label="Office End Time" type="time" value={timingForm.officeEnd}
+                    onChange={e => setTimingForm(p => ({ ...p, officeEnd: e.target.value }))} />
+                  <Input label="Grace Period (minutes)" type="number" value={timingForm.graceMinutes}
+                    onChange={e => setTimingForm(p => ({ ...p, graceMinutes: e.target.value }))} />
+                </div>
+                <div className="rounded-lg bg-primary/5 border border-primary/10 px-3 py-2 text-xs text-muted-foreground">
+                  Employees arriving after <span className="font-medium text-foreground">
+                    {timingForm.officeStart}
+                  </span> + {timingForm.graceMinutes} minutes grace period will be marked as <span className="text-amber-500 font-medium">Late</span>.
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Weekend Configuration">
+                <p className="text-sm text-muted-foreground">Select which days are considered weekends (non-working days):</p>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {DAYS.map(day => (
+                    <button key={day} type="button" onClick={() => toggleWeekend(day)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all
+                        ${timingForm.weekendDays.includes(day)
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground'}`}>
+                      {day.slice(0, 3)}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Selected: <span className="font-medium text-foreground">{timingForm.weekendDays.join(', ') || 'None'}</span>
+                </p>
+              </SectionCard>
+            </motion.div>
+          )}
+
+          {activeTab === 'email' && (
+            <motion.div key="email" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
+              <SectionCard title="SMTP Email Configuration">
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="SMTP Host" placeholder="smtp.gmail.com" value={emailForm.smtpHost}
+                    onChange={e => setEmailForm(p => ({ ...p, smtpHost: e.target.value }))} />
+                  <Input label="SMTP Port" type="number" value={emailForm.smtpPort}
+                    onChange={e => setEmailForm(p => ({ ...p, smtpPort: e.target.value }))} />
+                  <Input label="SMTP Username" placeholder="noreply@company.com" value={emailForm.smtpUser}
+                    onChange={e => setEmailForm(p => ({ ...p, smtpUser: e.target.value }))} />
+                  <Input label="From Address" placeholder="HR System <hr@company.com>" value={emailForm.smtpFrom}
+                    onChange={e => setEmailForm(p => ({ ...p, smtpFrom: e.target.value }))} />
+                </div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div className={`relative h-5 w-9 rounded-full transition-colors ${emailForm.enableNotifications ? 'bg-primary' : 'bg-muted'}`}
+                    onClick={() => setEmailForm(p => ({ ...p, enableNotifications: !p.enableNotifications }))}>
+                    <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${emailForm.enableNotifications ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                  <span className="text-sm">Enable email notifications</span>
+                </label>
+              </SectionCard>
+            </motion.div>
+          )}
+
+          {activeTab === 'security' && (
+            <motion.div key="security" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
+              <SectionCard title="Security Settings">
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="Session Timeout (minutes)" type="number" value={securityForm.sessionTimeout}
+                    onChange={e => setSecurityForm(p => ({ ...p, sessionTimeout: e.target.value }))} />
+                  <Input label="Max Login Attempts" type="number" value={securityForm.maxLoginAttempts}
+                    onChange={e => setSecurityForm(p => ({ ...p, maxLoginAttempts: e.target.value }))} />
+                  <Input label="Password Expiry (days)" type="number" value={securityForm.passwordExpiry}
+                    onChange={e => setSecurityForm(p => ({ ...p, passwordExpiry: e.target.value }))} />
+                </div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div className={`relative h-5 w-9 rounded-full transition-colors ${securityForm.mfaEnabled ? 'bg-primary' : 'bg-muted'}`}
+                    onClick={() => setSecurityForm(p => ({ ...p, mfaEnabled: !p.mfaEnabled }))}>
+                    <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${securityForm.mfaEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                  <span className="text-sm">Enable Two-Factor Authentication (2FA)</span>
+                </label>
+                <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3 text-xs text-amber-700 dark:text-amber-400">
+                  Security settings apply to all users across the company. Changes take effect on next login.
+                </div>
+              </SectionCard>
+            </motion.div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

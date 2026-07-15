@@ -1,0 +1,58 @@
+/**
+ * modules/attendance/attendance.model.js
+ * Attendance record — one document per employee per day.
+ */
+const mongoose = require('mongoose');
+
+const regularizationSchema = new mongoose.Schema({
+  requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  reason: { type: String },
+  requestedAt: { type: Date, default: Date.now },
+  reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  reviewedAt: { type: Date },
+  remarks: { type: String },
+}, { _id: false });
+
+const attendanceSchema = new mongoose.Schema(
+  {
+    employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    date: { type: Date, required: true },
+    signInTime: { type: Date },
+    signOutTime: { type: Date },
+    totalHours: { type: Number, default: 0 }, // calculated on signout
+    status: {
+      type: String,
+      enum: ['present', 'absent', 'half_day', 'late', 'on_leave', 'holiday', 'weekend'],
+      default: 'present',
+    },
+    lateMinutes: { type: Number, default: 0 },
+    earlyLeaveMinutes: { type: Number, default: 0 },
+    method: {
+      type: String,
+      enum: ['manual', 'qr', 'face', 'biometric'],
+      default: 'manual',
+    },
+    // Regularization / correction request
+    regularizationStatus: {
+      type: String,
+      enum: ['none', 'pending', 'approved', 'rejected'],
+      default: 'none',
+    },
+    regularization: regularizationSchema,
+    notes: { type: String },
+    companyId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Company' },
+    branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
+  },
+  {
+    timestamps: true,
+    toJSON: { getters: true, virtuals: true },
+    toObject: { getters: true, virtuals: true },
+  }
+);
+
+// Composite unique index: one record per employee per day
+attendanceSchema.index({ employeeId: 1, date: 1 }, { unique: true });
+attendanceSchema.index({ companyId: 1, date: 1 });
+attendanceSchema.index({ employeeId: 1, status: 1 });
+
+module.exports = mongoose.model('Attendance', attendanceSchema);

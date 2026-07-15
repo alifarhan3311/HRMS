@@ -1,0 +1,54 @@
+/**
+ * modules/auth/login.controller.js
+ * HTTP layer for login/refresh/logout — sets/clears the HttpOnly cookies.
+ */
+const loginService = require('./login.service');
+
+function asyncHandler(fn) {
+  return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+}
+
+const COOKIE_OPTS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+};
+
+const login = asyncHandler(async (req, res) => {
+  const { accessToken, refreshToken, user } = await loginService.login({
+    email: req.body.email,
+    password: req.body.password,
+    userAgent: req.headers['user-agent'],
+    ipAddress: req.ip,
+  });
+
+  res.cookie('accessToken', accessToken, { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 });
+  res.cookie('refreshToken', refreshToken, {
+    ...COOKIE_OPTS,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+    path: '/api/v1/auth/refresh',
+  });
+
+  res.status(200).json({ success: true, data: { user } });
+});
+
+const refresh = asyncHandler(async (req, res) => {
+  const { accessToken } = await loginService.refresh({
+    rawRefreshToken: req.cookies?.refreshToken,
+  });
+  res.cookie('accessToken', accessToken, { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 });
+  res.status(200).json({ success: true });
+});
+
+const logout = asyncHandler(async (req, res) => {
+  await loginService.logout({ rawRefreshToken: req.cookies?.refreshToken });
+  res.clearCookie('accessToken', COOKIE_OPTS);
+  res.clearCookie('refreshToken', { ...COOKIE_OPTS, path: '/api/v1/auth/refresh' });
+  res.status(200).json({ success: true });
+});
+
+const me = asyncHandler(async (req, res) => {
+  res.status(200).json({ success: true, data: { user: req.user } });
+});
+
+module.exports = { login, refresh, logout, me };
