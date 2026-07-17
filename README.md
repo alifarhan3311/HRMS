@@ -99,6 +99,27 @@ node check-imports.cjs
 The API requires valid environment secrets and running MongoDB/Redis services for
 end-to-end execution.
 
+## Production deployment (Vercel + Render)
+
+The React/Vite frontend is configured for Vercel in `client/vercel.json`. Set the
+Vercel project Root Directory to `client`, then add these production variables:
+
+```text
+VITE_API_BASE_URL=https://YOUR-API-HOST/api/v1
+VITE_SOCKET_URL=https://YOUR-API-HOST
+```
+
+The Express API, HR automation process, and Socket.IO server require a long-running
+Node service. A Render Blueprint is included at `render.yaml`. Before creating the
+Blueprint, provision MongoDB Atlas and Redis, then provide `MONGO_URI`, `REDIS_URL`,
+the three 64-character hexadecimal secrets, and the final Vercel URL as
+`CORS_ALLOWED_ORIGINS`. Production cookies default to `SameSite=None; Secure` so
+authentication works when Vercel and the API use different domains.
+
+Deploy the backend first, copy its HTTPS URL into the two Vercel variables, deploy
+the frontend, then update the backend's `CORS_ALLOWED_ORIGINS` with the exact Vercel
+production origin and redeploy it.
+
 ## Next priorities
 
 1. Add automated unit and integration tests for authentication, tenant isolation,

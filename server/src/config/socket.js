@@ -11,9 +11,14 @@ const logger = require('../utils/logger');
 let socketServer = null;
 
 function initSocket(httpServer) {
+  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+
   const io = new Server(httpServer, {
     cors: {
-      origin: (process.env.CORS_ALLOWED_ORIGINS || '').split(','),
+      origin: allowedOrigins,
       credentials: true,
     },
   });
