@@ -1,13 +1,16 @@
-FROM node:20-alpine AS base
-WORKDIR /usr/src/app
+FROM node:20-alpine
 
-COPY package*.json ./
-RUN npm ci --omit=dev
+WORKDIR /app
+
+COPY server/package*.json ./
+
+RUN npm install --omit=dev
 
 COPY . .
 
 ENV NODE_ENV=production
+
 EXPOSE 5000
 
-USER node
-CMD ["node", "src/server.js"]
+# Change this: Point to the server folder inside /app
+CMD ["node", "server/src/server.js"]
