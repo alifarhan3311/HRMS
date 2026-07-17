@@ -2,7 +2,7 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY server/package*.json ./
 
 RUN npm install --omit=dev
 
@@ -12,4 +12,4 @@ ENV NODE_ENV=production
 
 EXPOSE 5000
 
-CMD ["node", "src/server.js"]
+CMD ["node", "server/src/server.js"]
