@@ -23,7 +23,11 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // send/receive HttpOnly cookies cross-origin
-  timeout: 15000,
+  // Chained Vercel deployments and a sleeping Atlas free-tier cluster can
+  // take 30+ seconds on the first request. Keep the client alive long enough
+  // to receive the real API response instead of reporting a false network
+  // failure during a cold start.
+  timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -57,6 +61,9 @@ function parseApiError(error) {
       message: data?.error?.message || 'An unexpected error occurred.',
       code: data?.error?.code,
     };
+  }
+  if (error.code === 'ECONNABORTED') {
+    return { status: 0, message: 'The server took too long to respond. Please try again.' };
   }
   if (error.request) {
     return { status: 0, message: 'Unable to reach the server. Please check your connection.' };
