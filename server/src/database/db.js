@@ -20,6 +20,7 @@ const logger = require('../utils/logger');
 // Mongoose 7+ ships sane defaults, but we set these explicitly so behavior
 // is documented and doesn't silently change on a dependency bump.
 mongoose.set('strictQuery', true);
+mongoose.set('bufferCommands', false);
 
 const MAX_RETRY_ATTEMPTS = 10;
 const BASE_RETRY_DELAY_MS = 1000; // 1s, doubles each attempt, capped below
@@ -28,6 +29,9 @@ const MAX_RETRY_DELAY_MS = 30000; // 30s ceiling
 let retryAttempt = 0;
 let isShuttingDown = false;
 let connectionPromise = null;
+const isServerless = Boolean(
+  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.AWS_EXECUTION_ENV
+);
 
 /**
  * Computes exponential backoff delay with jitter to avoid thundering-herd
@@ -44,17 +48,17 @@ function getBackoffDelay(attempt) {
  * supplied via environment configuration.
  */
 async function attemptConnection() {
-  const uri = process.env.MONGO_URI;
+  const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
 
   if (!uri) {
-    throw new Error('MONGO_URI is not defined in environment configuration.');
+    throw new Error('MONGO_URI (or MONGODB_URI) is not defined in environment configuration.');
   }
 
   const options = {
     autoIndex: process.env.NODE_ENV !== 'production', // skip index builds in prod
-    maxPoolSize: Number(process.env.MONGO_MAX_POOL_SIZE) || 50,
-    minPoolSize: Number(process.env.MONGO_MIN_POOL_SIZE) || 5,
-    serverSelectionTimeoutMS: 10000,
+    maxPoolSize: Number(process.env.MONGO_MAX_POOL_SIZE) || (isServerless ? 10 : 50),
+    minPoolSize: Number(process.env.MONGO_MIN_POOL_SIZE) || (isServerless ? 0 : 5),
+    serverSelectionTimeoutMS: isServerless ? 5000 : 10000,
     socketTimeoutMS: 45000,
     family: 4, // force IPv4 to avoid slow DNS dual-stack lookups
   };
@@ -68,10 +72,13 @@ async function attemptConnection() {
  * exhausted so the process can fail fast in genuinely broken environments.
  */
 async function connectDatabase() {
+  if (mongoose.connection.readyState === 1) return mongoose.connection;
   if (connectionPromise) return connectionPromise;
 
   connectionPromise = (async () => {
-    while (retryAttempt < MAX_RETRY_ATTEMPTS && !isShuttingDown) {
+    const maxAttempts = isServerless ? 1 : MAX_RETRY_ATTEMPTS;
+
+    while (retryAttempt < maxAttempts && !isShuttingDown) {
       try {
         await attemptConnection();
         retryAttempt = 0; // reset counter after a clean connect
@@ -85,14 +92,14 @@ async function connectDatabase() {
         const delay = getBackoffDelay(retryAttempt);
         logger.error('[database] Connection attempt failed', {
           attempt: retryAttempt,
-          maxAttempts: MAX_RETRY_ATTEMPTS,
+          maxAttempts,
           nextRetryInMs: delay,
           error: err.message,
         });
 
-        if (retryAttempt >= MAX_RETRY_ATTEMPTS) {
+        if (retryAttempt >= maxAttempts) {
           throw new Error(
-            `[database] Exhausted ${MAX_RETRY_ATTEMPTS} connection attempts: ${err.message}`
+            `[database] Exhausted ${maxAttempts} connection attempts: ${err.message}`
           );
         }
 
@@ -101,7 +108,15 @@ async function connectDatabase() {
     }
   })();
 
-  return connectionPromise;
+  try {
+    return await connectionPromise;
+  } catch (error) {
+    // A warm serverless instance must be able to retry on a later request
+    // after a transient Atlas/network configuration problem is corrected.
+    connectionPromise = null;
+    retryAttempt = 0;
+    throw error;
+  }
 }
 
 /**

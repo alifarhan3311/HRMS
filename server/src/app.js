@@ -32,6 +32,7 @@ const morgan = require('morgan');
 const createHttpError = require('http-errors');
 
 const logger = require('./utils/logger');
+const { connectDatabase } = require('./database/db');
 const { authRateLimiter, apiRateLimiter } = require('./config/rateLimiter');
 
 const app = express();
@@ -151,6 +152,13 @@ app.use('/api/v1', apiRateLimiter);
 // -------------------------------------------------------------------------
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Vercel and other serverless hosts can import the Express app directly,
+// bypassing server.js where the long-running process normally connects first.
+// Gate API requests on a cached database connection in both deployment modes.
+app.use('/api/v1', (req, res, next) => {
+  connectDatabase().then(() => next()).catch(next);
 });
 
 // -------------------------------------------------------------------------
