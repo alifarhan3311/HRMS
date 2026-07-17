@@ -3,7 +3,7 @@ WORKDIR /usr/src/app
 
 COPY package*.json ./
 #RUN npm ci --omit=dev
-RUN npm install --omit=dev
+RUN npm ci
 COPY . .
 
 ENV NODE_ENV=production
