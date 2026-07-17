@@ -63,4 +63,9 @@ const me = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: { user } });
 });
 
-module.exports = { login, refresh, logout, me };
+const socketToken = asyncHandler(async (req, res) => {
+  const token = loginService.createSocketToken(req.user);
+  res.status(200).json({ success: true, data: { token, expiresIn: 900 } });
+});
+
+module.exports = { login, refresh, logout, me, socketToken };

@@ -17,6 +17,7 @@ router.post('/refresh', loginController.refresh);
 // Requires a valid access token
 router.post('/logout', authenticate, loginController.logout);
 router.get('/me', authenticate, loginController.me);
+router.post('/socket-token', authenticate, loginController.socketToken);
 
 // Admin session management
 router.get('/sessions', authenticate, authorize('admin', 'super_admin'), sessionController.list);

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { api } from '../../services/apiSlice';
+import axiosInstance from '../../utils/axios';
 import { getSocket, disconnectSocket, isRealtimeEnabled } from '../../services/socket';
 import { playNotificationSound, unlockNotificationSound } from '../../services/notificationSound';
 import { toast } from '../../utils/toast';
@@ -57,9 +58,25 @@ export default function RealtimeNotifications() {
 
     socket.on('notification:new', onNewNotification);
     SYNC_EVENTS.forEach(event => socket.on(event, refreshNotifications));
-    if (!socket.connected) socket.connect();
+
+    let cancelled = false;
+    let tokenRefreshTimer;
+    const connectWithFreshToken = async () => {
+      try {
+        const response = await axiosInstance.post('/auth/socket-token');
+        if (cancelled) return;
+        socket.auth = { token: response.data.data.token };
+        if (!socket.connected) socket.connect();
+        tokenRefreshTimer = window.setTimeout(connectWithFreshToken, 10 * 60 * 1000);
+      } catch {
+        // The notifications API polling fallback remains active.
+      }
+    };
+    connectWithFreshToken();
 
     return () => {
+      cancelled = true;
+      window.clearTimeout(tokenRefreshTimer);
       socket.off('notification:new', onNewNotification);
       SYNC_EVENTS.forEach(event => socket.off(event, refreshNotifications));
       disconnectSocket();

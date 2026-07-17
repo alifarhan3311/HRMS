@@ -23,14 +23,18 @@ function initSocket(httpServer) {
     },
   });
 
-  // Auth handshake: verify the same access-token cookie used by REST auth
+  // Auth handshake accepts the HttpOnly access cookie on same-site setups or
+  // a short-lived, socket-scoped ticket for split frontend/backend domains.
   io.use((socket, next) => {
     try {
       const cookieHeader = socket.handshake.headers.cookie || '';
       const match = cookieHeader.match(/accessToken=([^;]+)/);
-      if (!match) return next(new Error('Unauthorized'));
+      const socketToken = socket.handshake.auth?.token;
+      const token = socketToken || match?.[1];
+      if (!token) return next(new Error('Unauthorized'));
 
-      const decoded = jwt.verify(match[1], process.env.JWT_ACCESS_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+      if (socketToken && decoded.scope !== 'socket') return next(new Error('Unauthorized'));
       socket.user = { id: decoded.sub, companyId: decoded.companyId, role: decoded.role };
       next();
     } catch (err) {

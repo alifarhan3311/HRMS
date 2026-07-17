@@ -113,6 +113,20 @@ async function logout({ rawRefreshToken }) {
   }
 }
 
+function createSocketToken(actor) {
+  return jwt.sign(
+    {
+      sub: actor.id,
+      role: actor.role,
+      companyId: actor.companyId,
+      branchId: actor.branchId,
+      scope: 'socket',
+    },
+    process.env.JWT_ACCESS_SECRET,
+    { expiresIn: '15m' }
+  );
+}
+
 async function getCurrentUser(employeeId) {
   const employee = await Employee.findById(employeeId)
     .select('fullName role companyId branchId status');
@@ -130,4 +144,4 @@ async function getCurrentUser(employeeId) {
   };
 }
 
-module.exports = { login, refresh, logout, getCurrentUser };
+module.exports = { login, refresh, logout, getCurrentUser, createSocketToken };
