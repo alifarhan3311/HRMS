@@ -1,5 +1,5 @@
 FROM node:20-alpine AS base
-WORKDIR /usr/src/app
+WORKDIR /app
 
 COPY package*.json ./
 #RUN npm ci --omit=dev
