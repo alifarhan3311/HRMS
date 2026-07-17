@@ -3,16 +3,18 @@
  * Company settings management — office timings, grace period, weekends,
  * SMTP, public holidays link, and company profile.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, Building2, Clock, Mail, Globe, ShieldCheck, Save } from 'lucide-react';
+import { Settings, Building2, Clock, Mail, ShieldCheck, Save, CalendarDays } from 'lucide-react';
 import { toast } from '../../../utils/toast';
 import { Input, Select } from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
+import { useGetCompanySettingsQuery, useUpdateCompanySettingsMutation } from '../api/settings.api';
 
 const TABS = [
   { id: 'company',  label: 'Company',  icon: Building2 },
   { id: 'timing',   label: 'Timing',   icon: Clock },
+  { id: 'leave',    label: 'Leave Policy', icon: CalendarDays },
   { id: 'email',    label: 'Email',    icon: Mail },
   { id: 'security', label: 'Security', icon: ShieldCheck },
 ];
@@ -40,6 +42,8 @@ function SectionCard({ title, children }) {
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('company');
   const [saved, setSaved] = useState(false);
+  const { data: settingsData, isLoading } = useGetCompanySettingsQuery();
+  const [updateCompanySettings, { isLoading: isSaving }] = useUpdateCompanySettingsMutation();
 
   const [companyForm, setCompanyForm] = useState({
     name: 'My Company', website: '', industry: '', address: '', timezone: 'Asia/Karachi',
@@ -49,16 +53,89 @@ export default function SettingsPage() {
     weekendDays: ['Saturday', 'Sunday'],
   });
   const [emailForm, setEmailForm] = useState({
-    smtpHost: '', smtpPort: '587', smtpUser: '', smtpFrom: '', enableNotifications: true,
+    smtpHost: '', smtpPort: '587', smtpUser: '', smtpPassword: '', smtpFrom: '',
+    smtpSecure: false, enableNotifications: false, enableInApp: true, enableWhatsapp: false,
+  });
+  const [leaveForm, setLeaveForm] = useState({
+    entitlements: { paid: 12, casual: 10, sick: 8, annual: 14 },
+    carryForwardTypes: ['paid', 'casual', 'sick', 'annual'],
+    maxCarryForward: { paid: 365, casual: 365, sick: 365, annual: 365 },
+    delayedApplicationReminderDays: 3,
   });
   const [securityForm, setSecurityForm] = useState({
     sessionTimeout: '60', maxLoginAttempts: '5', passwordExpiry: '90', mfaEnabled: false,
   });
 
-  function handleSave() {
-    setSaved(true);
-    toast.success('Settings saved successfully');
-    setTimeout(() => setSaved(false), 2000);
+  useEffect(() => {
+    const settings = settingsData?.data;
+    if (!settings) return;
+    setCompanyForm(settings.company);
+    setTimingForm({
+      ...settings.timing,
+      weekendDays: settings.timing.weekendDays.map((day) => DAYS[day === 0 ? 6 : day - 1]),
+    });
+    setLeaveForm(settings.leavePolicy);
+    setEmailForm({
+      smtpHost: settings.smtp?.host || '',
+      smtpPort: String(settings.smtp?.port || 587),
+      smtpUser: settings.smtp?.user || '',
+      smtpPassword: '',
+      smtpFrom: settings.smtp?.from || '',
+      smtpSecure: Boolean(settings.smtp?.secure),
+      enableNotifications: Boolean(settings.notifications?.emailEnabled),
+      enableInApp: settings.notifications?.inAppEnabled !== false,
+      enableWhatsapp: Boolean(settings.notifications?.whatsappEnabled),
+    });
+    setSecurityForm({
+      sessionTimeout: String(settings.security?.sessionTimeoutMinutes || 60),
+      maxLoginAttempts: String(settings.security?.maxLoginAttempts || 5),
+      passwordExpiry: String(settings.security?.passwordExpiryDays ?? 90),
+      mfaEnabled: Boolean(settings.security?.mfaEnabled),
+    });
+  }, [settingsData]);
+
+  async function handleSave() {
+    const dayIndexes = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 };
+    try {
+      await updateCompanySettings({
+        company: companyForm,
+        timing: {
+          ...timingForm,
+          graceMinutes: Number(timingForm.graceMinutes),
+          weekendDays: timingForm.weekendDays.map((day) => dayIndexes[day]),
+        },
+        leavePolicy: {
+          ...leaveForm,
+          entitlements: Object.fromEntries(Object.entries(leaveForm.entitlements).map(([key, value]) => [key, Number(value)])),
+          maxCarryForward: Object.fromEntries(Object.entries(leaveForm.maxCarryForward).map(([key, value]) => [key, Number(value)])),
+          delayedApplicationReminderDays: Number(leaveForm.delayedApplicationReminderDays),
+        },
+        notifications: {
+          inAppEnabled: emailForm.enableInApp,
+          emailEnabled: emailForm.enableNotifications,
+          whatsappEnabled: emailForm.enableWhatsapp,
+        },
+        smtp: {
+          host: emailForm.smtpHost,
+          port: Number(emailForm.smtpPort),
+          secure: emailForm.smtpSecure,
+          user: emailForm.smtpUser,
+          password: emailForm.smtpPassword,
+          from: emailForm.smtpFrom,
+        },
+        security: {
+          sessionTimeoutMinutes: Number(securityForm.sessionTimeout),
+          maxLoginAttempts: Number(securityForm.maxLoginAttempts),
+          passwordExpiryDays: Number(securityForm.passwordExpiry),
+          mfaEnabled: securityForm.mfaEnabled,
+        },
+      }).unwrap();
+      setSaved(true);
+      toast.success('Settings saved successfully');
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Unable to save settings.');
+    }
   }
 
   const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -83,8 +160,8 @@ export default function SettingsPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">Configure company settings and system preferences</p>
         </div>
-        <Button variant="primary" size="sm" className="gap-1.5" onClick={handleSave}>
-          <Save className="h-4 w-4" /> {saved ? 'Saved!' : 'Save Changes'}
+        <Button variant="primary" size="sm" className="gap-1.5" onClick={handleSave} disabled={isSaving || isLoading}>
+          <Save className="h-4 w-4" /> {isSaving ? 'Saving...' : saved ? 'Saved!' : 'Save Changes'}
         </Button>
       </motion.div>
 
@@ -166,6 +243,67 @@ export default function SettingsPage() {
             </motion.div>
           )}
 
+          {activeTab === 'leave' && (
+            <motion.div key="leave" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
+              className="space-y-5">
+              <SectionCard title="Annual Leave Entitlements">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {Object.entries(leaveForm.entitlements).map(([type, value]) => (
+                    <Input key={type} label={`${type[0].toUpperCase()}${type.slice(1)} Days`} type="number"
+                      value={value} onChange={(event) => setLeaveForm((previous) => ({
+                        ...previous,
+                        entitlements: { ...previous.entitlements, [type]: event.target.value },
+                      }))} />
+                  ))}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Carry Forward Policy">
+                <p className="text-sm text-muted-foreground">
+                  Select leave types whose unused balance carries forward on the employee joining anniversary.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.keys(leaveForm.entitlements).map((type) => {
+                    const selected = leaveForm.carryForwardTypes.includes(type);
+                    return (
+                      <button key={type} type="button" onClick={() => setLeaveForm((previous) => ({
+                        ...previous,
+                        carryForwardTypes: selected
+                          ? previous.carryForwardTypes.filter((item) => item !== type)
+                          : [...previous.carryForwardTypes, type],
+                      }))} className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                        selected ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'
+                      }`}>
+                        {type[0].toUpperCase()}{type.slice(1)}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {Object.entries(leaveForm.maxCarryForward).map(([type, value]) => (
+                    <Input key={type} label={`Max ${type}`} type="number" value={value}
+                      onChange={(event) => setLeaveForm((previous) => ({
+                        ...previous,
+                        maxCarryForward: { ...previous.maxCarryForward, [type]: event.target.value },
+                      }))} />
+                  ))}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Delayed Application Reminder">
+                <Input label="Reminder after absence (days)" type="number"
+                  value={leaveForm.delayedApplicationReminderDays}
+                  onChange={(event) => setLeaveForm((previous) => ({
+                    ...previous,
+                    delayedApplicationReminderDays: event.target.value,
+                  }))} />
+                <p className="text-xs text-muted-foreground">
+                  Employees receive a notification when no leave application overlaps an absence by this deadline.
+                </p>
+              </SectionCard>
+            </motion.div>
+          )}
+
           {activeTab === 'email' && (
             <motion.div key="email" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
               <SectionCard title="SMTP Email Configuration">
@@ -178,6 +316,9 @@ export default function SettingsPage() {
                     onChange={e => setEmailForm(p => ({ ...p, smtpUser: e.target.value }))} />
                   <Input label="From Address" placeholder="HR System <hr@company.com>" value={emailForm.smtpFrom}
                     onChange={e => setEmailForm(p => ({ ...p, smtpFrom: e.target.value }))} />
+                  <Input label="SMTP Password" type="password" placeholder="Leave blank to keep current password"
+                    value={emailForm.smtpPassword}
+                    onChange={e => setEmailForm(p => ({ ...p, smtpPassword: e.target.value }))} />
                 </div>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <div className={`relative h-5 w-9 rounded-full transition-colors ${emailForm.enableNotifications ? 'bg-primary' : 'bg-muted'}`}
@@ -185,6 +326,13 @@ export default function SettingsPage() {
                     <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${emailForm.enableNotifications ? 'translate-x-4' : 'translate-x-0.5'}`} />
                   </div>
                   <span className="text-sm">Enable email notifications</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div className={`relative h-5 w-9 rounded-full transition-colors ${emailForm.enableWhatsapp ? 'bg-primary' : 'bg-muted'}`}
+                    onClick={() => setEmailForm(p => ({ ...p, enableWhatsapp: !p.enableWhatsapp }))}>
+                    <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${emailForm.enableWhatsapp ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                  <span className="text-sm">Enable WhatsApp notifications</span>
                 </label>
               </SectionCard>
             </motion.div>

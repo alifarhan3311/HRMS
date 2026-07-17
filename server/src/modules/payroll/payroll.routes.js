@@ -7,27 +7,27 @@ const repository = require('./payroll.repository');
 const { authenticate, authorize, enforceTenantScope } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
-const ALL      = ['super_admin','admin','hr','finance','manager','team_lead','employee'];
-const FINANCE  = ['super_admin','admin','finance','hr'];
+const ALL      = ['super_admin','admin','hr','manager','team_lead','employee'];
+const PAYROLL_ADMINS = ['super_admin','admin'];
 const ADMIN_HR = ['super_admin','admin','hr'];
 
 router.use(authenticate);
 
 // List & generate
 router.get('/',    authorize(...ALL),    controller.list);
-router.post('/',   authorize(...FINANCE), controller.generate);
+router.post('/',   authorize(...PAYROLL_ADMINS), controller.generate);
 
 // Per-payslip
 router.get('/:id',  authorize(...ALL),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.getById);
 
-router.put('/:id',  authorize(...FINANCE),
+router.put('/:id',  authorize(...PAYROLL_ADMINS),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.update);
 
 // Workflow
-router.patch('/:id/submit',   authorize(...FINANCE),
+router.patch('/:id/submit',   authorize(...PAYROLL_ADMINS),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.submit);
 
@@ -35,7 +35,7 @@ router.patch('/:id/approve',  authorize(...ADMIN_HR),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.approve);
 
-router.patch('/:id/paid',     authorize(...FINANCE),
+router.patch('/:id/paid',     authorize(...PAYROLL_ADMINS),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.markPaid);
 

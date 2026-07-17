@@ -36,7 +36,7 @@ import EmployeeDetailPanel from '../components/EmployeeDetailPanel';
 import PromoteEmployeeModal from '../components/PromoteEmployeeModal';
 
 const STATUSES = ['active', 'inactive', 'on_leave', 'resigned'];
-const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'finance', 'admin', 'super_admin'];
+const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'];
 
 function TableSkeleton() {
   return (

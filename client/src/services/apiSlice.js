@@ -51,6 +51,7 @@ export const api = createApi({
     'Leaves',
     'Payroll',
     'Expenses',
+    'ExpenseCategories',
     'Projects',
     'Holidays',
     'Notifications',

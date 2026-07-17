@@ -18,9 +18,9 @@ const {
 } = require('./attendance.validation');
 
 const router = express.Router();
-const ALL = ['super_admin', 'admin', 'hr', 'finance', 'manager', 'team_lead', 'employee'];
-const ADMIN_HR = ['super_admin', 'admin', 'hr'];
-const MANAGERS_UP = ['super_admin', 'admin', 'hr', 'manager', 'team_lead'];
+const ALL = ['super_admin', 'admin', 'hr', 'manager', 'team_lead', 'employee'];
+const HR_MANAGEMENT = ['super_admin', 'hr'];
+const MANAGERS_UP = ['super_admin', 'hr', 'manager', 'team_lead'];
 
 router.use(authenticate);
 
@@ -37,7 +37,7 @@ router.get(
 
 // Admin/HR views
 router.get('/', authorize(...ALL), validate(listQuerySchema, 'query'), controller.list);
-router.get('/pending-regularizations', authorize(...ADMIN_HR, ...MANAGERS_UP), controller.pendingRegularizations);
+router.get('/pending-regularizations', authorize(...MANAGERS_UP), controller.pendingRegularizations);
 
 // Per-record operations
 router.get(
@@ -48,10 +48,10 @@ router.get(
   controller.getById
 );
 
-// Manual correction (HR/Admin only)
+// Manual correction (HR/Super Admin only)
 router.put(
   '/:id/correct',
-  authorize(...ADMIN_HR),
+  authorize(...HR_MANAGEMENT),
   validate(idParamsSchema, 'params'),
   validate(manualCorrectionSchema),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
@@ -71,7 +71,7 @@ router.post(
 // Regularization review (HR/Manager)
 router.patch(
   '/:id/regularize/review',
-  authorize(...ADMIN_HR, 'manager'),
+  authorize(...HR_MANAGEMENT, 'manager', 'team_lead'),
   validate(idParamsSchema, 'params'),
   validate(regularizationReviewSchema),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),

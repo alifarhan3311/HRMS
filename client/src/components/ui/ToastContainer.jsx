@@ -25,7 +25,7 @@ export default function ToastContainer() {
       setToasts((prev) => [...prev, toast]);
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== toast.id));
-      }, DURATION);
+      }, toast.duration || DURATION);
     });
     return unsub;
   }, []);

@@ -23,6 +23,9 @@ const expensesSchema = new mongoose.Schema(
   remarks: { type: String },
   submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
   approvalChain: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  currentStage: { type: Number, enum: [1, 2], default: 1 },
+  paidAt: { type: Date },
+  paidBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   companyId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Company' },
   branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
   },
@@ -34,5 +37,6 @@ const expensesSchema = new mongoose.Schema(
 );
 
 expensesSchema.index({ companyId: 1 });
+expensesSchema.index({ companyId: 1, status: 1, expenseDate: -1 });
 
 module.exports = mongoose.model('Expense', expensesSchema);

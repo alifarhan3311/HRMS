@@ -22,6 +22,14 @@ const login = asyncHandler(async (req, res) => {
     ipAddress: req.ip,
   });
 
+  req.auditContext = {
+    userId: user.id,
+    companyId: user.companyId,
+    action: 'auth.login',
+    resourceType: 'auth',
+    resourceId: String(user.id),
+  };
+
   res.cookie('accessToken', accessToken, { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 });
   res.cookie('refreshToken', refreshToken, {
     ...COOKIE_OPTS,

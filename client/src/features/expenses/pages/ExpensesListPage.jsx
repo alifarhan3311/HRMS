@@ -2,13 +2,13 @@
  * features/expenses/pages/ExpensesListPage.jsx
  * Full expense management with submit form, approval workflow, filters, charts.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
   Receipt, Plus, RefreshCw, ChevronLeft, ChevronRight,
   CheckCircle2, XCircle, CreditCard, Eye,
-  BarChart3, TrendingDown,
+  BarChart3, TrendingDown, Settings2, Pencil, Trash2,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -16,6 +16,8 @@ import {
 import {
   useListExpensesQuery, useSubmitExpenseMutation,
   useApproveExpenseMutation, useRejectExpenseMutation, useMarkExpensePaidMutation,
+  useListExpenseCategoriesQuery, useCreateExpenseCategoryMutation,
+  useUpdateExpenseCategoryMutation, useDeleteExpenseCategoryMutation,
 } from '../api/expenses.api';
 import { toast } from '../../../utils/toast';
 import StatCard from '../../../components/ui/StatCard';
@@ -27,10 +29,6 @@ import { Avatar } from '../../../components/ui/Avatar';
 import { Skeleton } from '../../../components/ui/Skeleton';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const CATEGORIES = [
-  'Office Expenses','Utility Bills','Internet Bills','Fuel Expenses',
-  'Travel Expenses','Maintenance Expenses','Miscellaneous',
-];
 const PAYMENT_METHODS = ['Cash','Bank Transfer','Credit Card','Cheque','Online'];
 const STATUS_STYLES = {
   pending:    { label: 'Pending',    variant: 'yellow' },
@@ -48,12 +46,15 @@ function fmtDate(d) {
 }
 
 // ─── Submit Expense Form ──────────────────────────────────────────────────────
-function SubmitExpenseForm({ onSubmit, onClose, isLoading }) {
+function SubmitExpenseForm({ onSubmit, onClose, isLoading, categories }) {
   const today = new Date().toISOString().substring(0, 10);
   const [form, setForm] = useState({
-    category: 'Office Expenses', vendorName: '', amount: '',
+    category: categories[0] || '', vendorName: '', amount: '',
     expenseDate: today, paymentMethod: 'Cash', remarks: '',
   });
+  useEffect(() => {
+    if (!form.category && categories[0]) setForm(current => ({ ...current, category: categories[0] }));
+  }, [categories, form.category]);
   const [errors, setErrors] = useState({});
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); if (errors[k]) setErrors(p => ({ ...p, [k]: '' })); }
 
@@ -70,7 +71,7 @@ function SubmitExpenseForm({ onSubmit, onClose, isLoading }) {
     <form onSubmit={handleSubmit}>
       <div className="px-6 py-5 space-y-4">
         <Select label="Category" required value={form.category} onChange={e => set('category', e.target.value)}>
-          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </Select>
         <div className="grid grid-cols-2 gap-4">
           <Input label="Vendor / Supplier" required placeholder="Company name"
@@ -85,7 +86,7 @@ function SubmitExpenseForm({ onSubmit, onClose, isLoading }) {
         <Textarea label="Remarks / Description" value={form.remarks}
           onChange={e => set('remarks', e.target.value)} placeholder="What was this expense for?" />
         <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-          Approval: <span className="text-foreground font-medium">Manager → Finance → Admin</span>
+          Approval: <span className="text-foreground font-medium">Manager → Admin → Payment</span>
         </div>
       </div>
       <ModalFooter>
@@ -98,12 +99,92 @@ function SubmitExpenseForm({ onSubmit, onClose, isLoading }) {
   );
 }
 
+function CategoryManagerModal({ isOpen, onClose, categories }) {
+  const [form, setForm] = useState({ name: '', description: '', active: true });
+  const [editingId, setEditingId] = useState(null);
+  const [createCategory, { isLoading: creating }] = useCreateExpenseCategoryMutation();
+  const [updateCategory, { isLoading: updating }] = useUpdateExpenseCategoryMutation();
+  const [deleteCategory, { isLoading: deleting }] = useDeleteExpenseCategoryMutation();
+  const busy = creating || updating || deleting;
+
+  function reset() {
+    setEditingId(null);
+    setForm({ name: '', description: '', active: true });
+  }
+
+  async function save(e) {
+    e.preventDefault();
+    try {
+      if (editingId) await updateCategory({ id: editingId, ...form }).unwrap();
+      else await createCategory(form).unwrap();
+      toast.success(editingId ? 'Expense category updated' : 'Expense category created');
+      reset();
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Unable to save expense category');
+    }
+  }
+
+  async function remove(category) {
+    try {
+      await deleteCategory(category._id).unwrap();
+      toast.success('Expense category deleted');
+      if (editingId === category._id) reset();
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Unable to delete expense category');
+    }
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Manage Expense Categories" size="md">
+      <form onSubmit={save} className="border-b border-border px-6 py-4 space-y-3">
+        <Input label="Category Name" required value={form.name}
+          onChange={e => setForm(current => ({ ...current, name: e.target.value }))}
+          placeholder="e.g. Software Subscriptions" />
+        <Textarea label="Description" value={form.description}
+          onChange={e => setForm(current => ({ ...current, description: e.target.value }))}
+          placeholder="Optional category description" rows={2} />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={form.active}
+            onChange={e => setForm(current => ({ ...current, active: e.target.checked }))} />
+          Active category
+        </label>
+        <div className="flex justify-end gap-2">
+          {editingId && <Button type="button" variant="ghost" size="sm" onClick={reset}>Cancel Edit</Button>}
+          <Button type="submit" variant="primary" size="sm" disabled={busy || !form.name.trim()}>
+            {editingId ? 'Update Category' : 'Create Category'}
+          </Button>
+        </div>
+      </form>
+      <div className="max-h-80 divide-y divide-border overflow-y-auto px-6 py-2">
+        {categories.map(category => (
+          <div key={category._id} className="flex items-center gap-3 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{category.name}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {category.description || 'No description'} · {category.active ? 'Active' : 'Inactive'}
+              </p>
+            </div>
+            <button type="button" title="Edit category" className="rounded p-1.5 hover:bg-accent"
+              onClick={() => { setEditingId(category._id); setForm({ name: category.name, description: category.description || '', active: category.active }); }}>
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button type="button" title="Delete category" className="rounded p-1.5 text-destructive hover:bg-destructive/10"
+              onClick={() => remove(category)} disabled={busy}>
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Expense Detail Modal ─────────────────────────────────────────────────────
 function ExpenseDetailModal({ expense, isOpen, onClose, onApprove, onReject, onMarkPaid, canApprove, isActioning }) {
   const [remarks, setRemarks] = useState('');
   if (!expense) return null;
   const st = STATUS_STYLES[expense.status] || STATUS_STYLES.pending;
-  const STAGE_LABELS = { 1: 'Manager', 2: 'Finance', 3: 'Admin' };
+  const STAGE_LABELS = { 1: 'Manager', 2: 'Admin' };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Expense Details" size="md">
@@ -198,14 +279,17 @@ function ExpenseDetailModal({ expense, isOpen, onClose, onApprove, onReject, onM
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ExpensesListPage() {
   const { user } = useSelector(s => s.auth);
-  const canApprove = ['admin','hr','finance','super_admin','manager'].includes(user?.role);
+  const canApprove = ['admin','super_admin','manager'].includes(user?.role);
+  const isAdmin = ['admin','super_admin'].includes(user?.role);
 
   const [submitOpen, setSubmitOpen]     = useState(false);
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [detailExpense, setDetailExpense] = useState(null);
   const [page, setPage]                 = useState(1);
   const [filters, setFilters]           = useState({ status: '', category: '' });
 
   const { data, isLoading, isFetching, refetch } = useListExpensesQuery({ page, limit: 15, ...filters });
+  const { data: categoriesData } = useListExpenseCategoriesQuery();
   const [submitExpense,  { isLoading: submitting }]  = useSubmitExpenseMutation();
   const [approveExpense, { isLoading: approving }]   = useApproveExpenseMutation();
   const [rejectExpense,  { isLoading: rejecting }]   = useRejectExpenseMutation();
@@ -213,6 +297,8 @@ export default function ExpensesListPage() {
 
   const isActioning = approving || rejecting || paying;
   const expenses    = data?.items || [];
+  const categoryRecords = categoriesData?.data || [];
+  const categories = categoryRecords.filter(category => category.active).map(category => category.name);
   const total       = data?.total || 0;
   const totalPages  = data?.totalPages || 1;
 
@@ -222,7 +308,7 @@ export default function ExpensesListPage() {
   const paidAmt    = expenses.filter(e => e.status === 'paid').reduce((s,e) => s+(e.amount||0), 0);
 
   // Chart data by category
-  const catData = CATEGORIES.map(cat => ({
+  const catData = categories.map(cat => ({
     name: cat.replace(' Expenses','').replace(' Bills',''),
     amount: expenses.filter(e => e.category === cat).reduce((s,e) => s+(e.amount||0), 0),
   })).filter(d => d.amount > 0);
@@ -257,6 +343,11 @@ export default function ExpensesListPage() {
           <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
           </Button>
+          {isAdmin && (
+            <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setCategoriesOpen(true)}>
+              <Settings2 className="h-4 w-4" /> Categories
+            </Button>
+          )}
           <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setSubmitOpen(true)}>
             <Plus className="h-4 w-4" /> Submit Expense
           </Button>
@@ -284,7 +375,7 @@ export default function ExpensesListPage() {
             <select className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
               value={filters.category} onChange={e => { setFilters(p => ({ ...p, category: e.target.value })); setPage(1); }}>
               <option value="">All Categories</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             <span className="text-xs text-muted-foreground ml-auto">{total} expenses</span>
           </div>
@@ -369,8 +460,12 @@ export default function ExpensesListPage() {
 
       {/* Submit Modal */}
       <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Submit New Expense" size="md">
-        <SubmitExpenseForm onSubmit={handleSubmit} onClose={() => setSubmitOpen(false)} isLoading={submitting} />
+        <SubmitExpenseForm onSubmit={handleSubmit} onClose={() => setSubmitOpen(false)}
+          isLoading={submitting} categories={categories} />
       </Modal>
+
+      <CategoryManagerModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)}
+        categories={categoryRecords} />
 
       {/* Detail Modal */}
       <ExpenseDetailModal

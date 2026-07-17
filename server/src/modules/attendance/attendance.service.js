@@ -2,7 +2,7 @@
  * modules/attendance/attendance.service.js
  * Attendance business logic:
  *  - Sign In / Sign Out with late detection
- *  - Office timing & grace period from company settings (env-based defaults)
+ *  - Office timing & grace period from persisted company settings
  *  - Manual attendance correction
  *  - Regularization request workflow
  *  - Monthly summary
@@ -11,13 +11,8 @@
 const createHttpError = require('http-errors');
 const repository = require('./attendance.repository');
 const Employee = require('../employees/employees.model');
-
-// Configurable defaults (should come from Company Settings in production)
-const OFFICE_START_HOUR = parseInt(process.env.OFFICE_START_HOUR || '9', 10);
-const OFFICE_START_MINUTE = parseInt(process.env.OFFICE_START_MINUTE || '0', 10);
-const GRACE_MINUTES = parseInt(process.env.GRACE_MINUTES || '15', 10);
-const OFFICE_END_HOUR = parseInt(process.env.OFFICE_END_HOUR || '18', 10);
-const OFFICE_END_MINUTE = parseInt(process.env.OFFICE_END_MINUTE || '0', 10);
+const settingsService = require('../companySettings/companySettings.service');
+const notificationService = require('../notifications/notifications.service');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -25,20 +20,27 @@ function startOfDay(date = new Date()) {
   return d;
 }
 
-function calcLateMinutes(signInTime) {
+function splitTime(value, fallback) {
+  const [hours, minutes] = String(value || fallback).split(':').map(Number);
+  return { hours, minutes };
+}
+
+function calcLateMinutes(signInTime, timing) {
   const signIn = new Date(signInTime);
   const officeStart = new Date(signIn);
-  officeStart.setHours(OFFICE_START_HOUR, OFFICE_START_MINUTE, 0, 0);
-  const graceDeadline = new Date(officeStart.getTime() + GRACE_MINUTES * 60 * 1000);
+  const start = splitTime(timing.officeStart, '09:00');
+  officeStart.setHours(start.hours, start.minutes, 0, 0);
+  const graceDeadline = new Date(officeStart.getTime() + timing.graceMinutes * 60 * 1000);
 
   if (signIn <= graceDeadline) return 0;
   return Math.round((signIn - graceDeadline) / 60000);
 }
 
-function calcEarlyLeaveMinutes(signOutTime) {
+function calcEarlyLeaveMinutes(signOutTime, timing) {
   const signOut = new Date(signOutTime);
   const officeEnd = new Date(signOut);
-  officeEnd.setHours(OFFICE_END_HOUR, OFFICE_END_MINUTE, 0, 0);
+  const end = splitTime(timing.officeEnd, '18:00');
+  officeEnd.setHours(end.hours, end.minutes, 0, 0);
   if (signOut >= officeEnd) return 0;
   return Math.round((officeEnd - signOut) / 60000);
 }
@@ -60,7 +62,8 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
   }
 
   const now = new Date();
-  const lateMinutes = calcLateMinutes(now);
+  const settings = await settingsService.getPolicy(actor.companyId);
+  const lateMinutes = calcLateMinutes(now, settings.timing);
   const status = lateMinutes > 0 ? 'late' : 'present';
 
   const record = existing
@@ -104,7 +107,8 @@ async function signOut({ employeeId, notes }, actor) {
   if (record.signOutTime) throw createHttpError(409, 'You have already signed out today.');
 
   const now = new Date();
-  const earlyLeaveMinutes = calcEarlyLeaveMinutes(now);
+  const settings = await settingsService.getPolicy(actor.companyId);
+  const earlyLeaveMinutes = calcEarlyLeaveMinutes(now, settings.timing);
   const totalHours = calcTotalHours(record.signInTime, now);
 
   const updated = await repository.updateById(record._id, {
@@ -136,7 +140,7 @@ async function getAttendanceById(id) {
 // -------------------------------------------------------------------------
 async function getMonthlySummary(employeeId, year, month, actor) {
   if (String(employeeId) !== String(actor.id)) {
-    const canViewOthers = ['super_admin', 'admin', 'hr', 'manager', 'team_lead'].includes(actor.role);
+    const canViewOthers = ['super_admin', 'hr', 'manager', 'team_lead'].includes(actor.role);
     if (!canViewOthers) {
       throw createHttpError(403, 'You can only view your own attendance summary.');
     }
@@ -165,8 +169,8 @@ async function listAttendances(query, actor) {
 
   const filter = { companyId: actor.companyId };
 
-  // Non-admin/hr: employees only see their own
-  if (!['admin', 'hr', 'super_admin', 'manager', 'team_lead'].includes(actor.role)) {
+  // Users without HR/team authority only see their own records.
+  if (!['hr', 'super_admin', 'manager', 'team_lead'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
     filter.employeeId = employeeId;
@@ -196,6 +200,7 @@ async function manualCorrection(id, payload, actor) {
   if (!record) throw createHttpError(404, 'Attendance record not found.');
 
   const { signInTime, signOutTime, status, notes } = payload;
+  const settings = await settingsService.getPolicy(record.companyId);
   const update = { notes };
   const correctedSignIn = signInTime ? new Date(signInTime) : record.signInTime;
   const correctedSignOut = signOutTime ? new Date(signOutTime) : record.signOutTime;
@@ -206,12 +211,12 @@ async function manualCorrection(id, payload, actor) {
 
   if (signInTime) {
     update.signInTime = correctedSignIn;
-    update.lateMinutes = calcLateMinutes(signInTime);
+    update.lateMinutes = calcLateMinutes(signInTime, settings.timing);
     update.status = update.lateMinutes > 0 ? 'late' : (status || 'present');
   }
   if (signOutTime) {
     update.signOutTime = correctedSignOut;
-    update.earlyLeaveMinutes = calcEarlyLeaveMinutes(signOutTime);
+    update.earlyLeaveMinutes = calcEarlyLeaveMinutes(signOutTime, settings.timing);
   }
   if ((signInTime || signOutTime) && correctedSignIn && correctedSignOut) {
     update.totalHours = calcTotalHours(correctedSignIn, correctedSignOut);
@@ -225,7 +230,20 @@ async function manualCorrection(id, payload, actor) {
 // -------------------------------------------------------------------------
 // Regularization request (Employee)
 // -------------------------------------------------------------------------
-async function requestRegularization(id, { reason }, actor) {
+async function resolveRegularizationApprover(employee, companyId) {
+  if (employee.teamLeadId) return employee.teamLeadId;
+  if (employee.managerId) return employee.managerId;
+
+  const fallback = await Employee.findOne({
+    companyId,
+    role: { $in: ['hr', 'super_admin'] },
+    status: 'active',
+  }).select('_id');
+  return fallback?._id;
+}
+
+async function requestRegularization(id, payload, actor) {
+  const { reason, requestType, requestedSignInTime, requestedSignOutTime } = payload;
   const record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Attendance record not found.');
   if (String(record.employeeId._id || record.employeeId) !== String(actor.id)) {
@@ -234,16 +252,41 @@ async function requestRegularization(id, { reason }, actor) {
   if (record.regularizationStatus !== 'none') {
     throw createHttpError(409, 'A regularization request already exists for this record.');
   }
+  if (requestType === 'late_waiver' && record.lateMinutes <= 0) {
+    throw createHttpError(422, 'A late waiver can only be requested for a late attendance record.');
+  }
 
-  const updated = await repository.updateById(id, {
+  const employee = await Employee.findById(actor.id).select('managerId teamLeadId companyId fullName');
+  const assignedApprover = await resolveRegularizationApprover(employee, actor.companyId);
+  if (!assignedApprover) {
+    throw createHttpError(422, 'No manager, team lead, HR, or super administrator is available to review this request.');
+  }
+
+  await repository.updateById(id, {
     regularizationStatus: 'pending',
     regularization: {
       requestedBy: actor.id,
+      requestType,
       reason,
       requestedAt: new Date(),
+      requestedSignInTime: requestedSignInTime ? new Date(requestedSignInTime) : undefined,
+      requestedSignOutTime: requestedSignOutTime ? new Date(requestedSignOutTime) : undefined,
+      assignedApprover,
     },
   });
-  return updated;
+
+  await notificationService.createNotification({
+    recipientId: assignedApprover,
+    companyId: actor.companyId,
+    type: 'attendance_regularization_requested',
+    title: requestType === 'late_waiver' ? 'Late waiver approval required' : 'Attendance correction approval required',
+    message: `${employee.fullName} submitted a request for ${record.date.toLocaleDateString()}.`,
+    link: '/attendance',
+    metadata: { attendanceId: record._id, requestType },
+    dedupeKey: `attendance-regularization-requested:${record._id}`,
+  });
+
+  return repository.findById(id);
 }
 
 // -------------------------------------------------------------------------
@@ -256,13 +299,65 @@ async function reviewRegularization(id, { action, remarks }, actor) {
     throw createHttpError(400, 'No pending regularization for this record.');
   }
 
-  const updated = await repository.updateById(id, {
+  const elevatedReviewer = ['super_admin', 'hr'].includes(actor.role);
+  const assignedId = record.regularization?.assignedApprover?._id
+    || record.regularization?.assignedApprover;
+  if (!elevatedReviewer && String(assignedId) !== String(actor.id)) {
+    throw createHttpError(403, 'This request is assigned to another approver.');
+  }
+
+  const update = {
     regularizationStatus: action === 'approve' ? 'approved' : 'rejected',
     'regularization.reviewedBy': actor.id,
     'regularization.reviewedAt': new Date(),
     'regularization.remarks': remarks || '',
+  };
+
+  if (action === 'approve') {
+    if (record.regularization.requestType === 'late_waiver') {
+      update.lateMinutes = 0;
+      if (record.status === 'late') update.status = 'present';
+      update.notes = `${record.notes || ''} [Late waived by ${actor.fullName || actor.email}]`.trim();
+      await Employee.updateOne(
+        { _id: record.employeeId._id || record.employeeId, lateCount: { $gt: 0 } },
+        { $inc: { lateCount: -1 } },
+      );
+    } else {
+      const settings = await settingsService.getPolicy(record.companyId);
+      const correctedSignIn = record.regularization.requestedSignInTime || record.signInTime;
+      const correctedSignOut = record.regularization.requestedSignOutTime || record.signOutTime;
+      if (correctedSignIn) {
+        update.signInTime = correctedSignIn;
+        update.lateMinutes = calcLateMinutes(correctedSignIn, settings.timing);
+        update.status = update.lateMinutes > 0 ? 'late' : 'present';
+      }
+      if (correctedSignOut) {
+        update.signOutTime = correctedSignOut;
+        update.earlyLeaveMinutes = calcEarlyLeaveMinutes(correctedSignOut, settings.timing);
+      }
+      if (correctedSignIn && correctedSignOut) {
+        if (new Date(correctedSignOut) <= new Date(correctedSignIn)) {
+          throw createHttpError(422, 'Corrected sign-out time must be after sign-in time.');
+        }
+        update.totalHours = calcTotalHours(correctedSignIn, correctedSignOut);
+      }
+    }
+  }
+
+  await repository.updateById(id, update);
+
+  await notificationService.createNotification({
+    recipientId: record.employeeId._id || record.employeeId,
+    companyId: record.companyId,
+    type: `attendance_regularization_${action === 'approve' ? 'approved' : 'rejected'}`,
+    title: `Attendance request ${action === 'approve' ? 'approved' : 'rejected'}`,
+    message: `${actor.fullName || 'Your approver'} ${action === 'approve' ? 'approved' : 'rejected'} your ${record.regularization.requestType.replace('_', ' ')} request.`,
+    link: '/attendance',
+    metadata: { attendanceId: record._id, reviewedBy: actor.id },
+    dedupeKey: `attendance-regularization-${action}:${record._id}`,
   });
-  return updated;
+
+  return repository.findById(id);
 }
 
 // -------------------------------------------------------------------------

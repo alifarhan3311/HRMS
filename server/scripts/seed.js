@@ -16,7 +16,6 @@ const ROLES = [
   { role: 'super_admin', department: 'Executive', designation: 'Super Administrator' },
   { role: 'admin', department: 'Administration', designation: 'System Administrator' },
   { role: 'hr', department: 'Human Resources', designation: 'HR Manager' },
-  { role: 'finance', department: 'Finance', designation: 'Finance Officer' },
   { role: 'manager', department: 'Engineering', designation: 'Engineering Manager' },
   { role: 'team_lead', department: 'Engineering', designation: 'Team Lead' },
   { role: 'employee', department: 'Engineering', designation: 'Software Engineer' },

@@ -7,7 +7,7 @@
  *  - Regularization request
  *  - HR/Admin: manual correction, approve/reject regularizations
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
@@ -52,6 +52,13 @@ function fmtTime(d) {
 function fmtDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function toLocalDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 function nowYM() {
   const n = new Date();
@@ -244,7 +251,31 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
 // ─── Regularization Modal ────────────────────────────────────────────────────
 function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
   const [reason, setReason] = useState('');
-  function handleSubmit(e) { e.preventDefault(); onSubmit({ reason }); }
+  const [requestType, setRequestType] = useState('time_correction');
+  const [requestedSignInTime, setRequestedSignInTime] = useState('');
+  const [requestedSignOutTime, setRequestedSignOutTime] = useState('');
+
+  useEffect(() => {
+    if (!record) return;
+    setReason('');
+    setRequestType(record.lateMinutes > 0 ? 'late_waiver' : 'time_correction');
+    setRequestedSignInTime(toLocalDateTime(record.signInTime));
+    setRequestedSignOutTime(toLocalDateTime(record.signOutTime));
+  }, [record]);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    onSubmit({
+      reason,
+      requestType,
+      ...(requestType === 'time_correction' && requestedSignInTime
+        ? { requestedSignInTime: new Date(requestedSignInTime).toISOString() }
+        : {}),
+      ...(requestType === 'time_correction' && requestedSignOutTime
+        ? { requestedSignOutTime: new Date(requestedSignOutTime).toISOString() }
+        : {}),
+    });
+  }
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Request Attendance Regularization" size="sm">
       <form onSubmit={handleSubmit}>
@@ -252,6 +283,22 @@ function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
           {record && (
             <div className="text-sm bg-amber-50 dark:bg-amber-900/20 text-amber-700 rounded-lg px-3 py-2">
               Requesting for: <span className="font-medium">{fmtDate(record.date)}</span>
+            </div>
+          )}
+          <label className="block space-y-1.5 text-sm font-medium">
+            Request type
+            <select value={requestType} onChange={(e) => setRequestType(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary">
+              {record?.lateMinutes > 0 && <option value="late_waiver">Late waiver</option>}
+              <option value="time_correction">Time correction</option>
+            </select>
+          </label>
+          {requestType === 'time_correction' && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Input label="Requested Sign In" type="datetime-local" value={requestedSignInTime}
+                onChange={(e) => setRequestedSignInTime(e.target.value)} />
+              <Input label="Requested Sign Out" type="datetime-local" value={requestedSignOutTime}
+                onChange={(e) => setRequestedSignOutTime(e.target.value)} />
             </div>
           )}
           <Textarea label="Reason" required value={reason} onChange={(e) => setReason(e.target.value)}
@@ -271,8 +318,8 @@ function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function AttendanceListPage() {
   const { user } = useSelector((s) => s.auth);
-  const isAdminHR = ['admin', 'hr', 'super_admin'].includes(user?.role);
-  const isManagerUp = ['admin', 'hr', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
+  const isAdminHR = ['hr', 'super_admin'].includes(user?.role);
+  const isManagerUp = ['hr', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
 
   const [ym, setYm] = useState(nowYM());
   const [filters, setFilters] = useState({ status: '', employeeId: '' });
@@ -332,7 +379,7 @@ export default function AttendanceListPage() {
       toast.success(`Regularization ${action === 'approve' ? 'approved' : 'rejected'}`);
       setReviewRecord(null);
     } catch (err) {
-      toast.error('Review failed');
+      toast.error(err?.data?.error?.message || 'Review failed');
     }
   }
 
@@ -499,6 +546,12 @@ export default function AttendanceListPage() {
                     <div className="min-w-0">
                       <p className="font-medium truncate">{r.employeeId?.fullName}</p>
                       <p className="text-xs text-muted-foreground">{fmtDate(r.date)}</p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {(r.regularization?.requestType || 'time_correction').replace('_', ' ')}
+                        {r.regularization?.assignedApprover?.fullName
+                          ? ` · ${r.regularization.assignedApprover.fullName}`
+                          : ''}
+                      </p>
                     </div>
                     <div className="flex gap-1 shrink-0">
                       <button onClick={() => { setReviewRecord(r); }} className="px-2 py-1 text-xs rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400">
@@ -527,6 +580,12 @@ export default function AttendanceListPage() {
             <div className="text-sm">
               <p className="font-medium">{reviewRecord.employeeId?.fullName}</p>
               <p className="text-muted-foreground">{fmtDate(reviewRecord.date)}</p>
+              <p className="mt-1 text-xs capitalize text-muted-foreground">
+                {(reviewRecord.regularization?.requestType || 'time_correction').replace('_', ' ')}
+                {reviewRecord.regularization?.assignedApprover?.fullName
+                  ? ` · Assigned to ${reviewRecord.regularization.assignedApprover.fullName}`
+                  : ''}
+              </p>
               <p className="mt-2 text-sm border border-border rounded-lg p-3 bg-muted/30">
                 {reviewRecord.regularization?.reason || 'No reason provided'}
               </p>

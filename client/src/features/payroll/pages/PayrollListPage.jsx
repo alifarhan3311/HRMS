@@ -2,7 +2,7 @@
  * features/payroll/pages/PayrollListPage.jsx
  * Full payroll management:
  *  - Employee: view own payslips + salary breakup
- *  - Finance/Admin: generate, approve, mark paid, lock
+ *  - Admin: generate, approve, mark paid, lock
  *  - Payslip detail modal with full breakdown
  */
 import { useState } from 'react';
@@ -257,7 +257,7 @@ function GenerateForm({ onSubmit, onClose, isLoading }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PayrollListPage() {
   const { user } = useSelector((s) => s.auth);
-  const canManage = ['admin', 'hr', 'finance', 'super_admin'].includes(user?.role);
+  const canManage = ['admin', 'super_admin'].includes(user?.role);
   const now = new Date();
 
   const [generateOpen, setGenerateOpen] = useState(false);

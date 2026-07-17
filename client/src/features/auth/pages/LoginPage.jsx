@@ -25,7 +25,13 @@ export default function LoginPage() {
       dispatch(setCredentials(response.data.user));
       navigate('/dashboard');
     } catch (err) {
-      setError(err?.data || err?.message || 'Login failed. Check your credentials.');
+      setError(
+        err?.data?.error?.message
+          || err?.data?.message
+          || (typeof err?.data?.error === 'string' ? err.data.error : null)
+          || err?.message
+          || 'Login failed. Check your credentials.',
+      );
     }
   };
 

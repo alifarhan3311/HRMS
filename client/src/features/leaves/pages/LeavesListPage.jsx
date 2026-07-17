@@ -4,7 +4,7 @@
  *  - Leave balance cards
  *  - Apply leave form
  *  - Leave requests table with status
- *  - Approval flow for managers/HR/admin
+ *  - Approval flow for managers/HR
  *  - Cancel with confirm
  */
 import { useState } from 'react';
@@ -178,7 +178,7 @@ function ApprovalTimeline({ chain = [], currentStage }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function LeavesListPage() {
   const { user } = useSelector((s) => s.auth);
-  const isApprover = ['admin', 'hr', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
+  const isApprover = ['hr', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
 
   const [applyOpen, setApplyOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);

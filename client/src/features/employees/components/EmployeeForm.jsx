@@ -24,7 +24,7 @@ const TABS = [
 const GENDERS = ['male', 'female', 'other'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
-const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'finance', 'admin'];
+const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin'];
 
 const EMPTY_FORM = {
   // Personal

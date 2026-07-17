@@ -1,22 +1,32 @@
 /**
  * modules/expenses/expenses.service.js
  * Expense management with multi-stage approval workflow:
- * Employee/Dept → Manager → Finance Verification → Admin → Payment
+ * Employee/Department -> Manager approval -> Admin verification and approval -> Payment
  */
 const createHttpError = require('http-errors');
 const repository = require('./expenses.repository');
+const categoryService = require('./expenseCategories.service');
+const Employee = require('../employees/employees.model');
+const notificationService = require('../notifications/notifications.service');
 
-const CATEGORIES = [
-  'Office Expenses','Utility Bills','Internet Bills','Fuel Expenses',
-  'Travel Expenses','Maintenance Expenses','Miscellaneous',
-];
+async function notifyMany(recipientIds, notification) {
+  const uniqueIds = [...new Set(recipientIds.filter(Boolean).map(String))];
+  await Promise.allSettled(uniqueIds.map(recipientId => notificationService.createNotification({
+    ...notification,
+    recipientId,
+    dedupeKey: `${notification.dedupeKey}:${recipientId}`,
+  })));
+}
+
+async function activeRoleIds(companyId, roles) {
+  const employees = await Employee.find({ companyId, role: { $in: roles }, status: 'active' }).select('_id');
+  return employees.map(employee => employee._id);
+}
 
 // ─── Submit ───────────────────────────────────────────────────────────────────
 async function submitExpense(payload, actor) {
   const { category, vendorName, amount, expenseDate, paymentMethod, remarks, invoiceUrl } = payload;
-  if (!CATEGORIES.includes(category) && !category) {
-    throw createHttpError(400, 'Invalid expense category.');
-  }
+  await categoryService.assertActiveCategory(category, actor.companyId);
   if (!amount || amount <= 0) throw createHttpError(400, 'Amount must be positive.');
 
   const expense = await repository.create({
@@ -27,12 +37,25 @@ async function submitExpense(payload, actor) {
     status: 'pending',
     approvalChain: [
       { stage: 1, role: 'manager',  status: 'pending' },
-      { stage: 2, role: 'finance',  status: 'pending' },
-      { stage: 3, role: 'admin',    status: 'pending' },
+      { stage: 2, role: 'admin',    status: 'pending' },
     ],
     currentStage: 1,
     companyId: actor.companyId,
     branchId: actor.branchId,
+  });
+
+  const submitter = await Employee.findById(actor.id).select('fullName managerId');
+  const managerIds = submitter?.managerId
+    ? [submitter.managerId]
+    : await activeRoleIds(actor.companyId, ['manager']);
+  await notifyMany(managerIds, {
+    companyId: actor.companyId,
+    type: 'expense_approval_required',
+    title: 'Expense approval required',
+    message: `${submitter?.fullName || 'An employee'} submitted ${category} for PKR ${Number(amount).toLocaleString()}.`,
+    link: '/expenses',
+    metadata: { expenseId: expense._id, stage: 1 },
+    dedupeKey: `expense-submitted:${expense._id}`,
   });
   return expense;
 }
@@ -45,7 +68,7 @@ async function approveExpense(id, { remarks }, actor) {
     throw createHttpError(400, 'This expense cannot be approved.');
   }
 
-  const ROLE_STAGE = { manager: 1, finance: 2, admin: 3, super_admin: 3, hr: 2 };
+  const ROLE_STAGE = { manager: 1, admin: 2, super_admin: 2 };
   const actorStage = ROLE_STAGE[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot approve expenses.');
   if (actorStage !== expense.currentStage) {
@@ -58,12 +81,34 @@ async function approveExpense(id, { remarks }, actor) {
       : step
   );
 
-  const isLast = actorStage === 3;
+  const isLast = actorStage === 2;
   const updated = await repository.updateById(id, {
     approvalChain: chain,
     currentStage: isLast ? actorStage : actorStage + 1,
     status: isLast ? 'approved' : 'processing',
   });
+  if (isLast) {
+    await notifyMany([expense.submittedBy?._id || expense.submittedBy], {
+      companyId: expense.companyId,
+      type: 'expense_approved',
+      title: 'Expense approved',
+      message: `Your ${expense.category} expense for PKR ${Number(expense.amount).toLocaleString()} was approved.`,
+      link: '/expenses',
+      metadata: { expenseId: expense._id },
+      dedupeKey: `expense-approved:${expense._id}`,
+    });
+  } else {
+    const adminIds = await activeRoleIds(expense.companyId, ['admin', 'super_admin']);
+    await notifyMany(adminIds, {
+      companyId: expense.companyId,
+      type: 'expense_admin_verification_required',
+      title: 'Expense verification required',
+      message: `${expense.submittedBy?.fullName || 'An employee'}'s expense was approved by the manager and needs Admin verification.`,
+      link: '/expenses',
+      metadata: { expenseId: expense._id, stage: 2 },
+      dedupeKey: `expense-manager-approved:${expense._id}`,
+    });
+  }
   return updated;
 }
 
@@ -75,14 +120,27 @@ async function rejectExpense(id, { remarks }, actor) {
     throw createHttpError(400, 'This expense cannot be rejected.');
   }
 
-  const ROLE_STAGE = { manager: 1, finance: 2, admin: 3, super_admin: 3, hr: 2 };
+  const ROLE_STAGE = { manager: 1, admin: 2, super_admin: 2 };
   const actorStage = ROLE_STAGE[actor.role];
+  if (!actorStage) throw createHttpError(403, 'Your role cannot reject expenses.');
+  if (actorStage !== expense.currentStage) {
+    throw createHttpError(403, `This expense is at stage ${expense.currentStage}.`);
+  }
   const chain = (expense.approvalChain || []).map(step =>
     step.stage === actorStage
       ? { ...step, status: 'rejected', approvedBy: actor.id, actionAt: new Date(), remarks: remarks||'' }
       : step
   );
   const updated = await repository.updateById(id, { approvalChain: chain, status: 'rejected' });
+  await notifyMany([expense.submittedBy?._id || expense.submittedBy], {
+    companyId: expense.companyId,
+    type: 'expense_rejected',
+    title: 'Expense rejected',
+    message: `Your ${expense.category} expense was rejected${remarks ? `: ${remarks}` : '.'}`,
+    link: '/expenses',
+    metadata: { expenseId: expense._id },
+    dedupeKey: `expense-rejected:${expense._id}`,
+  });
   return updated;
 }
 
@@ -91,7 +149,17 @@ async function markPaid(id, actor) {
   const expense = await repository.findById(id);
   if (!expense) throw createHttpError(404, 'Expense not found.');
   if (expense.status !== 'approved') throw createHttpError(400, 'Only approved expenses can be marked paid.');
-  return repository.updateById(id, { status: 'paid', paidAt: new Date(), paidBy: actor.id });
+  const updated = await repository.updateById(id, { status: 'paid', paidAt: new Date(), paidBy: actor.id });
+  await notifyMany([expense.submittedBy?._id || expense.submittedBy], {
+    companyId: expense.companyId,
+    type: 'expense_paid',
+    title: 'Expense payment completed',
+    message: `Your ${expense.category} expense payment of PKR ${Number(expense.amount).toLocaleString()} is marked paid.`,
+    link: '/expenses',
+    metadata: { expenseId: expense._id },
+    dedupeKey: `expense-paid:${expense._id}`,
+  });
+  return updated;
 }
 
 // ─── List ────────────────────────────────────────────────────────────────────
@@ -99,7 +167,7 @@ async function listExpenses(query, actor) {
   const { page=1, limit=20, status, category, dateFrom, dateTo, sort='-createdAt' } = query;
   const filter = { companyId: actor.companyId };
 
-  if (!['admin','hr','finance','super_admin','manager'].includes(actor.role)) {
+  if (!['admin','super_admin','manager'].includes(actor.role)) {
     filter.submittedBy = actor.id;
   }
   if (status) filter.status = status;

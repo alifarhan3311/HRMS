@@ -8,6 +8,7 @@ const http = require('http');
 const app = require('./app');
 const { connectDatabase, disconnectDatabase } = require('./database/db');
 const { initSocket } = require('./config/socket');
+const { startHrAutomation } = require('./jobs/hrAutomation');
 const logger = require('./utils/logger');
 
 const PORT = process.env.PORT || 5000;
@@ -18,6 +19,7 @@ async function start() {
   const httpServer = http.createServer(app);
   const io = initSocket(httpServer);
   app.set('io', io); // controllers can emit via req.app.get('io')
+  const stopHrAutomation = startHrAutomation();
 
   httpServer.listen(PORT, () => {
     logger.info(`[server] HRMS API listening on port ${PORT}`);
@@ -25,6 +27,7 @@ async function start() {
 
   const shutdown = async (signal) => {
     logger.info(`[server] Received ${signal}, shutting down gracefully...`);
+    stopHrAutomation();
     httpServer.close(async () => {
       await disconnectDatabase();
       process.exit(0);

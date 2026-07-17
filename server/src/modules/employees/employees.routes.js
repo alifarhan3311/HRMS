@@ -8,18 +8,18 @@ const repository = require('./employees.repository');
 const { authenticate, authorize, enforceTenantScope } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
-const ADMIN_HR = ['admin', 'hr', 'super_admin'];
-const MANAGER_UP = ['manager', 'admin', 'hr', 'super_admin'];
+const HR_MANAGEMENT = ['hr', 'super_admin'];
+const MANAGER_UP = ['manager', 'hr', 'super_admin'];
 
 router.use(authenticate);
 
 // List & stats
-router.get('/', authorize(...ADMIN_HR), controller.list);
-router.get('/departments', authorize(...ADMIN_HR), controller.departments);
-router.get('/stats', authorize(...ADMIN_HR), controller.stats);
+router.get('/', authorize(...HR_MANAGEMENT), controller.list);
+router.get('/departments', authorize(...HR_MANAGEMENT), controller.departments);
+router.get('/stats', authorize(...HR_MANAGEMENT), controller.stats);
 
 // Create
-router.post('/', authorize(...ADMIN_HR), controller.create);
+router.post('/', authorize(...HR_MANAGEMENT), controller.create);
 
 // Single employee operations
 router.get(
@@ -31,14 +31,14 @@ router.get(
 
 router.put(
   '/:id',
-  authorize(...ADMIN_HR),
+  authorize(...HR_MANAGEMENT),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.update
 );
 
 router.delete(
   '/:id',
-  authorize('admin', 'super_admin'),
+  authorize(...HR_MANAGEMENT),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.remove
 );
@@ -46,7 +46,7 @@ router.delete(
 // Status change (active/inactive/resigned)
 router.patch(
   '/:id/status',
-  authorize(...ADMIN_HR),
+  authorize(...HR_MANAGEMENT),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.changeStatus
 );
@@ -54,7 +54,7 @@ router.patch(
 // Promotion / designation change
 router.post(
   '/:id/promote',
-  authorize(...ADMIN_HR),
+  authorize(...HR_MANAGEMENT),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.promote
 );

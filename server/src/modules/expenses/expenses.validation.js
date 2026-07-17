@@ -7,14 +7,13 @@
 const Joi = require('joi');
 
 const createSchema = Joi.object({
-  category: Joi.any(),
-  vendorName: Joi.any(),
-  invoiceUrl: Joi.any(),
-  amount: Joi.any(),
-  paymentMethod: Joi.any(),
-  status: Joi.any(),
-  submittedBy: Joi.any(),
-  approvalChain: Joi.any(),
+  category: Joi.string().trim().min(2).max(100).required(),
+  vendorName: Joi.string().trim().min(2).max(150).required(),
+  invoiceUrl: Joi.string().trim().uri({ allowRelative: true }).max(1000).allow('').default(''),
+  amount: Joi.number().positive().precision(2).required(),
+  paymentMethod: Joi.string().valid('Cash', 'Bank Transfer', 'Credit Card', 'Cheque', 'Online').required(),
+  expenseDate: Joi.date().iso().max('now').required(),
+  remarks: Joi.string().trim().max(1000).allow('').default(''),
 });
 
 const updateSchema = createSchema.fork(
@@ -22,4 +21,8 @@ const updateSchema = createSchema.fork(
   (schema) => schema.optional()
 );
 
-module.exports = { createSchema, updateSchema };
+const reviewSchema = Joi.object({
+  remarks: Joi.string().trim().max(1000).allow('').default(''),
+});
+
+module.exports = { createSchema, updateSchema, reviewSchema };

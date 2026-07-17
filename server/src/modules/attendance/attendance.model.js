@@ -6,8 +6,16 @@ const mongoose = require('mongoose');
 
 const regularizationSchema = new mongoose.Schema({
   requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  requestType: {
+    type: String,
+    enum: ['late_waiver', 'time_correction'],
+    default: 'time_correction',
+  },
   reason: { type: String },
   requestedAt: { type: Date, default: Date.now },
+  requestedSignInTime: { type: Date },
+  requestedSignOutTime: { type: Date },
+  assignedApprover: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   reviewedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   reviewedAt: { type: Date },
   remarks: { type: String },
@@ -39,6 +47,7 @@ const attendanceSchema = new mongoose.Schema(
       default: 'none',
     },
     regularization: regularizationSchema,
+    leaveApplicationReminderSentAt: { type: Date },
     notes: { type: String },
     companyId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Company' },
     branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },

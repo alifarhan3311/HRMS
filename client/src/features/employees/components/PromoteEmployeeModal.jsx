@@ -9,7 +9,7 @@ import { Input, Select, Textarea } from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import { Avatar } from '../../../components/ui/Avatar';
 
-const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'finance', 'admin'];
+const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin'];
 
 export default function PromoteEmployeeModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
   const [form, setForm] = useState({

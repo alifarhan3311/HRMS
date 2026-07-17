@@ -9,7 +9,10 @@ async function create(data) {
 }
 
 async function findById(id) {
-  return Attendance.findById(id).populate('employeeId', 'fullName employeeCode department designation');
+  return Attendance.findById(id)
+    .populate('employeeId', 'fullName employeeCode department designation managerId teamLeadId')
+    .populate('regularization.assignedApprover', 'fullName employeeCode designation role')
+    .populate('regularization.reviewedBy', 'fullName employeeCode designation role');
 }
 
 async function findByEmployeeAndDate(employeeId, date) {
@@ -68,6 +71,7 @@ async function getLateCountForMonth(employeeId, year, month) {
 async function getPendingRegularizations(companyId) {
   return Attendance.find({ companyId, regularizationStatus: 'pending' })
     .populate('employeeId', 'fullName employeeCode department')
+    .populate('regularization.assignedApprover', 'fullName employeeCode designation role')
     .sort('-createdAt')
     .limit(50);
 }

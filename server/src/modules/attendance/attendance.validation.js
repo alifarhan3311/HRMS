@@ -53,7 +53,19 @@ const manualCorrectionSchema = Joi.object({
 }).min(1);
 
 const regularizationRequestSchema = Joi.object({
+  requestType: Joi.string().valid('late_waiver', 'time_correction').required(),
   reason: Joi.string().trim().min(5).max(500).required(),
+  requestedSignInTime: Joi.date().iso().optional(),
+  requestedSignOutTime: Joi.date().iso().optional(),
+}).custom((value, helpers) => {
+  if (value.requestType === 'time_correction' && !value.requestedSignInTime && !value.requestedSignOutTime) {
+    return helpers.message({ custom: 'A requested sign-in or sign-out time is required for a time correction.' });
+  }
+  if (value.requestedSignInTime && value.requestedSignOutTime
+      && new Date(value.requestedSignOutTime) <= new Date(value.requestedSignInTime)) {
+    return helpers.message({ custom: 'Requested sign-out time must be after sign-in time.' });
+  }
+  return value;
 });
 
 const regularizationReviewSchema = Joi.object({

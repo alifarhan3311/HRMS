@@ -14,7 +14,6 @@ export const ROLES = {
   SUPER_ADMIN: 'super_admin',
   ADMIN:       'admin',
   HR:          'hr',
-  FINANCE:     'finance',
   MANAGER:     'manager',
   TEAM_LEAD:   'team_lead',
   EMPLOYEE:    'employee',
@@ -40,7 +39,7 @@ export const NAV_GROUPS = [
     items: [
       {
         id: 'employees', label: 'Employees', path: '/employees',
-        icon: Users, roles: ['hr', 'admin', 'super_admin'],
+        icon: Users, roles: ['hr', 'super_admin'],
       },
       {
         id: 'attendance', label: 'Attendance', path: '/attendance',
@@ -53,17 +52,17 @@ export const NAV_GROUPS = [
     ],
   },
   {
-    label: 'Finance',
+    label: 'Payroll & Expenses',
     items: [
       {
         id: 'payroll', label: 'Payroll', path: '/payroll',
         icon: Wallet,
-        roles: ['employee', 'team_lead', 'manager', 'hr', 'finance', 'admin', 'super_admin'],
+        roles: ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'],
       },
       {
         id: 'expenses', label: 'Expenses', path: '/expenses',
         icon: Receipt,
-        roles: ['employee', 'manager', 'finance', 'admin', 'super_admin'],
+        roles: ['employee', 'manager', 'admin', 'super_admin'],
       },
     ],
   },
@@ -77,15 +76,15 @@ export const NAV_GROUPS = [
       },
       {
         id: 'recruitment', label: 'Recruitment', path: '/recruitment',
-        icon: UserPlus, roles: ['hr', 'admin', 'super_admin'], comingSoon: true,
+        icon: UserPlus, roles: ['hr', 'super_admin'], comingSoon: true,
       },
       {
         id: 'training', label: 'Training', path: '/training',
-        icon: GraduationCap, roles: ['hr', 'admin', 'super_admin'], comingSoon: true,
+        icon: GraduationCap, roles: ['hr', 'super_admin'], comingSoon: true,
       },
       {
         id: 'assets', label: 'Assets', path: '/assets',
-        icon: Package, roles: ['hr', 'admin', 'super_admin'], comingSoon: true,
+        icon: Package, roles: ['hr', 'super_admin'], comingSoon: true,
       },
       {
         id: 'sales', label: 'Sales', path: '/sales',
@@ -98,7 +97,7 @@ export const NAV_GROUPS = [
     items: [
       {
         id: 'reports', label: 'Reports', path: '/reports',
-        icon: BarChart3, roles: ['hr', 'finance', 'admin', 'super_admin'],
+        icon: BarChart3, roles: ['hr', 'admin', 'super_admin'],
       },
       {
         id: 'engagement', label: 'Engagement', path: '/engagement',
@@ -115,7 +114,7 @@ export const NAV_GROUPS = [
     items: [
       {
         id: 'settings', label: 'Settings', path: '/settings',
-        icon: Settings, roles: ['hr', 'admin', 'super_admin'],
+        icon: Settings, roles: ['hr', 'super_admin'],
       },
     ],
   },
@@ -144,11 +143,11 @@ export function getNavGroupsForRole(role) {
 export function getRoleLabel(role) {
   const labels = {
     super_admin: 'Super Admin', admin: 'Admin', hr: 'HR',
-    finance: 'Finance', manager: 'Manager', team_lead: 'Team Lead', employee: 'Employee',
+    manager: 'Manager', team_lead: 'Team Lead', employee: 'Employee',
   };
   return labels[role] || role;
 }
 
 export function isAdminRole(role)  { return ['admin', 'super_admin'].includes(role); }
-export function isHRRole(role)     { return ['hr', 'finance', 'admin', 'super_admin'].includes(role); }
-export function isManagerRole(role){ return ['manager', 'team_lead', 'admin', 'super_admin', 'hr'].includes(role); }
+export function isHRRole(role)     { return ['hr', 'super_admin'].includes(role); }
+export function isManagerRole(role){ return ['manager', 'team_lead', 'super_admin', 'hr'].includes(role); }

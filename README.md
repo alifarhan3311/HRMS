@@ -24,7 +24,8 @@ The Express API lives in `server/src` and currently includes:
   operations.
 - Dashboard aggregation and holiday endpoints.
 - Shared infrastructure for MongoDB, Redis-backed rate limiting, BullMQ, email,
-  Socket.IO, logging, encryption, RBAC, and tenant/IDOR protection.
+  authenticated Socket.IO rooms, logging, encryption, RBAC, and tenant/IDOR
+  protection.
 
 API routes are mounted below `/api/v1`; `/health` is public.
 
@@ -40,9 +41,12 @@ The Vite/React application lives in `client/src` and includes:
   reports, settings, and notifications.
 - Reusable UI primitives, responsive layouts, dark mode, charts, dialogs, and
   toast notifications.
+- App-wide live notifications through Socket.IO, including the header unread
+  badge, toast alerts, an optional Web Audio chime, and API polling fallback.
 
-Some settings, reports, and notification experiences currently have frontend UI
-without complete dedicated backend modules.
+Some settings and report experiences currently have frontend UI without complete
+dedicated backend modules. Notifications have a persistent backend and real-time
+in-app delivery; outbound email and WhatsApp notification channels remain.
 
 ## Project layout
 
@@ -103,7 +107,8 @@ end-to-end execution.
    projects; several older validation schemas are still permissive.
 3. Move office hours, grace periods, leave rules, and payroll formulas from
    environment defaults into company settings.
-4. Complete backend modules for settings, notifications, reports, recruitment,
-   onboarding, documents, assets, performance, training, and audit logs.
+4. Complete backend modules for reports, recruitment, onboarding, documents,
+   assets, performance, and training, then add email/WhatsApp notification
+   delivery.
 5. Review and upgrade vulnerable/deprecated npm dependencies with regression
    testing before applying breaking major-version updates.

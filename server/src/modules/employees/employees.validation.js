@@ -5,7 +5,7 @@
  */
 const Joi = require('joi');
 
-const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'finance', 'admin', 'super_admin'];
+const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'];
 const STATUSES = ['active', 'inactive', 'on_leave', 'resigned'];
 const GENDERS = ['male', 'female', 'other'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];

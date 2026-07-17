@@ -3,7 +3,7 @@ const controller = require('./holidays.controller');
 const { authenticate, authorize } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
-const ALL      = ['super_admin','admin','hr','finance','manager','team_lead','employee'];
+const ALL      = ['super_admin','admin','hr','manager','team_lead','employee'];
 const ADMIN_HR = ['super_admin','admin','hr'];
 
 router.use(authenticate);

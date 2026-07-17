@@ -10,6 +10,21 @@ const createHttpError = require('http-errors');
 const repository = require('./payroll.repository');
 const Employee = require('../employees/employees.model');
 const Attendance = require('../attendance/attendance.model');
+const notificationService = require('../notifications/notifications.service');
+
+async function notifyEmployee(record, type, title, message, suffix) {
+  const employeeId = record.employeeId?._id || record.employeeId;
+  await notificationService.createNotification({
+    recipientId: employeeId,
+    companyId: record.companyId,
+    type,
+    title,
+    message,
+    link: '/payroll',
+    metadata: { payslipId: record._id, month: record.month, year: record.year },
+    dedupeKey: `payslip-${suffix}:${record._id}`,
+  });
+}
 
 // ─── Calculation Engine ───────────────────────────────────────────────────────
 
@@ -135,6 +150,8 @@ async function approvePayslip(id, actor) {
   const updated = await repository.updateById(id, {
     status: 'approved', approvedBy: actor.id, approvedAt: new Date(),
   });
+  await notifyEmployee(updated, 'payslip_approved', 'Payslip approved',
+    `Your payslip for ${updated.month}/${updated.year} has been approved.`, 'approved');
   return updated.toObject({ getters: true });
 }
 
@@ -143,6 +160,8 @@ async function markPaid(id, actor) {
   if (!record) throw createHttpError(404, 'Payslip not found.');
   if (record.status !== 'approved') throw createHttpError(400, 'Only approved payslips can be marked paid.');
   const updated = await repository.updateById(id, { status: 'paid', paidAt: new Date() });
+  await notifyEmployee(updated, 'salary_paid', 'Salary marked paid',
+    `Your salary for ${updated.month}/${updated.year} has been marked paid.`, 'paid');
   return updated.toObject({ getters: true });
 }
 
@@ -151,6 +170,8 @@ async function lockPayslip(id, actor) {
   if (!record) throw createHttpError(404, 'Payslip not found.');
   if (record.status !== 'paid') throw createHttpError(400, 'Only paid payslips can be locked.');
   const updated = await repository.updateById(id, { status: 'locked' });
+  await notifyEmployee(updated, 'payslip_locked', 'Payslip finalized',
+    `Your payslip for ${updated.month}/${updated.year} has been finalized.`, 'locked');
   return updated.toObject({ getters: true });
 }
 
@@ -159,7 +180,7 @@ async function listPayslips(query, actor) {
   const { page = 1, limit = 20, month, year, status, employeeId, sort = '-year -month' } = query;
   const filter = { companyId: actor.companyId };
 
-  if (!['admin', 'hr', 'finance', 'super_admin'].includes(actor.role)) {
+  if (!['admin', 'super_admin'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
     filter.employeeId = employeeId;

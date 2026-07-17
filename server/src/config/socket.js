@@ -8,6 +8,8 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const logger = require('../utils/logger');
 
+let socketServer = null;
+
 function initSocket(httpServer) {
   const io = new Server(httpServer, {
     cors: {
@@ -36,13 +38,32 @@ function initSocket(httpServer) {
 
     // Scope every client to a room per company so events never cross tenants
     socket.join(`company:${socket.user.companyId}`);
+    socket.join(`user:${socket.user.id}`);
+
+    socket.emit('socket:ready', {
+      userId: socket.user.id,
+      connectedAt: new Date().toISOString(),
+    });
 
     socket.on('disconnect', () => {
       logger.info('[socket] Client disconnected', { userId: socket.user.id });
     });
   });
 
+  socketServer = io;
   return io;
 }
 
-module.exports = { initSocket };
+function emitToUser(userId, event, payload) {
+  if (!socketServer || !userId) return false;
+  socketServer.to(`user:${userId}`).emit(event, payload);
+  return true;
+}
+
+function emitToCompany(companyId, event, payload) {
+  if (!socketServer || !companyId) return false;
+  socketServer.to(`company:${companyId}`).emit(event, payload);
+  return true;
+}
+
+module.exports = { initSocket, emitToUser, emitToCompany };

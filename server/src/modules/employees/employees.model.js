@@ -46,10 +46,16 @@ const employeesSchema = new mongoose.Schema(
     sick: { available: { type: Number, default: 8 }, used: { type: Number, default: 0 } },
     annual: { available: { type: Number, default: 14 }, used: { type: Number, default: 0 } },
   },
+  leaveCycle: {
+    lastProcessedYear: Number,
+    lastProcessedAt: Date,
+    nextAnniversary: Date,
+    carriedForward: { type: mongoose.Schema.Types.Mixed, default: {} },
+  },
   lateCount: { type: Number, default: 0 },
   role: {
     type: String,
-    enum: ['employee', 'team_lead', 'manager', 'hr', 'finance', 'admin', 'super_admin'],
+    enum: ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'],
     required: true,
   },
   // Card details

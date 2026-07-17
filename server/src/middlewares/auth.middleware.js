@@ -46,7 +46,6 @@ const ROLE_RANK = Object.freeze({
   team_lead: 2,
   manager: 3,
   hr: 4,
-  finance: 4,
   admin: 5,
   super_admin: 6,
 });
@@ -93,7 +92,7 @@ function authenticate(req, res, next) {
 }
 
 /**
- * RBAC guard factory. Usage: router.get('/payroll', authenticate, authorize('finance','admin','super_admin'), handler)
+ * RBAC guard factory. Usage: router.get('/payroll', authenticate, authorize('admin','super_admin'), handler)
  */
 function authorize(...allowedRoles) {
   return function authorizeMiddleware(req, res, next) {

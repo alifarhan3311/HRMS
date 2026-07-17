@@ -8,7 +8,7 @@ const repository = require('./projects.repository');
 const { authenticate, authorize, enforceTenantScope } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
-const ALLOWED_ROLES = ['admin','manager','team_lead','super_admin','hr','finance','employee'];
+const ALLOWED_ROLES = ['admin','manager','team_lead','super_admin','hr','employee'];
 
 router.use(authenticate);
 

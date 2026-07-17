@@ -38,7 +38,6 @@ export function RoleBadge({ role }) {
     super_admin: { label: 'Super Admin', variant: 'purple' },
     admin: { label: 'Admin', variant: 'indigo' },
     hr: { label: 'HR', variant: 'blue' },
-    finance: { label: 'Finance', variant: 'green' },
     manager: { label: 'Manager', variant: 'yellow' },
     team_lead: { label: 'Team Lead', variant: 'blue' },
     employee: { label: 'Employee', variant: 'gray' },

@@ -10,19 +10,22 @@
 const createHttpError = require('http-errors');
 const repository = require('./leaves.repository');
 const Employee = require('../employees/employees.model');
+const notificationService = require('../notifications/notifications.service');
+const settingsService = require('../companySettings/companySettings.service');
+const logger = require('../../utils/logger');
 
 // Map leave types to Employee.leaveBalance field keys
 const LEAVE_BALANCE_KEYS = {
   paid: 'paid', casual: 'casual', sick: 'sick', annual: 'annual',
 };
 
-function calcWorkingDays(startDate, endDate) {
+function calcWorkingDays(startDate, endDate, weekendDays = [0, 6]) {
   let count = 0;
   const cur = new Date(startDate);
   const end = new Date(endDate);
   while (cur <= end) {
     const dow = cur.getDay();
-    if (dow !== 0 && dow !== 6) count++; // skip weekends
+    if (!weekendDays.includes(dow)) count++;
     cur.setDate(cur.getDate() + 1);
   }
   return Math.max(count, 1);
@@ -36,6 +39,22 @@ function buildApprovalChain() {
   ];
 }
 
+async function notifyEmployee(leave, notification) {
+  try {
+    await notificationService.createNotification({
+      recipientId: leave.employeeId?._id || leave.employeeId,
+      companyId: leave.companyId,
+      link: '/leaves',
+      ...notification,
+    });
+  } catch (error) {
+    logger.error('[leaves] Notification creation failed', {
+      leaveId: leave._id,
+      error: error.message,
+    });
+  }
+}
+
 // ─── Apply ───────────────────────────────────────────────────────────────────
 async function applyLeave(payload, actor) {
   const { leaveType, startDate, endDate, reason, emergencyContact } = payload;
@@ -43,12 +62,13 @@ async function applyLeave(payload, actor) {
   const start = new Date(startDate);
   const end = new Date(endDate);
   if (end < start) throw createHttpError(400, 'End date cannot be before start date.');
+  const settings = await settingsService.getPolicy(actor.companyId);
 
   // Check for overlapping leaves
   const overlapping = await repository.countActiveLeaves(actor.id, start, end);
   if (overlapping > 0) throw createHttpError(409, 'You already have a leave request overlapping these dates.');
 
-  const totalDays = calcWorkingDays(start, end);
+  const totalDays = calcWorkingDays(start, end, settings.timing.weekendDays);
 
   // Check balance for paid leave types
   if (LEAVE_BALANCE_KEYS[leaveType]) {
@@ -119,6 +139,15 @@ async function approveLeave(id, { remarks }, actor) {
   }
 
   const updated = await repository.updateById(id, update);
+  if (isLastStage) {
+    await notifyEmployee(leave, {
+      type: 'leave_approved',
+      title: 'Leave approved',
+      message: `Your ${leave.leaveType} leave request has received final approval.`,
+      metadata: { leaveId: leave._id },
+      dedupeKey: `leave-approved:${leave._id}`,
+    });
+  }
   return updated;
 }
 
@@ -140,6 +169,13 @@ async function rejectLeave(id, { remarks }, actor) {
   });
 
   const updated = await repository.updateById(id, { approvalChain: chain, status: 'rejected' });
+  await notifyEmployee(leave, {
+    type: 'leave_rejected',
+    title: 'Leave rejected',
+    message: `Your ${leave.leaveType} leave request was rejected.`,
+    metadata: { leaveId: leave._id, remarks: remarks || '' },
+    dedupeKey: `leave-rejected:${leave._id}`,
+  });
   return updated;
 }
 

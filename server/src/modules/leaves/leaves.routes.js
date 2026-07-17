@@ -7,8 +7,8 @@ const repository = require('./leaves.repository');
 const { authenticate, authorize, enforceTenantScope } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
-const ALL = ['super_admin', 'admin', 'hr', 'finance', 'manager', 'team_lead', 'employee'];
-const APPROVERS = ['super_admin', 'admin', 'hr', 'manager', 'team_lead'];
+const ALL = ['super_admin', 'admin', 'hr', 'manager', 'team_lead', 'employee'];
+const APPROVERS = ['super_admin', 'hr', 'manager', 'team_lead'];
 
 router.use(authenticate);
 
