@@ -12,4 +12,5 @@ ENV NODE_ENV=production
 
 EXPOSE 5000
 
-CMD ["node", "src/server.js"] 
+# Change this: Point to the server folder inside /app
+CMD ["node", "server/src/server.js"]
