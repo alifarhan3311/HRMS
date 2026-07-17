@@ -17,11 +17,19 @@ export default function DashboardListPage() {
   if (isLoading) return <DashboardSkeleton />;
 
   if (isError) {
+    const errorMessage =
+      error?.data?.error?.message
+      || error?.data?.message
+      || error?.message
+      || 'Please try refreshing the page.';
+
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <p className="text-lg font-medium text-destructive">Failed to load dashboard</p>
         <p className="text-sm text-muted-foreground mt-1">
-          {error?.data || 'Please try refreshing the page.'}
+          {typeof errorMessage === 'string'
+            ? errorMessage
+            : 'Please try refreshing the page.'}
         </p>
       </div>
     );

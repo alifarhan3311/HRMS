@@ -49,7 +49,7 @@ function buildDemoUsers() {
 }
 
 async function seed() {
-  const uri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/hrms';
+  const uri = process.env.MONGO_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/hrms';
   await mongoose.connect(uri);
   console.log('Connected to MongoDB');
 
