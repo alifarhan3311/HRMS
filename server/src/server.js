@@ -14,16 +14,29 @@ const logger = require('./utils/logger');
 const PORT = process.env.PORT || 5000;
 
 async function start() {
-  await connectDatabase();
-
   const httpServer = http.createServer(app);
   const io = initSocket(httpServer);
   app.set('io', io); // controllers can emit via req.app.get('io')
-  const stopHrAutomation = startHrAutomation();
+  let stopHrAutomation = () => {};
 
   httpServer.listen(PORT, () => {
     logger.info(`[server] HRMS API listening on port ${PORT}`);
   });
+
+  // Bind the HTTP port before waiting for external services. This keeps the
+  // Railway liveness endpoint responsive during a slow/transient Atlas
+  // connection instead of exposing a platform-level 502 while booting.
+  connectDatabase()
+    .then(() => {
+      stopHrAutomation = startHrAutomation();
+    })
+    .catch((err) => {
+      // API requests use the cached connection gate in app.js and can retry
+      // after a transient startup failure; the process itself stays healthy.
+      logger.error('[server] Initial database connection failed; API requests will retry', {
+        error: err.message,
+      });
+    });
 
   const shutdown = async (signal) => {
     logger.info(`[server] Received ${signal}, shutting down gracefully...`);
