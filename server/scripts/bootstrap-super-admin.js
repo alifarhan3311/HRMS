@@ -32,8 +32,15 @@ async function bootstrap() {
   const companyId = process.env.BOOTSTRAP_COMPANY_ID || DEFAULT_COMPANY_ID;
 
   if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Bootstrap email is invalid.');
-  if (password.length < 8 || !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+  const passwordIsStrong =
+    password.length >= 8 && /(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password);
+  const weakPasswordExplicitlyAllowed = process.env.BOOTSTRAP_ALLOW_WEAK_PASSWORD === 'true';
+  if (!passwordIsStrong && !weakPasswordExplicitlyAllowed) {
     throw new Error('Bootstrap password needs 8+ characters, uppercase, lowercase, and a number.');
+  }
+  if (password.length < 8) throw new Error('Bootstrap password must contain at least 8 characters.');
+  if (!passwordIsStrong) {
+    console.warn('Warning: creating Super Admin with an explicitly allowed weak password.');
   }
   if (!mongoose.isValidObjectId(companyId)) throw new Error('BOOTSTRAP_COMPANY_ID is invalid.');
 

@@ -5,6 +5,14 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://hrms-self-pi.vercel.app/api/:path*"
+    },
+    {
+      "source": "/socket.io/:path*",
+      "destination": "https://hrms-self-pi.vercel.app/socket.io/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

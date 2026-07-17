@@ -105,8 +105,8 @@ The React/Vite frontend is configured for Vercel in `client/vercel.json`. Set th
 Vercel project Root Directory to `client`, then add these production variables:
 
 ```text
-VITE_API_BASE_URL=https://YOUR-API-HOST/api/v1
-VITE_SOCKET_URL=https://YOUR-API-HOST
+VITE_API_BASE_URL=/api/v1
+VITE_SOCKET_URL=https://YOUR-VERCEL-FRONTEND-HOST
 ```
 
 The Express API, HR automation process, and Socket.IO server require a long-running
@@ -116,9 +116,12 @@ the three 64-character hexadecimal secrets, and the final Vercel URL as
 `CORS_ALLOWED_ORIGINS`. Production cookies default to `SameSite=None; Secure` so
 authentication works when Vercel and the API use different domains.
 
-Deploy the backend first, copy its HTTPS URL into the two Vercel variables, deploy
-the frontend, then update the backend's `CORS_ALLOWED_ORIGINS` with the exact Vercel
-production origin and redeploy it.
+Deploy the backend first and update the external API and Socket.IO destinations in
+`client/vercel.json`. Deploy the frontend with the same-origin variables above,
+then update the backend's `CORS_ALLOWED_ORIGINS` with the exact Vercel production
+origin and redeploy it. The proxy keeps HttpOnly authentication cookies on the
+frontend origin instead of relying on third-party cookies across two `vercel.app`
+deployments.
 
 ## Next priorities
 
