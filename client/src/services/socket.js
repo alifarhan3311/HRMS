@@ -2,6 +2,10 @@ import { io } from 'socket.io-client';
 
 let socket;
 
+export function isRealtimeEnabled() {
+  return import.meta.env.VITE_REALTIME_ENABLED !== 'false';
+}
+
 function getSocketUrl() {
   if (import.meta.env.VITE_SOCKET_URL) return import.meta.env.VITE_SOCKET_URL;
   const apiBase = import.meta.env.VITE_API_BASE_URL || '/api/v1';
@@ -10,6 +14,7 @@ function getSocketUrl() {
 }
 
 export function getSocket() {
+  if (!isRealtimeEnabled()) return null;
   if (!socket) {
     socket = io(getSocketUrl(), {
       autoConnect: false,

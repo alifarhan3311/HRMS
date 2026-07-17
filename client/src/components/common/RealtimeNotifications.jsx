@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { api } from '../../services/apiSlice';
-import { getSocket, disconnectSocket } from '../../services/socket';
+import { getSocket, disconnectSocket, isRealtimeEnabled } from '../../services/socket';
 import { playNotificationSound, unlockNotificationSound } from '../../services/notificationSound';
 import { toast } from '../../utils/toast';
 
@@ -27,12 +27,13 @@ export default function RealtimeNotifications() {
   }, []);
 
   useEffect(() => {
-    if (!user?.id) {
+    if (!user?.id || !isRealtimeEnabled()) {
       disconnectSocket();
       return undefined;
     }
 
     const socket = getSocket();
+    if (!socket) return undefined;
     const refreshNotifications = () => {
       dispatch(api.util.invalidateTags(['Notifications', 'Dashboard']));
     };

@@ -107,6 +107,7 @@ Vercel project Root Directory to `client`, then add these production variables:
 ```text
 VITE_API_BASE_URL=/api/v1
 VITE_SOCKET_URL=https://YOUR-VERCEL-FRONTEND-HOST
+VITE_REALTIME_ENABLED=false
 ```
 
 The Express API, HR automation process, and Socket.IO server require a long-running
@@ -122,6 +123,12 @@ then update the backend's `CORS_ALLOWED_ORIGINS` with the exact Vercel productio
 origin and redeploy it. The proxy keeps HttpOnly authentication cookies on the
 frontend origin instead of relying on third-party cookies across two `vercel.app`
 deployments.
+
+Keep `VITE_REALTIME_ENABLED=false` when the existing Express backend is deployed
+as a Vercel function; the app continues to poll notifications every 60 seconds.
+For Socket.IO and consistently fast dashboard requests, deploy the backend with
+the included Render Blueprint and enable realtime after configuring its public
+URL and cookie/domain strategy.
 
 ## Next priorities
 
