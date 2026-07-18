@@ -52,7 +52,7 @@ function ProjectForm({ initial, onSubmit, onClose, isLoading }) {
     <form onSubmit={handleSubmit}>
       <div className="px-6 py-5 space-y-4">
         <Input label="Project Name" required value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. E-Commerce Platform" />
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label="Client Name" value={form.clientName} onChange={e => set('clientName', e.target.value)} placeholder="Client / Company" />
           <Select label="Status" value={form.status} onChange={e => set('status', e.target.value)}>
             {Object.entries(STATUS_STYLES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
@@ -105,7 +105,7 @@ export default function ProjectsListPage() {
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between">
+        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground mt-0.5">{total} total projects</p>

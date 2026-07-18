@@ -38,7 +38,7 @@ router.put(
 
 router.delete(
   '/:id',
-  authorize(...HR_MANAGEMENT),
+  authorize('super_admin'),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.remove
 );

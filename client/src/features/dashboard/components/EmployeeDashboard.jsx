@@ -21,7 +21,7 @@ import {
 } from 'recharts';
 import StatCard from '../../../components/ui/StatCard';
 
-const LEAVE_COLORS = ['#6366f1', '#8b5cf6', '#a78bfa', '#c4b5fd'];
+const LEAVE_COLORS = ['#C9971F', '#E8B04B', '#B8860B', '#F0C878'];
 
 function formatTime(dateStr) {
   if (!dateStr) return '—';
@@ -56,6 +56,7 @@ export default function EmployeeDashboard({ data }) {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
+          delay={0.00}
           title="Today's Sign In"
           value={formatTime(data.todayAttendance?.signInTime)}
           subtitle={
@@ -66,18 +67,21 @@ export default function EmployeeDashboard({ data }) {
           icon={Clock}
         />
         <StatCard
+          delay={0.06}
           title="This Month Salary"
           value={data.salary?.netSalary ? `PKR ${Number(data.salary.netSalary).toLocaleString()}` : 'Pending'}
           subtitle={data.salary?.status || 'No payslip yet'}
           icon={Wallet}
         />
         <StatCard
+          delay={0.12}
           title="Late Count (Month)"
           value={data.lateCount ?? 0}
           subtitle="Every 3 lates = 1 leave deduction"
           icon={AlertTriangle}
         />
         <StatCard
+          delay={0.18}
           title="Pending Leaves"
           value={data.pendingLeaveRequests?.length ?? 0}
           subtitle="Awaiting approval"

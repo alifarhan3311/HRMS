@@ -14,7 +14,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import StatCard from '../../../components/ui/StatCard';
 
-const CHART_COLORS = ['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'];
+const CHART_COLORS = ['#C9971F', '#22c55e', '#f59e0b', '#ef4444', '#8B5E34'];
 
 export default function HRDashboard({ data }) {
   const attendanceData = Object.entries(data.attendanceSummary || {}).map(([name, value]) => ({
@@ -36,22 +36,26 @@ export default function HRDashboard({ data }) {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
+          delay={0.00}
           title="Pending Leave Approvals"
           value={data.pendingLeaveApprovals?.length ?? 0}
           icon={UserCheck}
         />
         <StatCard
+          delay={0.06}
           title="Attendance Requests"
           value={data.pendingAttendanceRequests?.length ?? 0}
           icon={Clock}
         />
         <StatCard
+          delay={0.12}
           title="Birthday Alerts"
           value={data.birthdayAlerts?.length ?? 0}
           subtitle="Tomorrow"
           icon={Cake}
         />
         <StatCard
+          delay={0.18}
           title="New Joinings"
           value={data.newJoinings?.length ?? 0}
           subtitle="Last 30 days"
@@ -207,7 +211,7 @@ export default function HRDashboard({ data }) {
           <FileWarning className="h-4 w-4" />
           Recruitment Status
         </h3>
-        <div className="grid grid-cols-3 gap-4 text-center">
+        <div className="grid grid-cols-3 gap-3 text-center sm:gap-4">
           <div>
             <p className="text-2xl font-bold">{data.recruitmentStatus?.openPositions ?? 0}</p>
             <p className="text-xs text-muted-foreground">Open Positions</p>

@@ -48,10 +48,10 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
           />
           {/* Panel */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
+            initial={{ opacity: 0, scale: 0.9, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            exit={{ opacity: 0, scale: 0.92, y: 12 }}
+            transition={{ type: 'spring', stiffness: 340, damping: 28 }}
             className={`relative w-full ${SIZE_CLASSES[size]} bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh] ${className}`}
           >
             {/* Header */}

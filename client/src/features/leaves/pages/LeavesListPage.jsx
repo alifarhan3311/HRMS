@@ -111,7 +111,7 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading }) {
         <Select label="Leave Type" required value={form.leaveType} onChange={(e) => set('leaveType', e.target.value)}>
           {LEAVE_TYPES.map(t => <option key={t} value={t}>{capitalize(t)} Leave</option>)}
         </Select>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label="Start Date" required type="date" value={form.startDate}
             onChange={(e) => set('startDate', e.target.value)} error={errors.startDate} />
           <Input label="End Date" required type="date" value={form.endDate}
@@ -226,7 +226,7 @@ export default function LeavesListPage() {
     <div className="space-y-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between">
+        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Leave Management</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Apply for leave and track approval status</p>

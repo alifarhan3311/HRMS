@@ -3,6 +3,7 @@
  * Role-based dashboard — renders Employee, HR, or Admin view per JWT role.
  */
 import { useSelector } from 'react-redux';
+import { motion } from 'framer-motion';
 import { useGetDashboardSummaryQuery } from '../api/dashboard.api';
 import { DashboardSkeleton } from '../../../components/ui/Skeleton';
 import EmployeeDashboard from '../components/EmployeeDashboard';
@@ -24,14 +25,18 @@ export default function DashboardListPage() {
       || 'Please try refreshing the page.';
 
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex flex-col items-center justify-center py-20 text-center"
+      >
         <p className="text-lg font-medium text-destructive">Failed to load dashboard</p>
         <p className="text-sm text-muted-foreground mt-1">
           {typeof errorMessage === 'string'
             ? errorMessage
             : 'Please try refreshing the page.'}
         </p>
-      </div>
+      </motion.div>
     );
   }
 

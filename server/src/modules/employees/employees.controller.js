@@ -16,7 +16,11 @@ function asyncHandler(fn) {
 
 function validate(schema) {
   return (req, res, next) => {
-    const { error, value } = schema.validate(req.body, { abortEarly: false, stripUnknown: true });
+    const normalizedBody = { ...req.body };
+    for (const field of ['managerId', 'teamLeadId']) {
+      if (normalizedBody[field] === '') normalizedBody[field] = null;
+    }
+    const { error, value } = schema.validate(normalizedBody, { abortEarly: false, stripUnknown: true });
     if (error) {
       const messages = error.details.map((d) => d.message).join('; ');
       return res.status(422).json({ success: false, error: { message: messages } });
@@ -53,7 +57,7 @@ const update = [
 ];
 
 const remove = asyncHandler(async (req, res) => {
-  const result = await service.deleteEmployee(req.params.id);
+  const result = await service.deleteEmployee(req.params.id, req.user);
   res.status(200).json({ success: true, ...result });
 });
 

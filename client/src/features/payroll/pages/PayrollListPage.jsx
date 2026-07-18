@@ -82,7 +82,7 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canManage, isA
         </div>
 
         {/* Attendance summary */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: 'Working Days', val: payslip.workingDays },
             { label: 'Present', val: payslip.presentDays, cls: 'text-emerald-600' },
@@ -210,7 +210,7 @@ function GenerateForm({ onSubmit, onClose, isLoading }) {
       <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
         <Input label="Employee ID" required placeholder="MongoDB ObjectId of employee"
           value={form.employeeId} onChange={(e) => set('employeeId', e.target.value)} />
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Select label="Month" value={form.month} onChange={(e) => set('month', e.target.value)}>
             {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
           </Select>
@@ -235,7 +235,7 @@ function GenerateForm({ onSubmit, onClose, isLoading }) {
           ))}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label="Bonus (PKR)" type="number" placeholder="0" value={form.bonus} onChange={(e) => set('bonus', e.target.value)} />
           <Input label="Incentives (PKR)" type="number" placeholder="0" value={form.incentives} onChange={(e) => set('incentives', e.target.value)} />
           <Input label="Overtime (PKR)" type="number" placeholder="0" value={form.overtime} onChange={(e) => set('overtime', e.target.value)} />
@@ -306,7 +306,7 @@ export default function PayrollListPage() {
     <div className="space-y-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between">
+        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Payroll</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Manage salary, payslips and disbursements</p>

@@ -153,7 +153,7 @@ export default function SettingsPage() {
     <div className="space-y-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between">
+        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Settings className="h-6 w-6" /> Settings
@@ -179,7 +179,7 @@ export default function SettingsPage() {
           {activeTab === 'company' && (
             <motion.div key="company" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
               <SectionCard title="Company Information">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="col-span-2">
                     <Input label="Company Name" value={companyForm.name}
                       onChange={e => setCompanyForm(p => ({ ...p, name: e.target.value }))} />
@@ -208,7 +208,7 @@ export default function SettingsPage() {
             <motion.div key="timing" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
               className="space-y-5">
               <SectionCard title="Office Hours">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   <Input label="Office Start Time" type="time" value={timingForm.officeStart}
                     onChange={e => setTimingForm(p => ({ ...p, officeStart: e.target.value }))} />
                   <Input label="Office End Time" type="time" value={timingForm.officeEnd}
@@ -307,7 +307,7 @@ export default function SettingsPage() {
           {activeTab === 'email' && (
             <motion.div key="email" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
               <SectionCard title="SMTP Email Configuration">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Input label="SMTP Host" placeholder="smtp.gmail.com" value={emailForm.smtpHost}
                     onChange={e => setEmailForm(p => ({ ...p, smtpHost: e.target.value }))} />
                   <Input label="SMTP Port" type="number" value={emailForm.smtpPort}
@@ -341,7 +341,7 @@ export default function SettingsPage() {
           {activeTab === 'security' && (
             <motion.div key="security" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
               <SectionCard title="Security Settings">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Input label="Session Timeout (minutes)" type="number" value={securityForm.sessionTimeout}
                     onChange={e => setSecurityForm(p => ({ ...p, sessionTimeout: e.target.value }))} />
                   <Input label="Max Login Attempts" type="number" value={securityForm.maxLoginAttempts}

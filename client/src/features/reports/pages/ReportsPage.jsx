@@ -20,7 +20,7 @@ import Button from '../../../components/ui/Button';
 import { Input, Select } from '../../../components/ui/Input';
 import StatCard from '../../../components/ui/StatCard';
 
-const COLORS = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
+const COLORS = ['#C9971F','#10b981','#E8B04B','#ef4444','#8B5E34','#B8860B'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 const REPORT_TYPES = [
@@ -112,7 +112,7 @@ export default function ReportsPage() {
     <div className="space-y-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between">
+        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <BarChart3 className="h-6 w-6" /> Reports

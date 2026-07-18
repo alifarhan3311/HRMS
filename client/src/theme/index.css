@@ -2,48 +2,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Golden & White design system.
+ * Warm ivory canvas + crisp white cards + rich gold accents,
+ * with a deep espresso/gold sidebar for contrast.
+ */
 @layer base {
   :root {
-    --background: 0 0% 98%;
-    --foreground: 224 71% 4%;
+    --background: 42 38% 97%;
+    --foreground: 27 30% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 224 71% 4%;
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 220 9% 46%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 239 84% 97%;
-    --accent-foreground: 239 84% 47%;
-    --destructive: 0 84% 60%;
+    --card-foreground: 27 30% 12%;
+    --primary: 41 68% 48%;
+    --primary-foreground: 30 45% 10%;
+    --secondary: 40 30% 93%;
+    --secondary-foreground: 30 20% 28%;
+    --muted: 40 25% 94%;
+    --muted-foreground: 30 12% 44%;
+    --accent: 42 75% 94%;
+    --accent-foreground: 36 70% 32%;
+    --destructive: 4 72% 52%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --sidebar: 0 0% 100%;
-    --sidebar-foreground: 224 71% 4%;
-    --sidebar-border: 220 13% 91%;
-    --radius: 0.75rem;
+    --border: 40 28% 87%;
+    --sidebar: 28 32% 11%;
+    --sidebar-foreground: 42 35% 90%;
+    --sidebar-border: 28 28% 18%;
+    --radius: 0.85rem;
   }
 
   .dark {
-    --background: 224 71% 4%;
-    --foreground: 210 20% 98%;
-    --card: 224 47% 8%;
-    --card-foreground: 210 20% 98%;
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 215 28% 12%;
-    --secondary-foreground: 215 20% 65%;
-    --muted: 215 28% 12%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 239 50% 15%;
-    --accent-foreground: 239 84% 75%;
-    --destructive: 0 62% 50%;
+    --background: 27 28% 8%;
+    --foreground: 42 35% 92%;
+    --card: 27 25% 11%;
+    --card-foreground: 42 35% 92%;
+    --primary: 41 72% 54%;
+    --primary-foreground: 30 45% 8%;
+    --secondary: 27 20% 15%;
+    --secondary-foreground: 40 25% 78%;
+    --muted: 27 20% 15%;
+    --muted-foreground: 40 15% 62%;
+    --accent: 40 40% 18%;
+    --accent-foreground: 42 75% 72%;
+    --destructive: 4 62% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 215 28% 16%;
-    --sidebar: 224 47% 6%;
-    --sidebar-foreground: 210 20% 98%;
-    --sidebar-border: 215 28% 14%;
+    --border: 27 22% 18%;
+    --sidebar: 27 32% 7%;
+    --sidebar-foreground: 42 30% 88%;
+    --sidebar-border: 27 25% 14%;
   }
 
   * {
@@ -57,22 +62,84 @@
 
 @layer components {
   .glass-card {
-    @apply bg-card/80 backdrop-blur-xl border border-border/50 shadow-soft rounded-xl;
+    @apply bg-card/85 backdrop-blur-xl border border-primary/10 shadow-soft rounded-xl transition-all duration-300;
   }
 
   .stat-card {
-    @apply glass-card p-5 transition-all duration-200 hover:shadow-glow hover:-translate-y-0.5;
+    @apply glass-card p-5 transition-all duration-300 hover:shadow-glow hover:-translate-y-1 hover:scale-[1.015] hover:border-primary/25;
   }
 
   .sidebar-link {
-    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all duration-150 hover:bg-accent hover:text-accent-foreground;
+    @apply flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/65 transition-all duration-200 hover:bg-primary/10 hover:text-primary hover:translate-x-0.5;
   }
 
   .sidebar-link-active {
-    @apply bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary;
+    @apply bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary hover:translate-x-0;
+  }
+
+  /* Minimal sidebar scrollbar: no Windows arrow buttons or grey gutter.
+     It stays invisible at rest and reveals a slim gold thumb on interaction. */
+  .sidebar-scrollbar {
+    scrollbar-gutter: auto;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .sidebar-scrollbar:hover {
+    scrollbar-color: hsl(var(--primary) / 0.65) transparent;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar {
+    width: 5px;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-track {
+    margin-block: 8px;
+    background: transparent;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-thumb {
+    min-height: 44px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    background-clip: padding-box;
+  }
+
+  .sidebar-scrollbar:hover::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary) / 0.4),
+      hsl(var(--primary) / 0.85)
+    );
+    background-clip: padding-box;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary));
+    background-clip: padding-box;
+  }
+
+  .sidebar-scrollbar::-webkit-scrollbar-button,
+  .sidebar-scrollbar::-webkit-scrollbar-button:single-button {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   .skeleton {
-    @apply animate-pulse rounded-md bg-muted;
+    @apply animate-pulse rounded-md bg-muted bg-[linear-gradient(110deg,hsl(var(--muted))_8%,hsl(var(--primary)/0.12)_18%,hsl(var(--muted))_33%)] bg-[length:200%_100%] animate-shimmer;
+  }
+
+  .hover-lift {
+    @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-glow;
+  }
+
+  .animated-gradient-text {
+    @apply bg-gradient-to-r from-primary via-amber-400 to-primary bg-[length:200%_auto] bg-clip-text text-transparent animate-gradient;
+  }
+
+  .gold-divider {
+    @apply h-px w-full bg-gradient-to-r from-transparent via-primary/40 to-transparent;
   }
 }

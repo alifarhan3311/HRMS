@@ -6,6 +6,7 @@
 const bcrypt = require('bcrypt');
 const createHttpError = require('http-errors');
 const repository = require('./employees.repository');
+const Session = require('../auth/auth.model');
 
 const PASSWORD_SALT_ROUNDS = 12;
 
@@ -36,11 +37,20 @@ function calcTenure(joiningDate) {
   return { years, months, days };
 }
 
+function normalizeOptionalReferences(payload) {
+  const normalized = { ...payload };
+  for (const field of ['managerId', 'teamLeadId']) {
+    if (normalized[field] === '') normalized[field] = null;
+  }
+  return normalized;
+}
+
 // -------------------------------------------------------------------------
 // Core CRUD
 // -------------------------------------------------------------------------
 
 async function createEmployee(payload, actor) {
+  payload = normalizeOptionalReferences(payload);
   // Validate uniqueness
   const existing = await repository.findByEmail(payload.email, actor.companyId);
   if (existing) throw createHttpError(409, 'An employee with this email already exists.');
@@ -118,6 +128,7 @@ async function listEmployees(query, actor) {
 }
 
 async function updateEmployee(id, payload, actor) {
+  payload = normalizeOptionalReferences(payload);
   const existing = await repository.findById(id);
   if (!existing) throw createHttpError(404, 'Employee not found.');
 
@@ -138,11 +149,24 @@ async function updateEmployee(id, payload, actor) {
   return sanitize(updated);
 }
 
-async function deleteEmployee(id) {
-  // Soft-delete: set status to resigned rather than hard delete
-  const updated = await repository.updateById(id, { status: 'inactive' });
-  if (!updated) throw createHttpError(404, 'Employee not found.');
-  return { message: 'Employee deactivated.' };
+async function deleteEmployee(id, actor) {
+  if (String(id) === String(actor.id)) {
+    throw createHttpError(400, 'You cannot permanently delete your own account.');
+  }
+
+  const existing = await repository.findById(id);
+  if (!existing) throw createHttpError(404, 'Employee not found.');
+
+  // Preserve historical business records, but remove live account/session and
+  // reporting-line references so no employee points at a deleted account.
+  await Promise.all([
+    Session.deleteMany({ employeeId: id }),
+    repository.clearReportingReferences(id),
+  ]);
+
+  const deleted = await repository.deleteById(id);
+  if (!deleted) throw createHttpError(404, 'Employee not found.');
+  return { message: 'Employee permanently deleted.' };
 }
 
 // -------------------------------------------------------------------------

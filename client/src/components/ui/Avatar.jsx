@@ -1,7 +1,9 @@
 /**
  * components/ui/Avatar.jsx
- * User avatar with fallback initials.
+ * User avatar with fallback initials + subtle hover scale.
  */
+import { motion } from 'framer-motion';
+
 const SIZE_CLASSES = {
   xs: 'h-6 w-6 text-[10px]',
   sm: 'h-8 w-8 text-xs',
@@ -12,14 +14,14 @@ const SIZE_CLASSES = {
 };
 
 const COLOR_MAP = [
-  'bg-blue-500',
-  'bg-violet-500',
-  'bg-emerald-500',
-  'bg-amber-500',
-  'bg-rose-500',
-  'bg-indigo-500',
-  'bg-teal-500',
-  'bg-orange-500',
+  'bg-gradient-to-br from-amber-500 to-yellow-600',
+  'bg-gradient-to-br from-yellow-600 to-amber-700',
+  'bg-gradient-to-br from-orange-500 to-amber-600',
+  'bg-gradient-to-br from-amber-600 to-orange-700',
+  'bg-gradient-to-br from-yellow-500 to-orange-600',
+  'bg-gradient-to-br from-stone-600 to-stone-800',
+  'bg-gradient-to-br from-amber-700 to-yellow-800',
+  'bg-gradient-to-br from-orange-600 to-red-700',
 ];
 
 function getInitials(name = '') {
@@ -43,7 +45,9 @@ export function Avatar({ name, src, size = 'md', className = '' }) {
 
   if (src) {
     return (
-      <img
+      <motion.img
+        whileHover={{ scale: 1.08 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 15 }}
         src={src}
         alt={name}
         className={`rounded-full object-cover ${SIZE_CLASSES[size]} ${className}`}
@@ -52,11 +56,13 @@ export function Avatar({ name, src, size = 'md', className = '' }) {
   }
 
   return (
-    <div
+    <motion.div
+      whileHover={{ scale: 1.08 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 15 }}
       className={`flex shrink-0 items-center justify-center rounded-full font-semibold text-white ${color} ${SIZE_CLASSES[size]} ${className}`}
       aria-label={name}
     >
       {initials}
-    </div>
+    </motion.div>
   );
 }

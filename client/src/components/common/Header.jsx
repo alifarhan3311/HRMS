@@ -3,7 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Bell, ChevronDown, LogOut, Moon, Search, Settings,
+  Bell, ChevronDown, LogOut, Menu, Moon, Search, Settings,
   Sun, User, Volume2, VolumeX, X,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
@@ -29,7 +29,7 @@ function timeAgo(value) {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-export default function Header() {
+export default function Header({ onMenuClick = () => {} }) {
   const { user } = useSelector(state => state.auth);
   const { theme, toggleTheme } = useTheme();
   const dispatch = useDispatch();
@@ -99,12 +99,21 @@ export default function Header() {
   }
 
   return (
-    <header className="relative z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-card/60 px-5 backdrop-blur-md">
+    <header className="relative z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-card/60 px-3 backdrop-blur-md sm:px-5">
+      <button
+        type="button"
+        onClick={onMenuClick}
+        aria-label="Open menu"
+        className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground lg:hidden"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
       <div className="relative max-w-md flex-1">
         <button onClick={() => setSearchOpen(true)}
           className="flex w-full items-center gap-2 rounded-lg border border-border bg-background/60 px-3 py-2 text-sm text-muted-foreground transition-colors hover:border-primary/40">
-          <Search className="h-4 w-4" />
-          <span className="flex-1 text-left">Search...</span>
+          <Search className="h-4 w-4 shrink-0" />
+          <span className="hidden flex-1 text-left sm:block">Search...</span>
           <kbd className="hidden h-5 items-center rounded border border-border bg-muted px-1.5 text-[10px] font-medium sm:inline-flex">Ctrl K</kbd>
         </button>
         <AnimatePresence>
@@ -142,14 +151,31 @@ export default function Header() {
       <div className="ml-3 flex items-center gap-1">
         <button type="button" onClick={toggleTheme} aria-label="Toggle theme"
           className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-          {theme === 'dark' ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={theme}
+              initial={{ rotate: -90, opacity: 0, scale: 0.5 }}
+              animate={{ rotate: 0, opacity: 1, scale: 1 }}
+              exit={{ rotate: 90, opacity: 0, scale: 0.5 }}
+              transition={{ duration: 0.25 }}
+              className="inline-block"
+            >
+              {theme === 'dark' ? <Sun className="h-[18px] w-[18px]" /> : <Moon className="h-[18px] w-[18px]" />}
+            </motion.span>
+          </AnimatePresence>
         </button>
 
         <div className="relative" ref={notifRef}>
           <button type="button" aria-label="Notifications"
             onClick={() => { setNotifOpen(open => !open); setProfileOpen(false); }}
             className="relative rounded-lg p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
-            <Bell className="h-[18px] w-[18px]" />
+            <motion.span
+              animate={unread > 0 ? { rotate: [0, -12, 12, -8, 8, 0] } : {}}
+              transition={{ duration: 0.6, repeat: unread > 0 ? Infinity : 0, repeatDelay: 3 }}
+              className="inline-block"
+            >
+              <Bell className="h-[18px] w-[18px]" />
+            </motion.span>
             {unread > 0 && (
               <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }}
                 className="absolute right-0.5 top-0.5 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">

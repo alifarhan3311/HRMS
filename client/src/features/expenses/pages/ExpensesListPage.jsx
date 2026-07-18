@@ -73,7 +73,7 @@ function SubmitExpenseForm({ onSubmit, onClose, isLoading, categories }) {
         <Select label="Category" required value={form.category} onChange={e => set('category', e.target.value)}>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </Select>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label="Vendor / Supplier" required placeholder="Company name"
             value={form.vendorName} onChange={e => set('vendorName', e.target.value)} error={errors.vendorName} />
           <Input label="Amount (PKR)" required type="number" placeholder="5000"
@@ -200,7 +200,7 @@ function ExpenseDetailModal({ expense, isOpen, onClose, onApprove, onReject, onM
         </div>
 
         {/* Details grid */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:gap-3">
           {[
             { label: 'Category',       value: expense.category },
             { label: 'Vendor',         value: expense.vendorName || '—' },
@@ -334,7 +334,7 @@ export default function ExpensesListPage() {
     <div className="space-y-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between">
+        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Expenses</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Submit and manage company expenses</p>

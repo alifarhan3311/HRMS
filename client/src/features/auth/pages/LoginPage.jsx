@@ -4,11 +4,16 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Building2, Mail, Lock, ArrowRight } from 'lucide-react';
 import { useLoginMutation } from '../api/auth.api';
 import { setCredentials } from '../store/auth.slice';
 import Button from '../../../components/ui/Button';
+
+const fieldVariants = {
+  hidden: { opacity: 0, y: 14 },
+  show: (i) => ({ opacity: 1, y: 0, transition: { delay: 0.15 + i * 0.08, duration: 0.4, ease: [0.16, 1, 0.3, 1] } }),
+};
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -38,39 +43,61 @@ export default function LoginPage() {
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background p-4">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-primary/20 blur-3xl" />
-        <div className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-violet-500/15 blur-3xl" />
+        <motion.div
+          className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-primary/20 blur-3xl animate-float"
+        />
+        <motion.div
+          className="absolute -bottom-32 -right-32 h-96 w-96 rounded-full bg-amber-300/20 blur-3xl animate-float-delayed"
+        />
+        <motion.div
+          className="absolute left-1/2 top-1/3 h-64 w-64 -translate-x-1/2 rounded-full bg-yellow-200/15 blur-3xl animate-float"
+          style={{ animationDelay: '2s' }}
+        />
       </div>
 
       <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         className="relative w-full max-w-md"
       >
         <div className="glass-card p-8 shadow-glow">
-          <div className="mb-8 flex flex-col items-center text-center">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-glow">
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="mb-8 flex flex-col items-center text-center"
+          >
+            <motion.div
+              initial={{ scale: 0, rotate: -180 }}
+              animate={{ scale: 1, rotate: 0 }}
+              transition={{ duration: 0.6, ease: [0.34, 1.56, 0.64, 1], delay: 0.1 }}
+              whileHover={{ rotate: 8, scale: 1.05 }}
+              className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gold-gradient text-primary-foreground shadow-gold animate-pulse-glow"
+            >
               <Building2 className="h-7 w-7" />
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
+            </motion.div>
+            <h1 className="font-serif text-3xl font-bold tracking-tight">Welcome back</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Sign in to your HR Management System
             </p>
-          </div>
+          </motion.div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              >
-                {error}
-              </motion.p>
-            )}
+            <AnimatePresence>
+              {error && (
+                <motion.p
+                  initial={{ opacity: 0, height: 0, y: -8 }}
+                  animate={{ opacity: 1, height: 'auto', y: 0 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive overflow-hidden"
+                >
+                  {error}
+                </motion.p>
+              )}
+            </AnimatePresence>
 
-            <div className="space-y-1.5">
+            <motion.div custom={0} variants={fieldVariants} initial="hidden" animate="show" className="space-y-1.5">
               <label htmlFor="email" className="text-sm font-medium">
                 Email
               </label>
@@ -81,14 +108,14 @@ export default function LoginPage() {
                   type="email"
                   required
                   placeholder="you@company.com"
-                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:scale-[1.01]"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                 />
               </div>
-            </div>
+            </motion.div>
 
-            <div className="space-y-1.5">
+            <motion.div custom={1} variants={fieldVariants} initial="hidden" animate="show" className="space-y-1.5">
               <label htmlFor="password" className="text-sm font-medium">
                 Password
               </label>
@@ -99,25 +126,32 @@ export default function LoginPage() {
                   type="password"
                   required
                   placeholder="••••••••"
-                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:scale-[1.01]"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
               </div>
-            </div>
+            </motion.div>
 
-            <Button type="submit" className="group w-full gap-2" disabled={isLoading}>
-              {isLoading ? 'Signing in...' : 'Sign in'}
-              {!isLoading && (
-                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-              )}
-            </Button>
+            <motion.div custom={2} variants={fieldVariants} initial="hidden" animate="show">
+              <Button type="submit" className="group w-full gap-2" disabled={isLoading} loading={isLoading}>
+                {isLoading ? 'Signing in...' : 'Sign in'}
+                {!isLoading && (
+                  <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                )}
+              </Button>
+            </motion.div>
           </form>
         </div>
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="mt-6 text-center text-xs text-muted-foreground"
+        >
           Enterprise HRMS · Secure · Role-based Access
-        </p>
+        </motion.p>
       </motion.div>
     </div>
   );

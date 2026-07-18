@@ -5,6 +5,7 @@
  * create/edit modal, detail panel, promote modal, status change, delete confirm.
  */
 import { useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Plus, Search, Filter, ChevronLeft, ChevronRight,
@@ -79,6 +80,7 @@ export default function EmployeesListPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [statusTarget, setStatusTarget] = useState(null); // { employee, newStatus }
   const [actionMenuId, setActionMenuId] = useState(null);
+  const [actionMenuAnchor, setActionMenuAnchor] = useState(null);
 
   // Queries & mutations
   const queryParams = {
@@ -152,10 +154,10 @@ export default function EmployeesListPage() {
     if (!deleteTarget) return;
     try {
       await deleteEmployee(deleteTarget._id).unwrap();
-      toast.success('Employee deactivated');
+      toast.success('Employee permanently deleted');
       setDeleteTarget(null);
     } catch (err) {
-      toast.error('Failed to deactivate employee');
+      toast.error(err?.data?.error?.message || 'Failed to delete employee');
     }
   }
 
@@ -207,7 +209,7 @@ export default function EmployeesListPage() {
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
+        className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
       >
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Employees</h1>
@@ -327,7 +329,7 @@ export default function EmployeesListPage() {
               transition={{ duration: 0.2 }}
               className="overflow-hidden"
             >
-              <div className="pt-4 mt-3 border-t border-border grid grid-cols-3 gap-3">
+              <div className="pt-4 mt-3 border-t border-border grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">Status</label>
                   <select
@@ -393,10 +395,11 @@ export default function EmployeesListPage() {
               {employees.map((emp, i) => (
                 <motion.div
                   key={emp._id}
-                  initial={{ opacity: 0, y: 4 }}
+                  initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                  className="grid grid-cols-1 md:grid-cols-[2.5fr_1.5fr_1fr_1fr_1fr_80px] gap-4 px-5 py-3.5 hover:bg-accent/30 transition-colors cursor-pointer group"
+                  transition={{ delay: Math.min(i * 0.04, 0.6), duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                  whileHover={{ backgroundColor: 'hsl(var(--accent) / 0.4)', x: 2 }}
+                  className="grid grid-cols-1 md:grid-cols-[2.5fr_1.5fr_1fr_1fr_1fr_80px] gap-4 px-5 py-3.5 transition-colors cursor-pointer group"
                   onClick={() => openDetail(emp)}
                 >
                   {/* Employee */}
@@ -439,8 +442,17 @@ export default function EmployeesListPage() {
                   >
                     <div className="relative">
                       <button
-                        onClick={() => setActionMenuId(actionMenuId === emp._id ? null : emp._id)}
-                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                        type="button"
+                        onClick={(event) => {
+                          if (actionMenuId === emp._id) {
+                            setActionMenuId(null);
+                            setActionMenuAnchor(null);
+                            return;
+                          }
+                          setActionMenuAnchor(event.currentTarget.getBoundingClientRect());
+                          setActionMenuId(emp._id);
+                        }}
+                        className={`rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground group-hover:opacity-100 ${actionMenuId === emp._id ? 'bg-accent text-foreground opacity-100' : 'opacity-0'}`}
                         aria-label="Actions"
                       >
                         <MoreHorizontal className="h-4 w-4" />
@@ -450,13 +462,16 @@ export default function EmployeesListPage() {
                           <ActionMenu
                             employee={emp}
                             canManage={canManage}
+                            canDelete={user?.role === 'super_admin'}
+                            isSelf={String(user?.id || user?._id) === String(emp._id)}
+                            anchorRect={actionMenuAnchor}
                             onView={() => openDetail(emp)}
                             onEdit={() => openEdit(emp)}
                             onPromote={() => { setPromoteEmployee(emp); setActionMenuId(null); }}
                             onActivate={() => { setStatusTarget({ employee: emp, newStatus: 'active' }); setActionMenuId(null); }}
                             onDeactivate={() => { setStatusTarget({ employee: emp, newStatus: 'inactive' }); setActionMenuId(null); }}
                             onDelete={() => { setDeleteTarget(emp); setActionMenuId(null); }}
-                            onClose={() => setActionMenuId(null)}
+                            onClose={() => { setActionMenuId(null); setActionMenuAnchor(null); }}
                           />
                         )}
                       </AnimatePresence>
@@ -570,9 +585,9 @@ export default function EmployeesListPage() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
         isLoading={isDeleting}
-        title="Deactivate Employee"
-        message={`This will deactivate ${deleteTarget?.fullName}. Their data will be preserved.`}
-        confirmLabel="Deactivate"
+        title="Permanently Delete Employee?"
+        message={`This will permanently delete ${deleteTarget?.fullName}'s account. This action cannot be undone. Use Deactivate if their records should be preserved.`}
+        confirmLabel="Delete Permanently"
       />
     </div>
   );
@@ -582,41 +597,61 @@ export default function EmployeesListPage() {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function ActionMenu({ employee, canManage, onView, onEdit, onPromote, onActivate, onDeactivate, onDelete, onClose }) {
-  return (
+function ActionMenu({ employee, canManage, canDelete, isSelf, anchorRect, onView, onEdit, onPromote, onActivate, onDeactivate, onDelete, onClose }) {
+  if (!anchorRect) return null;
+
+  const estimatedHeight = canManage && !isSelf ? 238 : canManage ? 112 : 44;
+  const opensUpward = anchorRect.bottom + estimatedHeight + 12 > window.innerHeight;
+  const menuStyle = {
+    top: opensUpward
+      ? Math.max(8, anchorRect.top - estimatedHeight - 8)
+      : anchorRect.bottom + 8,
+    right: Math.max(8, window.innerWidth - anchorRect.right),
+  };
+
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-10" onClick={onClose} />
+      <div className="fixed inset-0 z-[90]" onClick={onClose} />
       <motion.div
         initial={{ opacity: 0, scale: 0.9, y: -4 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: -4 }}
         transition={{ duration: 0.1 }}
-        className="absolute right-0 top-8 z-20 w-48 bg-card border border-border rounded-xl shadow-xl py-1 overflow-hidden"
+        style={menuStyle}
+        className="fixed z-[100] w-52 overflow-hidden rounded-xl border border-border bg-card py-1 text-card-foreground shadow-2xl"
       >
         <MenuItem icon={Eye} label="View Profile" onClick={onView} />
         {canManage && (
           <>
             <MenuItem icon={Edit} label="Edit" onClick={onEdit} />
             <MenuItem icon={TrendingUp} label="Promote / Transfer" onClick={onPromote} />
-            <div className="my-1 h-px bg-border" />
-            {employee.status === 'active' ? (
-              <MenuItem icon={UserX} label="Deactivate" onClick={onDeactivate} className="text-amber-600" />
-            ) : (
-              <MenuItem icon={UserCheck} label="Activate" onClick={onActivate} className="text-emerald-600" />
+            {!isSelf && (
+              <>
+                <div className="my-1 h-px bg-border" />
+                {employee.status === 'active' ? (
+                  <MenuItem icon={UserX} label="Deactivate" onClick={onDeactivate} className="text-amber-600" />
+                ) : (
+                  <MenuItem icon={UserCheck} label="Activate" onClick={onActivate} className="text-emerald-600" />
+                )}
+                {canDelete && (
+                  <MenuItem icon={Trash2} label="Delete Permanently" onClick={onDelete} className="text-destructive" />
+                )}
+              </>
             )}
-            <MenuItem icon={Trash2} label="Delete" onClick={onDelete} className="text-destructive" />
           </>
         )}
       </motion.div>
-    </>
+    </>,
+    document.body
   );
 }
 
 function MenuItem({ icon: Icon, label, onClick, className = '' }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent transition-colors ${className}`}
+      className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover:bg-accent ${className}`}
     >
       <Icon className="h-3.5 w-3.5" />
       {label}

@@ -36,23 +36,27 @@ export default function AdminDashboard({ data }) {
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
+          delay={0.00}
           title="Total Employees"
           value={data.employeeStatistics?.total ?? 0}
           subtitle={`${data.employeeStatistics?.active ?? 0} active`}
           icon={Users}
         />
         <StatCard
+          delay={0.06}
           title="Payroll Records"
           value={(data.payrollSummary || []).reduce((s, p) => s + p.count, 0)}
           subtitle="This month"
           icon={Wallet}
         />
         <StatCard
+          delay={0.12}
           title="Pending Expenses"
           value={data.pendingExpenseApprovals?.length ?? 0}
           icon={Receipt}
         />
         <StatCard
+          delay={0.18}
           title="Departments"
           value={deptData.length}
           icon={Building2}

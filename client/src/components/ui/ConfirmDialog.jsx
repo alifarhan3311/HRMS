@@ -30,13 +30,18 @@ export function ConfirmDialog({
             onClick={onCancel}
           />
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 12 }}
+            initial={{ opacity: 0, scale: 0.85, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 12 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ type: 'spring', stiffness: 350, damping: 25 }}
             className="relative w-full max-w-sm bg-card border border-border rounded-2xl shadow-2xl p-6"
           >
-            <div className="flex items-start gap-4">
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.1, type: 'spring', stiffness: 400, damping: 15 }}
+              className="flex items-start gap-4"
+            >
               <div className="shrink-0 flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10">
                 <AlertTriangle className="h-5 w-5 text-destructive" />
               </div>
@@ -44,7 +49,7 @@ export function ConfirmDialog({
                 <h3 className="font-semibold">{title}</h3>
                 <p className="mt-1 text-sm text-muted-foreground">{message}</p>
               </div>
-            </div>
+            </motion.div>
             <div className="mt-5 flex gap-3 justify-end">
               <Button variant="secondary" size="sm" onClick={onCancel} disabled={isLoading}>
                 {cancelLabel}

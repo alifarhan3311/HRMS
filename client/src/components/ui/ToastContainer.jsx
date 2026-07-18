@@ -35,18 +35,18 @@ export default function ToastContainer() {
   }
 
   return createPortal(
-    <div className="fixed bottom-5 right-5 z-[200] flex flex-col gap-2 pointer-events-none">
+    <div className="fixed inset-x-4 bottom-5 z-[200] flex flex-col items-stretch gap-2 pointer-events-none sm:inset-x-auto sm:right-5 sm:items-end">
       <AnimatePresence>
         {toasts.map((toast) => {
           const { Icon, cls } = ICONS[toast.type] || ICONS.info;
           return (
             <motion.div
               key={toast.id}
-              initial={{ opacity: 0, y: 16, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 8, scale: 0.95 }}
-              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className="pointer-events-auto flex items-start gap-3 bg-card border border-border rounded-xl px-4 py-3 shadow-xl max-w-sm min-w-[280px]"
+              initial={{ opacity: 0, y: 24, scale: 0.9, x: 20 }}
+              animate={{ opacity: 1, y: 0, scale: 1, x: 0 }}
+              exit={{ opacity: 0, x: 40, scale: 0.9, transition: { duration: 0.2 } }}
+              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+              className="pointer-events-auto flex items-start gap-3 bg-card border border-border rounded-xl px-4 py-3 shadow-xl w-full sm:max-w-sm sm:min-w-[280px]"
             >
               <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${cls}`} />
               <p className="flex-1 text-sm">{toast.message}</p>

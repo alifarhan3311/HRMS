@@ -55,6 +55,13 @@ async function deleteById(id) {
   return Employee.findByIdAndDelete(id);
 }
 
+async function clearReportingReferences(id) {
+  return Promise.all([
+    Employee.updateMany({ managerId: id }, { $unset: { managerId: '' } }),
+    Employee.updateMany({ teamLeadId: id }, { $unset: { teamLeadId: '' } }),
+  ]);
+}
+
 async function countByCompany(companyId) {
   return Employee.countDocuments({ companyId });
 }
@@ -88,6 +95,7 @@ module.exports = {
   updateById,
   updateRaw,
   deleteById,
+  clearReportingReferences,
   countByCompany,
   getDistinctDepartments,
   getStats,

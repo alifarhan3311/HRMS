@@ -140,6 +140,10 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
     const payload = { ...form };
     delete payload.confirmPassword;
     if (isEdit) delete payload.password;
+    // Optional MongoDB references must be null (not an empty string) when the
+    // user chooses "No Manager" or "No Team Lead".
+    payload.managerId = payload.managerId || null;
+    payload.teamLeadId = payload.teamLeadId || null;
     onSubmit(payload);
   }
 
@@ -189,7 +193,7 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
           >
             {/* PERSONAL TAB */}
             {activeTab === 'personal' && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="col-span-2">
                   <Input
                     label="Full Name" required
@@ -255,7 +259,7 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
 
             {/* CONTACT TAB */}
             {activeTab === 'contact' && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="col-span-2">
                   <Input
                     label="Email Address" required type="email"
@@ -292,7 +296,7 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
 
             {/* EMPLOYMENT TAB */}
             {activeTab === 'employment' && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input
                   label="Employee Code" required={!isEdit}
                   placeholder="ENG0001"
