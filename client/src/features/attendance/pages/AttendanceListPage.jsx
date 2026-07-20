@@ -434,7 +434,7 @@ export default function AttendanceListPage() {
       <SignInWidget user={user} />
 
       {isAdminHR && (
-        <div className="glass-card relative z-20 p-4">
+        <div className="relative z-30 rounded-2xl border border-border bg-card p-4 shadow-soft">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">Employee attendance</p>
@@ -457,7 +457,7 @@ export default function AttendanceListPage() {
             )}
           </div>
           <div className="relative max-w-xl">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-primary" />
             <input
               type="search"
               value={employeePickerOpen ? employeeSearch : (selectedEmployee?.fullName || employeeSearch)}
@@ -474,10 +474,10 @@ export default function AttendanceListPage() {
               }}
               placeholder={employeesLoading ? 'Loading employees...' : 'Search employee...'}
               disabled={employeesLoading}
-              className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+              className="h-11 w-full rounded-xl border border-primary/40 bg-background pl-10 pr-4 text-sm text-foreground shadow-sm outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/25"
             />
             {employeePickerOpen && (
-              <div className="absolute left-0 right-0 top-full mt-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-xl">
+              <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-y-auto rounded-xl border border-primary/30 bg-card p-1.5 text-card-foreground shadow-2xl ring-1 ring-black/10 dark:ring-white/10">
                 {matchingEmployees.length ? matchingEmployees.map((employee) => (
                   <button
                     key={employee._id}
@@ -489,7 +489,7 @@ export default function AttendanceListPage() {
                       setEmployeePickerOpen(false);
                       setPage(1);
                     }}
-                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent ${filters.employeeId === employee._id ? 'bg-primary/10' : ''}`}
+                    className={`flex w-full items-center gap-3 rounded-lg border border-transparent px-3 py-2 text-left text-foreground transition-colors hover:border-border hover:bg-accent ${filters.employeeId === employee._id ? 'border-primary/20 bg-primary/15' : ''}`}
                   >
                     <Avatar name={employee.fullName} size="sm" />
                     <span className="min-w-0 flex-1">

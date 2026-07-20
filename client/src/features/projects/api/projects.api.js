@@ -9,6 +9,10 @@ export const projectsApi = api.injectEndpoints({
       query: (params) => ({ url: '/projects', params }),
       providesTags: ['Projects'],
     }),
+    getEligibleProjectEmployees: builder.query({
+      query: () => '/projects/eligible-employees',
+      providesTags: ['Employees'],
+    }),
     getProjectById: builder.query({
       query: (id) => `/projects/${id}`,
       providesTags: (result, error, id) => [{ type: 'Projects', id }],
@@ -35,4 +39,5 @@ export const {
   useCreateProjectMutation,
   useUpdateProjectMutation,
   useDeleteProjectMutation,
+  useGetEligibleProjectEmployeesQuery,
 } = projectsApi;

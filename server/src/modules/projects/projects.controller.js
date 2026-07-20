@@ -15,7 +15,7 @@ const create = asyncHandler(async (req, res) => {
 });
 
 const getById = asyncHandler(async (req, res) => {
-  const record = await service.getProjectById(req.params.id);
+  const record = await service.getProjectById(req.params.id, req.user);
   res.status(200).json({ success: true, data: record });
 });
 
@@ -25,13 +25,18 @@ const list = asyncHandler(async (req, res) => {
 });
 
 const update = asyncHandler(async (req, res) => {
-  const record = await service.updateProject(req.params.id, req.body);
+  const record = await service.updateProject(req.params.id, req.body, req.user);
   res.status(200).json({ success: true, data: record });
 });
 
 const remove = asyncHandler(async (req, res) => {
-  await service.deleteProject(req.params.id);
+  await service.deleteProject(req.params.id, req.user);
   res.status(204).send();
 });
 
-module.exports = { create, getById, list, update, remove };
+const eligibleEmployees = asyncHandler(async (req, res) => {
+  const records = await service.listEligibleEmployees(req.user);
+  res.status(200).json({ success: true, data: records });
+});
+
+module.exports = { create, getById, list, update, remove, eligibleEmployees };

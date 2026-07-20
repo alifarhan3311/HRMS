@@ -110,6 +110,14 @@ async function getStats(companyId) {
   ]);
 }
 
+async function getHierarchy(companyId) {
+  return Employee.find({ companyId, status: { $ne: 'resigned' } })
+    .select('fullName employeeCode email department designation role status profilePicture managerId teamLeadId')
+    .populate('managerId', 'fullName employeeCode designation role profilePicture')
+    .populate('teamLeadId', 'fullName employeeCode designation role profilePicture')
+    .sort({ role: 1, fullName: 1 });
+}
+
 module.exports = {
   create,
   findById,
@@ -124,4 +132,5 @@ module.exports = {
   nextSequence,
   getDistinctDepartments,
   getStats,
+  getHierarchy,
 };

@@ -87,4 +87,9 @@ const stats = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: result[0] || {} });
 });
 
-module.exports = { create, getById, list, update, remove, changeStatus, promote, departments, stats };
+const hierarchy = asyncHandler(async (req, res) => {
+  const result = await service.getEmployeeHierarchy(req.user.companyId);
+  res.status(200).json({ success: true, data: result });
+});
+
+module.exports = { create, getById, list, update, remove, changeStatus, promote, departments, stats, hierarchy };

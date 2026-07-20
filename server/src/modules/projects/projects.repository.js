@@ -11,20 +11,30 @@ async function create(data) {
 }
 
 async function findById(id) {
-  return Project.findById(id);
+  return Project.findById(id)
+    .populate('projectManagerId', 'fullName employeeCode designation role profilePicture')
+    .populate('teamLeadId', 'fullName employeeCode designation role profilePicture')
+    .populate('teamMembers.employeeId', 'fullName employeeCode department designation role profilePicture');
 }
 
 async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' } = {}) {
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
-    Project.find(filter).sort(sort).skip(skip).limit(limit),
+    Project.find(filter)
+      .populate('projectManagerId', 'fullName employeeCode designation role profilePicture')
+      .populate('teamLeadId', 'fullName employeeCode designation role profilePicture')
+      .populate('teamMembers.employeeId', 'fullName employeeCode department designation role profilePicture')
+      .sort(sort).skip(skip).limit(limit),
     Project.countDocuments(filter),
   ]);
   return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
 async function updateById(id, data) {
-  return Project.findByIdAndUpdate(id, data, { new: true, runValidators: true });
+  return Project.findByIdAndUpdate(id, data, { new: true, runValidators: true })
+    .populate('projectManagerId', 'fullName employeeCode designation role profilePicture')
+    .populate('teamLeadId', 'fullName employeeCode designation role profilePicture')
+    .populate('teamMembers.employeeId', 'fullName employeeCode department designation role profilePicture');
 }
 
 async function deleteById(id) {

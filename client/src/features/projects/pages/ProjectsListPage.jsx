@@ -9,7 +9,7 @@ import {
   FolderKanban, Plus, RefreshCw, Clock, Users,
   CheckCircle2, Circle, PauseCircle, XCircle, Briefcase,
 } from 'lucide-react';
-import { useListProjectsQuery, useCreateProjectMutation, useUpdateProjectMutation } from '../api/projects.api';
+import { useListProjectsQuery, useCreateProjectMutation, useUpdateProjectMutation, useGetEligibleProjectEmployeesQuery } from '../api/projects.api';
 import { toast } from '../../../utils/toast';
 import Button from '../../../components/ui/Button';
 import { Badge } from '../../../components/ui/Badge';
@@ -18,6 +18,7 @@ import { Input, Select, Textarea } from '../../../components/ui/Input';
 import StatCard from '../../../components/ui/StatCard';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useFormDraft } from '../../../hooks/useFormDraft';
+import { Avatar } from '../../../components/ui/Avatar';
 
 const STATUS_STYLES = {
   planning:  { label: 'Planning',   variant: 'blue',   Icon: Circle },
@@ -32,7 +33,7 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function ProjectForm({ initial, onSubmit, onClose, isLoading, draftKey }) {
+function ProjectForm({ initial, onSubmit, onClose, isLoading, draftKey, employees, currentUser }) {
   const [form, setForm, clearDraft] = useFormDraft(initial ? null : draftKey, {
     name:         initial?.name         || '',
     clientName:   initial?.clientName   || '',
@@ -42,8 +43,21 @@ function ProjectForm({ initial, onSubmit, onClose, isLoading, draftKey }) {
     endDate:      initial?.endDate      ? initial.endDate.substring(0, 10)   : '',
     billableHours:initial?.billableHours|| '',
     incentivePool:initial?.incentivePool|| '',
+    projectManagerId: initial?.projectManagerId?._id || initial?.projectManagerId || (currentUser?.role === 'manager' ? currentUser.id : ''),
+    teamLeadId: initial?.teamLeadId?._id || initial?.teamLeadId || '',
+    teamMembers: (initial?.teamMembers || []).map((member) => ({
+      employeeId: member.employeeId?._id || member.employeeId,
+      projectRole: member.projectRole || '',
+      allocatedHours: member.allocatedHours || 0,
+    })),
   });
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
+  const selectedMemberIds = new Set(form.teamMembers.map((member) => member.employeeId));
+  function toggleMember(employeeId) {
+    set('teamMembers', selectedMemberIds.has(employeeId)
+      ? form.teamMembers.filter((member) => member.employeeId !== employeeId)
+      : [...form.teamMembers, { employeeId, projectRole: '', allocatedHours: 0 }]);
+  }
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Project name is required'); return; }
@@ -65,6 +79,33 @@ function ProjectForm({ initial, onSubmit, onClose, isLoading, draftKey }) {
           <Input label="Incentive Pool (PKR)" type="number" value={form.incentivePool} onChange={e => set('incentivePool', e.target.value)} placeholder="0" />
         </div>
         <Textarea label="Description" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Project overview..." />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Select label="Project Manager" value={form.projectManagerId} onChange={(e) => set('projectManagerId', e.target.value)}>
+            <option value="">Select project manager</option>
+            {employees.filter((employee) => employee.role === 'manager').map((employee) => <option key={employee._id} value={employee._id}>{employee.fullName} — {employee.designation || employee.employeeCode}</option>)}
+          </Select>
+          <Select label="Team Lead" value={form.teamLeadId} onChange={(e) => set('teamLeadId', e.target.value)}>
+            <option value="">Select team lead</option>
+            {employees.filter((employee) => employee.role === 'team_lead').map((employee) => <option key={employee._id} value={employee._id}>{employee.fullName} — {employee.designation || employee.employeeCode}</option>)}
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between"><p className="text-sm font-medium">Project Team Members</p><span className="text-xs text-muted-foreground">{form.teamMembers.length} selected</span></div>
+          <div className="grid max-h-56 gap-2 overflow-y-auto rounded-xl border border-border bg-muted/10 p-2 sm:grid-cols-2">
+            {employees.filter((employee) => !['super_admin', 'admin'].includes(employee.role)).map((employee) => {
+              const selected = selectedMemberIds.has(employee._id);
+              return (
+                <button key={employee._id} type="button" onClick={() => toggleMember(employee._id)}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors ${selected ? 'border-primary bg-primary/10' : 'border-border bg-background hover:bg-accent'}`}>
+                  <input type="checkbox" checked={selected} readOnly className="accent-primary" />
+                  <Avatar name={employee.fullName} src={employee.profilePicture} size="xs" />
+                  <span className="min-w-0"><span className="block truncate text-sm font-medium">{employee.fullName}</span><span className="block truncate text-[11px] text-muted-foreground">{employee.designation || employee.role.replace('_', ' ')}</span></span>
+                </button>
+              );
+            })}
+            {!employees.length && <p className="col-span-2 py-6 text-center text-sm text-muted-foreground">No eligible employees found.</p>}
+          </div>
+        </div>
       </div>
       <ModalFooter>
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
@@ -78,17 +119,19 @@ function ProjectForm({ initial, onSubmit, onClose, isLoading, draftKey }) {
 
 export default function ProjectsListPage() {
   const { user } = useSelector(s => s.auth);
-  const canManage = ['admin', 'hr', 'super_admin', 'manager'].includes(user?.role);
+  const canManage = ['admin', 'super_admin', 'manager'].includes(user?.role);
 
   const [formOpen, setFormOpen]   = useState(false);
   const [editProj, setEditProj]   = useState(null);
   const [page, setPage]           = useState(1);
 
   const { data, isLoading, isFetching, refetch } = useListProjectsQuery({ page, limit: 12 });
+  const { data: eligibleData } = useGetEligibleProjectEmployeesQuery();
   const [createProject, { isLoading: creating }] = useCreateProjectMutation();
   const [updateProject, { isLoading: updating }] = useUpdateProjectMutation();
 
   const projects   = data?.items || [];
+  const eligibleEmployees = eligibleData?.data || [];
   const total      = data?.total || 0;
   const totalPages = data?.totalPages || 1;
 
@@ -176,6 +219,18 @@ export default function ProjectsListPage() {
                     <span className="ml-auto">Due: {fmtDate(proj.endDate)}</span>
                   )}
                 </div>
+                {(proj.projectManagerId || proj.teamLeadId) && (
+                  <div className="mt-3 space-y-1 border-t border-border pt-3 text-xs">
+                    {proj.projectManagerId && <p><span className="text-muted-foreground">Manager:</span> <span className="font-medium">{proj.projectManagerId.fullName}</span></p>}
+                    {proj.teamLeadId && <p><span className="text-muted-foreground">Team Lead:</span> <span className="font-medium">{proj.teamLeadId.fullName}</span></p>}
+                  </div>
+                )}
+                {proj.teamMembers?.length > 0 && (
+                  <div className="mt-3 flex -space-x-2">
+                    {proj.teamMembers.slice(0, 6).map((member) => <Avatar key={member.employeeId?._id || member.employeeId} name={member.employeeId?.fullName || 'Member'} src={member.employeeId?.profilePicture} size="xs" className="ring-2 ring-card" />)}
+                    {proj.teamMembers.length > 6 && <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-[10px] ring-2 ring-card">+{proj.teamMembers.length - 6}</span>}
+                  </div>
+                )}
               </motion.div>
             );
           })}
@@ -194,7 +249,8 @@ export default function ProjectsListPage() {
       <Modal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditProj(null); }}
         title={editProj ? 'Edit Project' : 'New Project'} size="md">
         <ProjectForm initial={editProj} onSubmit={handleSubmit} onClose={() => { setFormOpen(false); setEditProj(null); }}
-          isLoading={creating || updating} draftKey={`hrms:draft:project:create:${user?.id || 'user'}`} />
+          isLoading={creating || updating} draftKey={`hrms:draft:project:create:${user?.id || 'user'}`}
+          employees={eligibleEmployees} currentUser={user} />
       </Modal>
     </div>
   );

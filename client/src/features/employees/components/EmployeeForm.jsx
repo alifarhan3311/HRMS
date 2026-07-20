@@ -104,6 +104,9 @@ export default function EmployeeForm({
     refetch: refetchShifts,
   } = useListShiftsQuery({ active: true });
   const shifts = shiftsData?.data || [];
+  const availableTeamLeads = form.managerId
+    ? teamLeads.filter((lead) => String(lead.managerId?._id || lead.managerId || '') === String(form.managerId))
+    : teamLeads;
 
   // New employees must always have a concrete shift. Select the first active
   // company shift as soon as the async list becomes available.
@@ -448,7 +451,12 @@ export default function EmployeeForm({
                   <Select
                     label="Reporting Manager"
                     value={form.managerId}
-                    onChange={(e) => set('managerId', e.target.value)}
+                    onChange={(e) => {
+                      const managerId = e.target.value;
+                      set('managerId', managerId);
+                      const selectedLead = teamLeads.find((lead) => lead._id === form.teamLeadId);
+                      if (selectedLead && managerId && String(selectedLead.managerId?._id || selectedLead.managerId || '') !== managerId) set('teamLeadId', '');
+                    }}
                   >
                     <option value="">No Manager</option>
                     {managers.map((m) => (
@@ -456,14 +464,14 @@ export default function EmployeeForm({
                     ))}
                   </Select>
                 )}
-                {teamLeads.length > 0 && (
+                {availableTeamLeads.length > 0 && (
                   <Select
                     label="Team Lead"
                     value={form.teamLeadId}
                     onChange={(e) => set('teamLeadId', e.target.value)}
                   >
                     <option value="">No Team Lead</option>
-                    {teamLeads.map((t) => (
+                    {availableTeamLeads.map((t) => (
                       <option key={t._id} value={t._id}>{t.fullName}</option>
                     ))}
                   </Select>

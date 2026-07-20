@@ -59,6 +59,25 @@ async function validateAssignedShift(shiftId, companyId) {
   if (!exists) throw createHttpError(422, 'Selected shift is invalid or inactive.');
 }
 
+async function validateReportingLine({ managerId, teamLeadId }, companyId, employeeId = null) {
+  if (employeeId && [managerId, teamLeadId].filter(Boolean).some((id) => String(id) === String(employeeId))) {
+    throw createHttpError(422, 'An employee cannot report to themselves.');
+  }
+  const [manager, teamLead] = await Promise.all([
+    managerId ? repository.findById(managerId) : null,
+    teamLeadId ? repository.findById(teamLeadId) : null,
+  ]);
+  if (managerId && (!manager || String(manager.companyId) !== String(companyId) || manager.role !== 'manager' || manager.status !== 'active')) {
+    throw createHttpError(422, 'Selected Reporting Manager is invalid or inactive.');
+  }
+  if (teamLeadId && (!teamLead || String(teamLead.companyId) !== String(companyId) || teamLead.role !== 'team_lead' || teamLead.status !== 'active')) {
+    throw createHttpError(422, 'Selected Team Lead is invalid or inactive.');
+  }
+  if (manager && teamLead?.managerId && String(teamLead.managerId?._id || teamLead.managerId) !== String(manager._id)) {
+    throw createHttpError(422, 'Selected Team Lead belongs to a different Manager.');
+  }
+}
+
 function assertCanManageEmployee(actor, target, { allowSelf = false, action = 'manage' } = {}) {
   const isSelf = String(actor.id) === String(target._id);
   if (isSelf) {
@@ -151,6 +170,7 @@ async function createEmployee(payload, actor) {
   }
 
   await validateAssignedShift(payload.shiftId, actor.companyId);
+  await validateReportingLine(payload, actor.companyId);
 
   // Both identifiers come from one atomic company sequence, so concurrent
   // employee creation cannot issue duplicate codes or card numbers.
@@ -269,6 +289,7 @@ async function updateEmployee(id, payload, actor) {
   }
 
   await validateAssignedShift(payload.shiftId, actor.companyId);
+  await validateReportingLine(payload, actor.companyId, id);
 
   // Never allow these fields via general update
   const forbidden = ['passwordHash', 'password', 'companyId', 'role', 'employeeCode', 'employeeCardNumber'];
@@ -294,6 +315,10 @@ async function deleteEmployee(id, actor) {
   const deleted = await repository.deleteById(id);
   if (!deleted) throw createHttpError(404, 'Employee not found.');
   return { message: 'Employee permanently deleted.' };
+}
+
+async function getEmployeeHierarchy(companyId) {
+  return repository.getHierarchy(companyId);
 }
 
 // -------------------------------------------------------------------------
@@ -392,6 +417,7 @@ module.exports = {
   createEmployee,
   getEmployeeById,
   listEmployees,
+  getEmployeeHierarchy,
   updateEmployee,
   deleteEmployee,
   changeStatus,

@@ -11,6 +11,7 @@ const projectsSchema = new mongoose.Schema(
   {
   name: { type: String, required: true },
   clientName: { type: String },
+  description: { type: String },
   startDate: { type: Date },
   endDate: { type: Date },
   status: {
@@ -18,10 +19,21 @@ const projectsSchema = new mongoose.Schema(
     enum: ['planning', 'active', 'on_hold', 'completed', 'cancelled'],
     default: 'active',
   },
-  teamMembers: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  projectManagerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  teamLeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  teamMembers: {
+    type: [{
+      employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+      projectRole: { type: String, trim: true, maxlength: 100 },
+      allocatedHours: { type: Number, min: 0, default: 0 },
+      assignedAt: { type: Date, default: Date.now },
+    }],
+    default: [],
+  },
   billableHours: { type: Number, default: 0 },
   incentivePool: { type: Number, default: 0 },
   companyId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Company' },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Employee' },
   },
   {
     timestamps: true,

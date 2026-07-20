@@ -42,6 +42,10 @@ export const employeesApi = api.injectEndpoints({
       query: () => '/employees/stats',
       providesTags: ['Employees'],
     }),
+    getEmployeeHierarchy: builder.query({
+      query: () => '/employees/hierarchy',
+      providesTags: ['Employees'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -56,4 +60,5 @@ export const {
   usePromoteEmployeeMutation,
   useGetEmployeeDepartmentsQuery,
   useGetEmployeeStatsQuery,
+  useGetEmployeeHierarchyQuery,
 } = employeesApi;

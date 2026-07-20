@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Plus, Search, Filter, ChevronLeft, ChevronRight,
   MoreHorizontal, Edit, Trash2, UserX, UserCheck, TrendingUp,
-  Eye, Download, RefreshCw, Building2, Briefcase,
+  Eye, Download, RefreshCw, Building2, Briefcase, Network,
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { toast } from '../../../utils/toast';
@@ -23,6 +23,7 @@ import {
   useChangeEmployeeStatusMutation,
   usePromoteEmployeeMutation,
   useGetEmployeeStatsQuery,
+  useGetEmployeeHierarchyQuery,
 } from '../api/employees.api';
 
 import { Avatar } from '../../../components/ui/Avatar';
@@ -59,6 +60,61 @@ function TableSkeleton() {
   );
 }
 
+function TeamStructure({ employees = [] }) {
+  const idOf = (value) => String(value?._id || value || '');
+  const managers = employees.filter((employee) => employee.role === 'manager');
+  const teamLeads = employees.filter((employee) => employee.role === 'team_lead');
+  const members = employees.filter((employee) => employee.role === 'employee');
+
+  function Person({ employee }) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+        <Avatar name={employee.fullName} src={employee.profilePicture} size="xs" />
+        <div className="min-w-0"><p className="truncate text-sm font-medium">{employee.fullName}</p><p className="truncate text-[11px] text-muted-foreground">{employee.designation || employee.employeeCode}</p></div>
+      </div>
+    );
+  }
+
+  function LeadTeam({ lead }) {
+    const assigned = members.filter((member) => idOf(member.teamLeadId) === idOf(lead));
+    return (
+      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-primary">Team Lead</p>
+        <Person employee={lead} />
+        <div className="ml-4 mt-2 space-y-2 border-l border-border pl-3">
+          {assigned.length ? assigned.map((member) => <Person key={member._id} employee={member} />) : <p className="py-2 text-xs text-muted-foreground">No members assigned</p>}
+        </div>
+      </div>
+    );
+  }
+
+  const independentLeads = teamLeads.filter((lead) => !lead.managerId);
+  const unassigned = members.filter((member) => !member.managerId && !member.teamLeadId);
+
+  return (
+    <div className="space-y-5 p-5">
+      {managers.map((manager) => {
+        const leads = teamLeads.filter((lead) => idOf(lead.managerId) === idOf(manager));
+        const direct = members.filter((member) => idOf(member.managerId) === idOf(manager) && !member.teamLeadId);
+        return (
+          <section key={manager._id} className="rounded-2xl border border-border bg-muted/10 p-4">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Manager</p>
+            <Person employee={manager} />
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {leads.map((lead) => <LeadTeam key={lead._id} lead={lead} />)}
+              {direct.length > 0 && <div className="rounded-xl border border-border p-3"><p className="mb-2 text-xs font-semibold">Direct Reports</p><div className="space-y-2">{direct.map((member) => <Person key={member._id} employee={member} />)}</div></div>}
+            </div>
+            {!leads.length && !direct.length && <p className="mt-3 text-xs text-muted-foreground">No team assigned to this manager.</p>}
+          </section>
+        );
+      })}
+      {independentLeads.length > 0 && <section><h3 className="mb-3 font-semibold">Teams without a Manager</h3><div className="grid gap-3 md:grid-cols-2">{independentLeads.map((lead) => <LeadTeam key={lead._id} lead={lead} />)}</div></section>}
+      {unassigned.length > 0 && <section className="rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-4"><h3 className="mb-3 font-semibold text-amber-600">Unassigned Employees ({unassigned.length})</h3><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{unassigned.map((member) => <Person key={member._id} employee={member} />)}</div></section>}
+      {!employees.length && <p className="py-12 text-center text-muted-foreground">No hierarchy data available.</p>}
+    </div>
+  );
+}
+
 export default function EmployeesListPage() {
   const { user } = useSelector((s) => s.auth);
   const canManage = ['hr', 'super_admin'].includes(user?.role);
@@ -91,6 +147,7 @@ export default function EmployeesListPage() {
   const [statusTarget, setStatusTarget] = useState(null); // { employee, newStatus }
   const [actionMenuId, setActionMenuId] = useState(null);
   const [actionMenuAnchor, setActionMenuAnchor] = useState(null);
+  const [teamViewOpen, setTeamViewOpen] = useState(false);
 
   // Queries & mutations
   const queryParams = {
@@ -104,6 +161,7 @@ export default function EmployeesListPage() {
   };
   const { data, isLoading, isFetching, refetch } = useListEmployeesQuery(queryParams);
   const { data: statsData } = useGetEmployeeStatsQuery();
+  const { data: hierarchyData } = useGetEmployeeHierarchyQuery();
 
   const [createEmployee, { isLoading: isCreating }] = useCreateEmployeeMutation();
   const [updateEmployee, { isLoading: isUpdating }] = useUpdateEmployeeMutation();
@@ -115,6 +173,9 @@ export default function EmployeesListPage() {
   const total = data?.total || 0;
   const totalPages = data?.totalPages || 1;
   const stats = statsData?.data;
+  const hierarchyEmployees = hierarchyData?.data || [];
+  const managers = hierarchyEmployees.filter((employee) => employee.role === 'manager' && employee._id !== editEmployee?._id);
+  const teamLeads = hierarchyEmployees.filter((employee) => employee.role === 'team_lead' && employee._id !== editEmployee?._id);
 
   // Search with debounce on Enter / blur
   function handleSearchSubmit(e) {
@@ -240,14 +301,19 @@ export default function EmployeesListPage() {
             {isFetching ? 'Refreshing' : 'Refresh'}
           </Button>
           {canManage && (
-            <Button
-              variant="primary" size="sm"
-              className="gap-1.5"
-              onClick={() => { setEditEmployee(null); setFormOpen(true); }}
-            >
-              <Plus className="h-4 w-4" />
-              Add Employee
-            </Button>
+            <>
+              <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setTeamViewOpen(true)}>
+                <Network className="h-4 w-4" /> Team Structure
+              </Button>
+              <Button
+                variant="primary" size="sm"
+                className="gap-1.5"
+                onClick={() => { setEditEmployee(null); setFormOpen(true); }}
+              >
+                <Plus className="h-4 w-4" />
+                Add Employee
+              </Button>
+            </>
           )}
         </div>
       </motion.div>
@@ -550,10 +616,16 @@ export default function EmployeesListPage() {
         <EmployeeForm
           initial={editEmployee}
           allowedRoles={assignableRoles}
+          managers={managers}
+          teamLeads={teamLeads}
           onSubmit={editEmployee ? handleUpdate : handleCreate}
           onClose={() => { setFormOpen(false); setEditEmployee(null); }}
           isLoading={isCreating || isUpdating}
         />
+      </Modal>
+
+      <Modal isOpen={teamViewOpen} onClose={() => setTeamViewOpen(false)} title="Company Team Structure" size="full">
+        <TeamStructure employees={hierarchyEmployees} />
       </Modal>
 
       {/* Detail Panel */}
