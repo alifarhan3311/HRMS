@@ -110,6 +110,9 @@ export default function EmployeeForm({
   const departmentManager = managers.find((manager) => (
     String(manager.department || '').trim().toLowerCase() === String(form.department || '').trim().toLowerCase()
   ));
+  const departmentTeamLead = teamLeads.find((lead) => (
+    String(lead.department || '').trim().toLowerCase() === String(form.department || '').trim().toLowerCase()
+  ));
 
   useEffect(() => {
     if (!['employee', 'team_lead'].includes(form.role) || !departmentManager) return;
@@ -117,6 +120,13 @@ export default function EmployeeForm({
       setForm((previous) => ({ ...previous, managerId: departmentManager._id }));
     }
   }, [departmentManager, form.managerId, form.role]);
+
+  useEffect(() => {
+    if (form.role !== 'employee' || !departmentTeamLead) return;
+    if (String(form.teamLeadId || '') !== String(departmentTeamLead._id)) {
+      setForm((previous) => ({ ...previous, teamLeadId: departmentTeamLead._id }));
+    }
+  }, [departmentTeamLead, form.role, form.teamLeadId]);
 
   // New employees must always have a concrete shift. Select the first active
   // company shift as soon as the async list becomes available.
@@ -482,8 +492,9 @@ export default function EmployeeForm({
                 )}
                 {availableTeamLeads.length > 0 && form.role === 'employee' && (
                   <Select
-                    label="Team Lead"
+                    label={departmentTeamLead ? 'Team Lead (Auto-assigned)' : 'Team Lead'}
                     value={form.teamLeadId}
+                    disabled={Boolean(departmentTeamLead)}
                     onChange={(e) => set('teamLeadId', e.target.value)}
                   >
                     <option value="">No Team Lead</option>
@@ -491,6 +502,11 @@ export default function EmployeeForm({
                       <option key={t._id} value={t._id}>{t.fullName}</option>
                     ))}
                   </Select>
+                )}
+                {departmentTeamLead && form.role === 'employee' && (
+                  <p className="text-xs text-emerald-600">
+                    {departmentTeamLead.fullName} is automatically assigned because they lead the {form.department} department team.
+                  </p>
                 )}
                 <Input
                   label="Employee Card Number"

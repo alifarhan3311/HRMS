@@ -39,7 +39,7 @@ const create = [
 ];
 
 const getById = asyncHandler(async (req, res) => {
-  const record = await service.getEmployeeById(req.params.id);
+  const record = await service.getEmployeeById(req.params.id, req.user);
   res.status(200).json({ success: true, data: record });
 });
 
@@ -83,12 +83,12 @@ const departments = asyncHandler(async (req, res) => {
 });
 
 const stats = asyncHandler(async (req, res) => {
-  const result = await service.getEmployeeStats(req.user.companyId);
+  const result = await service.getEmployeeStats(req.user);
   res.status(200).json({ success: true, data: result[0] || {} });
 });
 
 const hierarchy = asyncHandler(async (req, res) => {
-  const result = await service.getEmployeeHierarchy(req.user.companyId);
+  const result = await service.getEmployeeHierarchy(req.user);
   res.status(200).json({ success: true, data: result });
 });
 

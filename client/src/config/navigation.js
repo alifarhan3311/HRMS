@@ -39,7 +39,7 @@ export const NAV_GROUPS = [
     items: [
       {
         id: 'employees', label: 'Employees', path: '/employees',
-        icon: Users, roles: ['hr', 'super_admin'],
+        icon: Users, roles: ['team_lead', 'manager', 'hr', 'super_admin'],
       },
       {
         id: 'attendance', label: 'Attendance', path: '/attendance',

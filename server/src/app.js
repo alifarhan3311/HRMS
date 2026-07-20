@@ -69,7 +69,7 @@ app.use(
 // CORS — explicit allow-list from env, credentials required for
 // cookie-based auth to function cross-origin between client/server hosts.
 // -------------------------------------------------------------------------
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || 'https://mhcirclesolutions.com')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);

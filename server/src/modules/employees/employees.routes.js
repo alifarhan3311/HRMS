@@ -9,15 +9,15 @@ const { authenticate, authorize, enforceTenantScope } = require('../../middlewar
 
 const router = express.Router();
 const HR_MANAGEMENT = ['hr', 'super_admin'];
-const MANAGER_UP = ['manager', 'hr', 'super_admin'];
+const MANAGER_UP = ['team_lead', 'manager', 'hr', 'super_admin'];
 
 router.use(authenticate);
 
 // List & stats
-router.get('/', authorize(...HR_MANAGEMENT), controller.list);
+router.get('/', authorize(...MANAGER_UP), controller.list);
 router.get('/departments', authorize(...HR_MANAGEMENT), controller.departments);
-router.get('/stats', authorize(...HR_MANAGEMENT), controller.stats);
-router.get('/hierarchy', authorize(...HR_MANAGEMENT), controller.hierarchy);
+router.get('/stats', authorize(...MANAGER_UP), controller.stats);
+router.get('/hierarchy', authorize(...MANAGER_UP), controller.hierarchy);
 
 // Create
 router.post('/', authorize(...HR_MANAGEMENT), controller.create);

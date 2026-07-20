@@ -5,6 +5,7 @@
  */
 const Employee = require('./employees.model');
 const EmployeeSequence = require('./employeeSequence.model');
+const mongoose = require('mongoose');
 
 async function create(data) {
   return Employee.create(data);
@@ -97,6 +98,32 @@ async function clearManagerReferences(managerId) {
   return Employee.updateMany({ managerId }, { $unset: { managerId: '' } });
 }
 
+async function findActiveDepartmentTeamLead(companyId, department, excludeId = null) {
+  if (!String(department || '').trim()) return null;
+  const filter = {
+    companyId,
+    department: departmentPattern(department),
+    role: 'team_lead',
+    status: 'active',
+  };
+  if (excludeId) filter._id = { $ne: excludeId };
+  return Employee.findOne(filter).sort({ createdAt: 1 });
+}
+
+async function assignDepartmentTeamLead(companyId, department, teamLeadId) {
+  if (!String(department || '').trim()) return { modifiedCount: 0 };
+  return Employee.updateMany({
+    companyId,
+    department: departmentPattern(department),
+    role: 'employee',
+    status: { $ne: 'resigned' },
+  }, { $set: { teamLeadId } });
+}
+
+async function clearTeamLeadReferences(teamLeadId) {
+  return Employee.updateMany({ teamLeadId }, { $unset: { teamLeadId: '' } });
+}
+
 async function syncDepartmentManagers(companyId) {
   const managers = await Employee.find({ companyId, role: 'manager', status: 'active', department: { $nin: [null, ''] } })
     .sort({ createdAt: 1 });
@@ -108,6 +135,20 @@ async function syncDepartmentManagers(companyId) {
     if (String(canonical?._id) !== String(manager._id)) continue;
     // eslint-disable-next-line no-await-in-loop
     await assignDepartmentManager(companyId, manager.department, manager._id);
+  }
+}
+
+async function syncDepartmentTeamLeads(companyId) {
+  const teamLeads = await Employee.find({ companyId, role: 'team_lead', status: 'active', department: { $nin: [null, ''] } })
+    .sort({ createdAt: 1 });
+  for (const teamLead of teamLeads) {
+    // Legacy duplicate leads are handled deterministically: the oldest active
+    // Team Lead is canonical until HR resolves the duplicate.
+    // eslint-disable-next-line no-await-in-loop
+    const canonical = await findActiveDepartmentTeamLead(companyId, teamLead.department);
+    if (String(canonical?._id) !== String(teamLead._id)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await assignDepartmentTeamLead(companyId, teamLead.department, teamLead._id);
   }
 }
 
@@ -140,9 +181,17 @@ async function getDistinctDepartments(companyId) {
   return Employee.distinct('department', { companyId, department: { $ne: null, $ne: '' } });
 }
 
-async function getStats(companyId) {
+async function getStats(filter) {
+  // Mongoose casts normal find() filters but not aggregation pipeline
+  // values. JWT tenant/user ids arrive as strings, so cast them explicitly.
+  const match = { ...filter };
+  for (const field of ['companyId', 'managerId', 'teamLeadId']) {
+    if (typeof match[field] === 'string' && mongoose.isValidObjectId(match[field])) {
+      match[field] = new mongoose.Types.ObjectId(match[field]);
+    }
+  }
   return Employee.aggregate([
-    { $match: { companyId } },
+    { $match: match },
     {
       $group: {
         _id: null,
@@ -156,8 +205,8 @@ async function getStats(companyId) {
   ]);
 }
 
-async function getHierarchy(companyId) {
-  return Employee.find({ companyId, status: { $ne: 'resigned' } })
+async function getHierarchy(filter) {
+  return Employee.find({ ...filter, status: { $ne: 'resigned' } })
     .select('fullName employeeCode email department designation role status profilePicture managerId teamLeadId')
     .populate('managerId', 'fullName employeeCode designation role profilePicture')
     .populate('teamLeadId', 'fullName employeeCode designation role profilePicture')
@@ -178,6 +227,10 @@ module.exports = {
   assignDepartmentManager,
   clearManagerReferences,
   syncDepartmentManagers,
+  findActiveDepartmentTeamLead,
+  assignDepartmentTeamLead,
+  clearTeamLeadReferences,
+  syncDepartmentTeamLeads,
   countByCompany,
   nextSequence,
   getDistinctDepartments,

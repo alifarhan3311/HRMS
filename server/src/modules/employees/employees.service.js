@@ -78,7 +78,7 @@ async function validateReportingLine({ managerId, teamLeadId }, companyId, emplo
   }
 }
 
-async function applyDepartmentManager(payload, companyId, role, employeeId = null) {
+async function applyDepartmentReportingLine(payload, companyId, role, employeeId = null) {
   const department = String(payload.department || '').trim();
   if (role === 'manager') {
     payload.managerId = null;
@@ -93,6 +93,18 @@ async function applyDepartmentManager(payload, companyId, role, employeeId = nul
   if (!['team_lead', 'employee'].includes(role) || !department) return;
   const departmentManager = await repository.findActiveDepartmentManager(companyId, department);
   if (departmentManager) payload.managerId = departmentManager._id;
+
+  if (role === 'team_lead') {
+    payload.teamLeadId = null;
+    const duplicate = await repository.findActiveDepartmentTeamLead(companyId, department, employeeId);
+    if (duplicate) {
+      throw createHttpError(409, `${department} already has an active Team Lead: ${duplicate.fullName}.`);
+    }
+    return;
+  }
+
+  const departmentTeamLead = await repository.findActiveDepartmentTeamLead(companyId, department);
+  if (departmentTeamLead) payload.teamLeadId = departmentTeamLead._id;
 }
 
 function assertCanManageEmployee(actor, target, { allowSelf = false, action = 'manage' } = {}) {
@@ -116,6 +128,23 @@ function assertCanAssignRole(actor, role) {
   if (!manageableRoles.includes(role)) {
     throw createHttpError(403, `Your role cannot create or assign the ${role} role.`);
   }
+}
+
+function teamLeaderCanView(actor, employee) {
+  if (!['manager', 'team_lead'].includes(actor.role)) return true;
+  const actorId = String(actor.id);
+  if (String(employee._id) === actorId) return true;
+  const reportingField = actor.role === 'manager' ? employee.managerId : employee.teamLeadId;
+  return String(reportingField?._id || reportingField || '') === actorId;
+}
+
+function redactManagerPrivateFields(employee) {
+  const visible = { ...employee };
+  for (const field of [
+    'cnic', 'currentSalary', 'salaryHistory', 'insuranceCardNumber',
+    'fatherName', 'dateOfBirth', 'maritalStatus', 'address', 'emergencyContact',
+  ]) delete visible[field];
+  return visible;
 }
 
 function balanceFromPolicy(entitlements, existingBalance = {}, carriedForward = {}) {
@@ -177,7 +206,7 @@ async function reconcileLeaveBalance(employee) {
 async function createEmployee(payload, actor) {
   payload = normalizeOptionalReferences(payload);
   assertCanAssignRole(actor, payload.role);
-  await applyDepartmentManager(payload, actor.companyId, payload.role);
+  await applyDepartmentReportingLine(payload, actor.companyId, payload.role);
   // Validate uniqueness
   const existing = await repository.findByEmail(payload.email, actor.companyId);
   if (existing) throw createHttpError(409, 'An employee with this email already exists.');
@@ -220,12 +249,18 @@ async function createEmployee(payload, actor) {
   if (employee.role === 'manager' && employee.department) {
     await repository.assignDepartmentManager(actor.companyId, employee.department, employee._id);
   }
+  if (employee.role === 'team_lead' && employee.department) {
+    await repository.assignDepartmentTeamLead(actor.companyId, employee.department, employee._id);
+  }
   return sanitize(employee);
 }
 
-async function getEmployeeById(id) {
+async function getEmployeeById(id, actor) {
   let record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Employee not found.');
+  if (!teamLeaderCanView(actor, record)) {
+    throw createHttpError(403, 'You can only view employees assigned to your team.');
+  }
   const reconciled = await reconcileLeaveBalance(record);
   record = reconciled.employee;
   const obj = record.toObject({ getters: true });
@@ -237,7 +272,9 @@ async function getEmployeeById(id) {
     validCarriedForward(record)
   );
   obj.tenure = obj.joiningDate ? calcTenure(obj.joiningDate) : null;
-  return obj;
+  return ['manager', 'team_lead'].includes(actor.role) && String(actor.id) !== String(obj._id)
+    ? redactManagerPrivateFields(obj)
+    : obj;
 }
 
 async function listEmployees(query, actor) {
@@ -251,7 +288,20 @@ async function listEmployees(query, actor) {
     sort = '-createdAt',
   } = query;
 
+  if (['manager', 'team_lead'].includes(actor.role)) {
+    await Promise.all([
+      repository.syncDepartmentManagers(actor.companyId),
+      repository.syncDepartmentTeamLeads(actor.companyId),
+    ]);
+  }
+
   const filter = { companyId: actor.companyId };
+
+  // Managers see only their direct department team. Department automation
+  // assigns both Team Leads and Employees to managerId, so this includes the
+  // complete team without exposing another manager's staff.
+  if (actor.role === 'manager') filter.managerId = actor.id;
+  if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
 
   if (status) filter.status = status;
   if (department) filter.department = new RegExp(department, 'i');
@@ -279,7 +329,7 @@ async function listEmployees(query, actor) {
   result.items = result.items.map((e) => {
     const obj = e.toObject ? e.toObject({ getters: true }) : e;
     const carriedForward = validCarriedForward(obj);
-    return {
+    const item = {
       ...obj,
       enabledLeaveTypes: enabledTypes,
       leaveBalance: visibleLeaveBalance(
@@ -290,6 +340,7 @@ async function listEmployees(query, actor) {
       ),
       tenure: obj.joiningDate ? calcTenure(obj.joiningDate) : null,
     };
+    return ['manager', 'team_lead'].includes(actor.role) ? redactManagerPrivateFields(item) : item;
   });
 
   return result;
@@ -302,7 +353,7 @@ async function updateEmployee(id, payload, actor) {
   assertCanManageEmployee(actor, existing, { allowSelf: true, action: 'edit' });
   const effectiveDepartment = payload.department !== undefined ? payload.department : existing.department;
   payload.department = effectiveDepartment;
-  await applyDepartmentManager(payload, actor.companyId, existing.role, id);
+  await applyDepartmentReportingLine(payload, actor.companyId, existing.role, id);
 
   // If email is being changed, check uniqueness
   if (payload.email && payload.email !== existing.email) {
@@ -329,6 +380,14 @@ async function updateEmployee(id, payload, actor) {
       await repository.assignDepartmentManager(actor.companyId, updated.department, updated._id);
     }
   }
+  if (existing.role === 'team_lead') {
+    if (String(existing.department || '').toLowerCase() !== String(updated.department || '').toLowerCase()) {
+      await repository.clearTeamLeadReferences(id);
+    }
+    if (updated.department && updated.status === 'active') {
+      await repository.assignDepartmentTeamLead(actor.companyId, updated.department, updated._id);
+    }
+  }
   return sanitize(updated);
 }
 
@@ -349,9 +408,18 @@ async function deleteEmployee(id, actor) {
   return { message: 'Employee permanently deleted.' };
 }
 
-async function getEmployeeHierarchy(companyId) {
-  await repository.syncDepartmentManagers(companyId);
-  return repository.getHierarchy(companyId);
+async function getEmployeeHierarchy(actor) {
+  await Promise.all([
+    repository.syncDepartmentManagers(actor.companyId),
+    repository.syncDepartmentTeamLeads(actor.companyId),
+  ]);
+  const filter = { companyId: actor.companyId };
+  if (actor.role === 'manager') {
+    filter.$or = [{ _id: actor.id }, { managerId: actor.id }];
+  } else if (actor.role === 'team_lead') {
+    filter.$or = [{ _id: actor.id }, { teamLeadId: actor.id }];
+  }
+  return repository.getHierarchy(filter);
 }
 
 // -------------------------------------------------------------------------
@@ -373,6 +441,10 @@ async function changeStatus(id, { status, reason }, actor) {
     const duplicate = await repository.findActiveDepartmentManager(employee.companyId, employee.department, employee._id);
     if (duplicate) throw createHttpError(409, `${employee.department} already has an active Manager: ${duplicate.fullName}.`);
   }
+  if (employee.role === 'team_lead' && status === 'active' && employee.department) {
+    const duplicate = await repository.findActiveDepartmentTeamLead(employee.companyId, employee.department, employee._id);
+    if (duplicate) throw createHttpError(409, `${employee.department} already has an active Team Lead: ${duplicate.fullName}.`);
+  }
 
   const updated = await repository.updateById(id, update);
   if (employee.role === 'manager') {
@@ -380,6 +452,13 @@ async function changeStatus(id, { status, reason }, actor) {
       await repository.assignDepartmentManager(employee.companyId, employee.department, employee._id);
     } else {
       await repository.clearManagerReferences(employee._id);
+    }
+  }
+  if (employee.role === 'team_lead') {
+    if (status === 'active' && employee.department) {
+      await repository.assignDepartmentTeamLead(employee.companyId, employee.department, employee._id);
+    } else {
+      await repository.clearTeamLeadReferences(employee._id);
     }
   }
   return sanitize(updated);
@@ -397,7 +476,7 @@ async function promoteEmployee(id, promotionData, actor) {
   const nextRole = promotionData.role || employee.role;
   const nextDepartment = promotionData.department || employee.department;
   const automaticAssignment = { department: nextDepartment };
-  await applyDepartmentManager(automaticAssignment, employee.companyId, nextRole, employee._id);
+  await applyDepartmentReportingLine(automaticAssignment, employee.companyId, nextRole, employee._id);
 
   const historyEntry = {
     designation: employee.designation,
@@ -425,6 +504,11 @@ async function promoteEmployee(id, promotionData, actor) {
   } else if (automaticAssignment.managerId) {
     update.$set.managerId = automaticAssignment.managerId;
   }
+  if (nextRole === 'team_lead') {
+    update.$set.teamLeadId = null;
+  } else if (automaticAssignment.teamLeadId) {
+    update.$set.teamLeadId = automaticAssignment.teamLeadId;
+  }
   if (promotionData.currentSalary) {
     update.$set.currentSalary = promotionData.currentSalary;
     update.$set.lastIncrementAmount = promotionData.incrementAmount || 0;
@@ -444,8 +528,14 @@ async function promoteEmployee(id, promotionData, actor) {
   if (employee.role === 'manager' && (nextRole !== 'manager' || String(employee.department || '').toLowerCase() !== String(nextDepartment || '').toLowerCase())) {
     await repository.clearManagerReferences(employee._id);
   }
+  if (employee.role === 'team_lead' && (nextRole !== 'team_lead' || String(employee.department || '').toLowerCase() !== String(nextDepartment || '').toLowerCase())) {
+    await repository.clearTeamLeadReferences(employee._id);
+  }
   if (nextRole === 'manager' && nextDepartment) {
     await repository.assignDepartmentManager(employee.companyId, nextDepartment, employee._id);
+  }
+  if (nextRole === 'team_lead' && nextDepartment) {
+    await repository.assignDepartmentTeamLead(employee.companyId, nextDepartment, employee._id);
   }
   return sanitize(updated);
 }
@@ -458,8 +548,17 @@ async function getDepartmentList(companyId) {
   return repository.getDistinctDepartments(companyId);
 }
 
-async function getEmployeeStats(companyId) {
-  return repository.getStats(companyId);
+async function getEmployeeStats(actor) {
+  if (['manager', 'team_lead'].includes(actor.role)) {
+    await Promise.all([
+      repository.syncDepartmentManagers(actor.companyId),
+      repository.syncDepartmentTeamLeads(actor.companyId),
+    ]);
+  }
+  const filter = { companyId: actor.companyId };
+  if (actor.role === 'manager') filter.managerId = actor.id;
+  if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
+  return repository.getStats(filter);
 }
 
 // -------------------------------------------------------------------------

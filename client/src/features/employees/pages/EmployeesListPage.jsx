@@ -88,7 +88,8 @@ function TeamStructure({ employees = [] }) {
     );
   }
 
-  const independentLeads = teamLeads.filter((lead) => !lead.managerId);
+  const managerIds = new Set(managers.map(idOf));
+  const independentLeads = teamLeads.filter((lead) => !lead.managerId || !managerIds.has(idOf(lead.managerId)));
   const unassigned = members.filter((member) => !member.managerId && !member.teamLeadId);
 
   return (
@@ -118,6 +119,7 @@ function TeamStructure({ employees = [] }) {
 export default function EmployeesListPage() {
   const { user } = useSelector((s) => s.auth);
   const canManage = ['hr', 'super_admin'].includes(user?.role);
+  const canViewTeamStructure = ['team_lead', 'manager', 'hr', 'super_admin'].includes(user?.role);
   const manageableRoles = user?.role === 'super_admin'
     ? ['admin', 'hr', 'manager', 'team_lead', 'employee']
     : user?.role === 'hr'
@@ -300,11 +302,12 @@ export default function EmployeesListPage() {
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
             {isFetching ? 'Refreshing' : 'Refresh'}
           </Button>
-          {canManage && (
-            <>
+          {canViewTeamStructure && (
               <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setTeamViewOpen(true)}>
                 <Network className="h-4 w-4" /> Team Structure
               </Button>
+          )}
+          {canManage && (
               <Button
                 variant="primary" size="sm"
                 className="gap-1.5"
@@ -313,7 +316,6 @@ export default function EmployeesListPage() {
                 <Plus className="h-4 w-4" />
                 Add Employee
               </Button>
-            </>
           )}
         </div>
       </motion.div>
@@ -624,7 +626,7 @@ export default function EmployeesListPage() {
         />
       </Modal>
 
-      <Modal isOpen={teamViewOpen} onClose={() => setTeamViewOpen(false)} title="Company Team Structure" size="full">
+      <Modal isOpen={teamViewOpen} onClose={() => setTeamViewOpen(false)} title={['manager', 'team_lead'].includes(user?.role) ? 'My Team Structure' : 'Company Team Structure'} size="full">
         <TeamStructure employees={hierarchyEmployees} />
       </Modal>
 
