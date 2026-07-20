@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Bell, ChevronDown, LogOut, Menu, Moon, Search, Settings,
@@ -34,6 +34,7 @@ export default function Header({ onMenuClick = () => {} }) {
   const { theme, toggleTheme } = useTheme();
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const [logout] = useLogoutMutation();
   const [markNotificationRead] = useMarkNotificationReadMutation();
   const [markAllNotificationsRead] = useMarkAllNotificationsReadMutation();
@@ -68,6 +69,22 @@ export default function Header({ onMenuClick = () => {} }) {
     }
     document.addEventListener('mousedown', closeMenus);
     return () => document.removeEventListener('mousedown', closeMenus);
+  }, []);
+
+  useEffect(() => {
+    setProfileOpen(false);
+    setNotifOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') {
+        setProfileOpen(false);
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
   }, []);
 
   useEffect(() => {
@@ -183,6 +200,14 @@ export default function Header({ onMenuClick = () => {} }) {
               </motion.span>
             )}
           </button>
+          {profileOpen && (
+            <button
+              type="button"
+              aria-label="Close profile menu"
+              className="fixed inset-0 z-40 cursor-default bg-transparent"
+              onMouseDown={() => setProfileOpen(false)}
+            />
+          )}
           <AnimatePresence>
             {notifOpen && (
               <motion.div initial={{ opacity: 0, y: -8, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: .96 }}
