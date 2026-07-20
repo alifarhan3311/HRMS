@@ -22,7 +22,7 @@ if (useRedisStore) {
   }
 }
 
-function buildLimiter({ windowMs, max, message }) {
+function buildLimiter({ windowMs, max, message, prefix }) {
   const options = {
     windowMs,
     max,
@@ -39,6 +39,10 @@ function buildLimiter({ windowMs, max, message }) {
       // Adapt ioredis to the rate-limit-redis v4 command interface.
       const store = new RedisStore({
         sendCommand: (...args) => redisClient.call(...args),
+        // Every limiter needs its own Redis namespace. Without this,
+        // express-rate-limit sees the auth and API limiters incrementing the
+        // same key for one /auth request and raises ERR_ERL_DOUBLE_COUNT.
+        prefix,
       });
       options.store = store;
     } catch (err) {
@@ -50,12 +54,14 @@ function buildLimiter({ windowMs, max, message }) {
 }
 
 const authRateLimiter = buildLimiter({
+  prefix: 'hrms:rate-limit:auth:',
   windowMs: 15 * 60 * 1000,
   max: 20,
   message: 'Too many authentication attempts. Please try again later.',
 });
 
 const apiRateLimiter = buildLimiter({
+  prefix: 'hrms:rate-limit:api:',
   windowMs: 15 * 60 * 1000,
   max: 300,
   message: 'Too many requests. Please slow down.',

@@ -41,7 +41,10 @@ const app = express();
 // Trust proxy — required for correct client IPs and secure cookies when
 // running behind a reverse proxy / load balancer (nginx, ALB, Cloudflare).
 // -------------------------------------------------------------------------
-app.set('trust proxy', 1);
+const configuredProxyHops = Number.parseInt(process.env.TRUST_PROXY_HOPS || '1', 10);
+app.set('trust proxy', Number.isInteger(configuredProxyHops) && configuredProxyHops >= 0
+  ? configuredProxyHops
+  : 1);
 
 // -------------------------------------------------------------------------
 // Security headers
