@@ -4,6 +4,7 @@
  * Tabs: Personal Info → Contact → Employment → Professional → Account
  */
 import { useState, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   User, Phone, Briefcase, GraduationCap, Lock,
@@ -14,6 +15,7 @@ import Button from '../../../components/ui/Button';
 import { ModalFooter } from '../../../components/ui/Modal';
 import { useListShiftsQuery } from '../../shifts/api/shifts.api';
 import { toast } from '../../../utils/toast';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 const TABS = [
   { id: 'personal', label: 'Personal', icon: User },
@@ -87,8 +89,12 @@ export default function EmployeeForm({
   initial = null, onSubmit, onClose, isLoading, managers = [], teamLeads = [], allowedRoles = DEFAULT_ROLES,
 }) {
   const isEdit = !!initial;
+  const { user } = useSelector((state) => state.auth);
   const [activeTab, setActiveTab] = useState('personal');
-  const [form, setForm] = useState(EMPTY_FORM);
+  const draftKey = isEdit ? null : `hrms:draft:employee:create:${user?.companyId || user?.id || 'user'}`;
+  const [form, setForm, clearDraft] = useFormDraft(draftKey, EMPTY_FORM, {
+    exclude: ['password', 'confirmPassword'],
+  });
   const [errors, setErrors] = useState({});
   const [skillInput, setSkillInput] = useState('');
   const {
@@ -182,7 +188,7 @@ export default function EmployeeForm({
     return validationErrors;
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
     const validationErrors = validate();
     const invalidFields = Object.keys(validationErrors);
@@ -211,7 +217,8 @@ export default function EmployeeForm({
     payload.managerId = payload.managerId || null;
     payload.teamLeadId = payload.teamLeadId || null;
     payload.shiftId = payload.shiftId || null;
-    onSubmit(payload);
+    const saved = await onSubmit(payload);
+    if (saved !== false) clearDraft();
   }
 
   const tabIndex = TABS.findIndex((t) => t.id === activeTab);

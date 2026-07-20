@@ -144,8 +144,10 @@ export default function EmployeesListPage() {
       await createEmployee(payload).unwrap();
       toast.success('Employee created successfully');
       setFormOpen(false);
+      return true;
     } catch (err) {
       toast.error(err?.data?.error?.message || 'Failed to create employee');
+      return false;
     }
   }
 
