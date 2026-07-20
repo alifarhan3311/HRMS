@@ -99,36 +99,23 @@ node check-imports.cjs
 The API requires valid environment secrets and running MongoDB/Redis services for
 end-to-end execution.
 
-## Production deployment (Vercel + Render)
+## Production deployment (Cloud / Kubernetes)
 
-The React/Vite frontend is configured for Vercel in `client/vercel.json`. Set the
-Vercel project Root Directory to `client`, then add these production variables:
+The production frontend and backend run as long-lived cloud containers. The
+frontend Nginx service proxies `/api/` and `/socket.io/` to the Kubernetes
+`backend-svc`, keeping authentication and realtime traffic on the same public
+origin:
 
 ```text
 VITE_API_BASE_URL=/api/v1
-VITE_SOCKET_URL=https://YOUR-VERCEL-FRONTEND-HOST
-VITE_REALTIME_ENABLED=false
+VITE_SOCKET_URL=https://www.mhcirclesolutions.com
+VITE_REALTIME_ENABLED=true
 ```
 
-The Express API, HR automation process, and Socket.IO server require a long-running
-Node service. A Render Blueprint is included at `render.yaml`. Before creating the
-Blueprint, provision MongoDB Atlas and Redis, then provide `MONGO_URI`, `REDIS_URL`,
-the three 64-character hexadecimal secrets, and the final Vercel URL as
-`CORS_ALLOWED_ORIGINS`. Production cookies default to `SameSite=None; Secure` so
-authentication works when Vercel and the API use different domains.
-
-Deploy the backend first and update the external API and Socket.IO destinations in
-`client/vercel.json`. Deploy the frontend with the same-origin variables above,
-then update the backend's `CORS_ALLOWED_ORIGINS` with the exact Vercel production
-origin and redeploy it. The proxy keeps HttpOnly authentication cookies on the
-frontend origin instead of relying on third-party cookies across two `vercel.app`
-deployments.
-
-Keep `VITE_REALTIME_ENABLED=false` when the existing Express backend is deployed
-as a Vercel function; the app continues to poll notifications every 60 seconds.
-For Socket.IO and consistently fast dashboard requests, deploy the backend with
-the included Render Blueprint and enable realtime after configuring its public
-URL and cookie/domain strategy.
+Set `CORS_ALLOWED_ORIGINS=https://mhcirclesolutions.com,https://www.mhcirclesolutions.com`
+on the backend. The frontend container must be rebuilt whenever a `VITE_*` build
+variable changes. MongoDB, Redis, the Express API, HR automation, and Socket.IO
+remain on the cloud/Kubernetes deployment; Railway is not part of production.
 
 ## Next priorities
 

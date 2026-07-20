@@ -23,7 +23,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true, // send/receive HttpOnly cookies cross-origin
-  // Chained Vercel deployments and a sleeping Atlas free-tier cluster can
+  // Cloud proxy hops and a sleeping database cluster can
   // take 30+ seconds on the first request. Keep the client alive long enough
   // to receive the real API response instead of reporting a false network
   // failure during a cold start.

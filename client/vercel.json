@@ -6,7 +6,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://hrms-production-f56d.up.railway.app/api/:path*"
+      "destination": "https://www.mhcirclesolutions.com/api/:path*"
     },
     {
       "source": "/(.*)",

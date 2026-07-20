@@ -24,7 +24,7 @@ async function start() {
   });
 
   // Bind the HTTP port before waiting for external services. This keeps the
-  // Railway liveness endpoint responsive during a slow/transient Atlas
+  // cloud liveness endpoint responsive during a slow/transient database
   // connection instead of exposing a platform-level 502 while booting.
   connectDatabase()
     .then(() => {

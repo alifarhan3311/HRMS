@@ -11,7 +11,7 @@ const logger = require('../utils/logger');
 let socketServer = null;
 
 function initSocket(httpServer) {
-  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || '')
+  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || 'https://mhcirclesolutions.com,https://www.mhcirclesolutions.com')
     .split(',')
     .map(origin => origin.trim())
     .filter(Boolean);
