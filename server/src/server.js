@@ -51,6 +51,14 @@ async function start() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    status: "OK",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
 start().catch((err) => {
   logger.error('[server] Fatal startup error', { error: err.message });
   process.exit(1);
