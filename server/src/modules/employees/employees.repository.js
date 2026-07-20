@@ -4,6 +4,7 @@
  * Mongoose model directly.
  */
 const Employee = require('./employees.model');
+const EmployeeSequence = require('./employeeSequence.model');
 
 async function create(data) {
   return Employee.create(data);
@@ -12,7 +13,8 @@ async function create(data) {
 async function findById(id) {
   return Employee.findById(id)
     .populate('managerId', 'fullName employeeCode designation')
-    .populate('teamLeadId', 'fullName employeeCode designation');
+    .populate('teamLeadId', 'fullName employeeCode designation')
+    .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive');
 }
 
 async function findByEmail(email, companyId) {
@@ -35,6 +37,7 @@ async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' 
       .select('-passwordHash -__v')
       .populate('managerId', 'fullName employeeCode')
       .populate('teamLeadId', 'fullName employeeCode')
+      .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive')
       .sort(sort)
       .skip(skip)
       .limit(limit),
@@ -64,6 +67,27 @@ async function clearReportingReferences(id) {
 
 async function countByCompany(companyId) {
   return Employee.countDocuments({ companyId });
+}
+
+async function nextSequence(companyId) {
+  let sequence;
+  try {
+    sequence = await EmployeeSequence.findOneAndUpdate(
+      { companyId },
+      { $inc: { value: 1 } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+  } catch (error) {
+    // Two first employees can race to create the company counter. The unique
+    // company index elects one insert; the other safely increments it here.
+    if (error?.code !== 11000) throw error;
+    sequence = await EmployeeSequence.findOneAndUpdate(
+      { companyId },
+      { $inc: { value: 1 } },
+      { new: true }
+    );
+  }
+  return sequence.value;
 }
 
 async function getDistinctDepartments(companyId) {
@@ -97,6 +121,7 @@ module.exports = {
   deleteById,
   clearReportingReferences,
   countByCompany,
+  nextSequence,
   getDistinctDepartments,
   getStats,
 };

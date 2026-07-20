@@ -13,7 +13,6 @@ const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 
 const createSchema = Joi.object({
   // Identity
-  employeeCode: Joi.string().trim().max(20).required(),
   fullName: Joi.string().trim().min(2).max(100).required(),
   fatherName: Joi.string().trim().max(100).optional().allow(''),
   cnic: Joi.string()
@@ -21,10 +20,10 @@ const createSchema = Joi.object({
     .pattern(/^\d{5}-\d{7}-\d$/)
     .required()
     .messages({ 'string.pattern.base': 'CNIC must be in format XXXXX-XXXXXXX-X' }),
-  dateOfBirth: Joi.date().max('now').optional(),
-  gender: Joi.string().valid(...GENDERS).optional(),
-  maritalStatus: Joi.string().valid(...MARITAL_STATUSES).optional(),
-  bloodGroup: Joi.string().valid(...BLOOD_GROUPS).optional(),
+  dateOfBirth: Joi.date().max('now').empty('').optional(),
+  gender: Joi.string().valid(...GENDERS).empty('').optional(),
+  maritalStatus: Joi.string().valid(...MARITAL_STATUSES).empty('').optional(),
+  bloodGroup: Joi.string().valid(...BLOOD_GROUPS).empty('').optional(),
 
   // Contact
   email: Joi.string().email().lowercase().required(),
@@ -38,6 +37,7 @@ const createSchema = Joi.object({
   designation: Joi.string().trim().max(100).optional().allow(''),
   managerId: Joi.string().hex().length(24).optional().allow(null, ''),
   teamLeadId: Joi.string().hex().length(24).optional().allow(null, ''),
+  shiftId: Joi.string().hex().length(24).required(),
   role: Joi.string().valid(...ROLES).required(),
   status: Joi.string().valid(...STATUSES).optional(),
 
@@ -50,7 +50,6 @@ const createSchema = Joi.object({
   experience: Joi.string().trim().max(500).optional().allow(''),
 
   // Cards
-  employeeCardNumber: Joi.string().trim().max(50).optional().allow(''),
   insuranceCardNumber: Joi.string().trim().max(50).optional().allow(''),
 
   // Initial password (for account creation)
@@ -68,10 +67,10 @@ const updateSchema = Joi.object({
   fullName: Joi.string().trim().min(2).max(100).optional(),
   fatherName: Joi.string().trim().max(100).optional().allow(''),
   cnic: Joi.string().trim().pattern(/^\d{5}-\d{7}-\d$/).optional(),
-  dateOfBirth: Joi.date().max('now').optional(),
-  gender: Joi.string().valid(...GENDERS).optional(),
-  maritalStatus: Joi.string().valid(...MARITAL_STATUSES).optional(),
-  bloodGroup: Joi.string().valid(...BLOOD_GROUPS).optional(),
+  dateOfBirth: Joi.date().max('now').empty('').optional(),
+  gender: Joi.string().valid(...GENDERS).empty('').optional(),
+  maritalStatus: Joi.string().valid(...MARITAL_STATUSES).empty('').optional(),
+  bloodGroup: Joi.string().valid(...BLOOD_GROUPS).empty('').optional(),
   contactNumber: Joi.string().trim().max(20).optional().allow(''),
   address: Joi.string().trim().max(500).optional().allow(''),
   emergencyContact: Joi.string().trim().max(200).optional().allow(''),
@@ -79,10 +78,10 @@ const updateSchema = Joi.object({
   designation: Joi.string().trim().max(100).optional().allow(''),
   managerId: Joi.string().hex().length(24).optional().allow(null, ''),
   teamLeadId: Joi.string().hex().length(24).optional().allow(null, ''),
+  shiftId: Joi.string().hex().length(24).optional().allow(null, ''),
   skills: Joi.array().items(Joi.string().trim()).optional(),
   qualification: Joi.string().trim().max(200).optional().allow(''),
   experience: Joi.string().trim().max(500).optional().allow(''),
-  employeeCardNumber: Joi.string().trim().max(50).optional().allow(''),
   insuranceCardNumber: Joi.string().trim().max(50).optional().allow(''),
   profilePicture: Joi.string().uri().optional().allow(''),
 }).min(1);

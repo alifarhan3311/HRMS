@@ -12,6 +12,8 @@ import {
 import { Input, Select, Textarea } from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import { ModalFooter } from '../../../components/ui/Modal';
+import { useListShiftsQuery } from '../../shifts/api/shifts.api';
+import { toast } from '../../../utils/toast';
 
 const TABS = [
   { id: 'personal', label: 'Personal', icon: User },
@@ -24,7 +26,27 @@ const TABS = [
 const GENDERS = ['male', 'female', 'other'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
-const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin'];
+const DEFAULT_ROLES = ['employee', 'team_lead', 'manager'];
+const TAB_FIELDS = {
+  personal: ['fullName', 'fatherName', 'cnic', 'dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'],
+  contact: ['email', 'contactNumber', 'address', 'emergencyContact'],
+  employment: ['joiningDate', 'department', 'designation', 'role', 'shiftId', 'currentSalary'],
+  professional: ['qualification', 'experience'],
+  account: ['password', 'confirmPassword'],
+};
+const FIELD_LABELS = {
+  fullName: 'Full Name',
+  cnic: 'CNIC',
+  dateOfBirth: 'Date of Birth',
+  email: 'Email Address',
+  contactNumber: 'Contact Number',
+  joiningDate: 'Joining Date',
+  role: 'Role',
+  shiftId: 'Assigned Shift',
+  currentSalary: 'Current Salary',
+  password: 'Initial Password',
+  confirmPassword: 'Confirm Password',
+};
 
 const EMPTY_FORM = {
   // Personal
@@ -48,6 +70,7 @@ const EMPTY_FORM = {
   role: 'employee',
   managerId: '',
   teamLeadId: '',
+  shiftId: '',
   employeeCardNumber: '',
   insuranceCardNumber: '',
   currentSalary: '',
@@ -60,12 +83,30 @@ const EMPTY_FORM = {
   confirmPassword: '',
 };
 
-export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoading, managers = [], teamLeads = [] }) {
+export default function EmployeeForm({
+  initial = null, onSubmit, onClose, isLoading, managers = [], teamLeads = [], allowedRoles = DEFAULT_ROLES,
+}) {
   const isEdit = !!initial;
   const [activeTab, setActiveTab] = useState('personal');
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [skillInput, setSkillInput] = useState('');
+  const {
+    data: shiftsData,
+    isLoading: shiftsLoading,
+    isError: shiftsError,
+    refetch: refetchShifts,
+  } = useListShiftsQuery({ active: true });
+  const shifts = shiftsData?.data || [];
+
+  // New employees must always have a concrete shift. Select the first active
+  // company shift as soon as the async list becomes available.
+  useEffect(() => {
+    if (!isEdit && !form.shiftId && shifts.length > 0) {
+      setForm((previous) => ({ ...previous, shiftId: shifts[0]._id }));
+      setErrors((previous) => ({ ...previous, shiftId: '' }));
+    }
+  }, [form.shiftId, isEdit, shifts]);
 
   // Populate form in edit mode
   useEffect(() => {
@@ -77,6 +118,7 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
         joiningDate: initial.joiningDate ? initial.joiningDate.substring(0, 10) : '',
         managerId: initial.managerId?._id || initial.managerId || '',
         teamLeadId: initial.teamLeadId?._id || initial.teamLeadId || '',
+        shiftId: initial.shiftId?._id || initial.shiftId || '',
         skills: initial.skills || [],
         password: '',
         confirmPassword: '',
@@ -102,48 +144,73 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
   }
 
   function validate() {
-    const e = {};
-    if (!form.fullName.trim()) e.fullName = 'Full name is required';
-    if (!form.email.trim()) e.email = 'Email is required';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) e.email = 'Invalid email format';
-    if (!form.joiningDate) e.joiningDate = 'Joining date is required';
-    if (!isEdit) {
-      if (!form.employeeCode.trim()) e.employeeCode = 'Employee code is required';
-      if (!form.password) e.password = 'Password is required';
-      else if (form.password.length < 8) e.password = 'Minimum 8 characters';
-      else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(form.password))
-        e.password = 'Need uppercase, lowercase, and number';
-      if (form.password !== form.confirmPassword) e.confirmPassword = 'Passwords do not match';
+    const validationErrors = {};
+    const fullName = form.fullName.trim();
+    const email = form.email.trim();
+    const cnic = form.cnic.trim();
+
+    if (!fullName) validationErrors.fullName = 'Full name is required';
+    else if (fullName.length < 2) validationErrors.fullName = 'Full name must contain at least 2 characters';
+
+    if (!cnic) validationErrors.cnic = 'CNIC is required';
+    else if (!/^\d{5}-\d{7}-\d$/.test(cnic)) validationErrors.cnic = 'Use format XXXXX-XXXXXXX-X';
+
+    if (!email) validationErrors.email = 'Email address is required';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) validationErrors.email = 'Enter a valid email address';
+
+    if (form.dateOfBirth && new Date(form.dateOfBirth) > new Date()) {
+      validationErrors.dateOfBirth = 'Date of birth cannot be in the future';
     }
-    if (form.cnic && !/^\d{5}-\d{7}-\d$/.test(form.cnic))
-      e.cnic = 'Format: XXXXX-XXXXXXX-X';
-    setErrors(e);
-    return Object.keys(e).length === 0;
+    if (form.contactNumber && !/^[+\d][\d\s()-]{6,19}$/.test(form.contactNumber.trim())) {
+      validationErrors.contactNumber = 'Enter a valid contact number';
+    }
+    if (!form.joiningDate) validationErrors.joiningDate = 'Joining date is required';
+    if (!form.role || !allowedRoles.includes(form.role)) validationErrors.role = 'Select an allowed employee role';
+    if (!form.shiftId) validationErrors.shiftId = 'Shift assignment is required';
+    if (form.currentSalary !== '' && (!Number.isFinite(Number(form.currentSalary)) || Number(form.currentSalary) < 0)) {
+      validationErrors.currentSalary = 'Salary must be zero or a positive number';
+    }
+    if (!isEdit) {
+      if (!form.password) validationErrors.password = 'Initial password is required';
+      else if (form.password.length < 8) validationErrors.password = 'Password must contain at least 8 characters';
+      else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(form.password))
+        validationErrors.password = 'Include uppercase, lowercase and a number';
+      if (!form.confirmPassword) validationErrors.confirmPassword = 'Please confirm the password';
+      else if (form.password !== form.confirmPassword) validationErrors.confirmPassword = 'Passwords do not match';
+    }
+    setErrors(validationErrors);
+    return validationErrors;
   }
 
-  function handleSubmit(e) {
-    e.preventDefault();
-    if (!validate()) {
-      // Navigate to first tab with error
-      const tabFieldMap = {
-        personal: ['fullName', 'fatherName', 'cnic', 'dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'],
-        contact: ['email', 'contactNumber', 'address', 'emergencyContact'],
-        employment: ['employeeCode', 'joiningDate', 'department', 'designation', 'role'],
-        professional: ['qualification', 'experience'],
-        account: ['password', 'confirmPassword'],
-      };
-      for (const [tab, fields] of Object.entries(tabFieldMap)) {
-        if (fields.some((f) => errors[f])) { setActiveTab(tab); break; }
+  function handleSubmit(event) {
+    event.preventDefault();
+    const validationErrors = validate();
+    const invalidFields = Object.keys(validationErrors);
+    if (invalidFields.length > 0) {
+      for (const [tab, fields] of Object.entries(TAB_FIELDS)) {
+        if (fields.some((field) => validationErrors[field])) { setActiveTab(tab); break; }
       }
+      const labels = invalidFields.map((field) => FIELD_LABELS[field] || field);
+      const visibleLabels = labels.slice(0, 5).join(', ');
+      const remaining = labels.length > 5 ? ` and ${labels.length - 5} more` : '';
+      toast.error(`Please complete or correct: ${visibleLabels}${remaining}`);
       return;
     }
     const payload = { ...form };
     delete payload.confirmPassword;
+    delete payload.employeeCode;
+    delete payload.employeeCardNumber;
     if (isEdit) delete payload.password;
+    // Optional date/enum fields must be omitted when blank. Sending an empty
+    // string makes strict API validators treat them as invalid supplied data.
+    ['dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'].forEach((field) => {
+      if (payload[field] === '') delete payload[field];
+    });
     // Optional MongoDB references must be null (not an empty string) when the
     // user chooses "No Manager" or "No Team Lead".
     payload.managerId = payload.managerId || null;
     payload.teamLeadId = payload.teamLeadId || null;
+    payload.shiftId = payload.shiftId || null;
     onSubmit(payload);
   }
 
@@ -157,18 +224,20 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col h-full">
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col h-full">
       {/* Tab Navigation */}
       <div className="flex gap-1 px-6 pt-4 pb-0 border-b border-border overflow-x-auto shrink-0">
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
+          const hasError = TAB_FIELDS[tab.id].some((field) => errors[field]);
           return (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium rounded-t-lg border-b-2 transition-all whitespace-nowrap
+                ${hasError ? 'text-destructive' : ''}
                 ${isActive
                   ? 'border-primary text-primary bg-primary/5'
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-accent'
@@ -176,6 +245,7 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
             >
               <Icon className="h-3.5 w-3.5" />
               {tab.label}
+              {hasError && <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-label="Contains errors" />}
             </button>
           );
         })}
@@ -211,7 +281,7 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
                   error={errors.fatherName}
                 />
                 <Input
-                  label="CNIC"
+                  label="CNIC" required
                   placeholder="42101-1234567-1"
                   value={form.cnic}
                   onChange={(e) => set('cnic', e.target.value)}
@@ -298,12 +368,9 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
             {activeTab === 'employment' && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input
-                  label="Employee Code" required={!isEdit}
-                  placeholder="ENG0001"
-                  value={form.employeeCode}
-                  onChange={(e) => set('employeeCode', e.target.value)}
-                  error={errors.employeeCode}
-                  disabled={isEdit}
+                  label="Employee Code"
+                  value={isEdit ? form.employeeCode : 'Generated automatically after save'}
+                  disabled
                 />
                 <Input
                   label="Joining Date" required type="date"
@@ -327,19 +394,48 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
                   label="Role" required
                   value={form.role}
                   onChange={(e) => set('role', e.target.value)}
+                  error={errors.role}
                 >
-                  {ROLES.map((r) => (
+                  {allowedRoles.map((r) => (
                     <option key={r} value={r}>
                       {r.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                     </option>
                   ))}
                 </Select>
+                <Select
+                  label="Assigned Shift" required
+                  value={form.shiftId}
+                  onChange={(e) => set('shiftId', e.target.value)}
+                  error={errors.shiftId}
+                  disabled={shiftsLoading || shiftsError || shifts.length === 0}
+                >
+                  <option value="">
+                    {shiftsLoading ? 'Loading shifts...' : shifts.length ? 'Select a shift' : 'No active shifts available'}
+                  </option>
+                  {shifts.map((shift) => (
+                    <option key={shift._id} value={shift._id}>
+                      {shift.name} ({shift.startTime} - {shift.endTime})
+                    </option>
+                  ))}
+                </Select>
+                {shiftsError && (
+                  <button type="button" onClick={refetchShifts}
+                    className="text-left text-xs font-medium text-destructive hover:underline">
+                    Unable to load shifts. Click to retry.
+                  </button>
+                )}
+                {!shiftsLoading && !shiftsError && shifts.length === 0 && (
+                  <p className="text-xs text-destructive">
+                    Create an active 8-hour shift in Settings → Shifts before adding an employee.
+                  </p>
+                )}
                 <Input
                   label="Current Salary (PKR)"
                   placeholder="50000"
                   type="number"
                   value={form.currentSalary}
                   onChange={(e) => set('currentSalary', e.target.value)}
+                  error={errors.currentSalary}
                 />
                 {managers.length > 0 && (
                   <Select
@@ -367,9 +463,8 @@ export default function EmployeeForm({ initial = null, onSubmit, onClose, isLoad
                 )}
                 <Input
                   label="Employee Card Number"
-                  placeholder="EC-00123"
-                  value={form.employeeCardNumber}
-                  onChange={(e) => set('employeeCardNumber', e.target.value)}
+                  value={isEdit ? (form.employeeCardNumber || 'Not assigned') : 'Generated automatically after save'}
+                  disabled
                 />
                 <Input
                   label="Insurance Card Number"

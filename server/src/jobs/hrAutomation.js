@@ -25,18 +25,7 @@ function endOfDay(value = new Date()) {
   return date;
 }
 
-function mostRecentAnniversary(joiningDate, now) {
-  const joined = new Date(joiningDate);
-  let year = now.getFullYear();
-  let anniversary = new Date(year, joined.getMonth(), joined.getDate());
-  if (anniversary > now) {
-    year -= 1;
-    anniversary = new Date(year, joined.getMonth(), joined.getDate());
-  }
-  return { year, anniversary };
-}
-
-async function processLeaveAnniversaries(now = new Date()) {
+async function processCalendarYearLeaveCycles(now = new Date()) {
   const employees = await Employee.find({
     status: 'active',
     joiningDate: { $lte: now },
@@ -45,15 +34,32 @@ async function processLeaveAnniversaries(now = new Date()) {
   let updated = 0;
   const policyCache = new Map();
   for (const employee of employees) {
-    const { year, anniversary } = mostRecentAnniversary(employee.joiningDate, now);
-    const joiningYear = new Date(employee.joiningDate).getFullYear();
-    if (year <= joiningYear || (employee.leaveCycle?.lastProcessedYear || 0) >= year) continue;
-
     const companyKey = String(employee.companyId);
     if (!policyCache.has(companyKey)) {
       policyCache.set(companyKey, await settingsService.getPolicy(employee.companyId));
     }
     const policy = policyCache.get(companyKey).leavePolicy;
+    const year = now.getFullYear();
+
+    // Migrate legacy joining-anniversary cycles into a clean current-year
+    // baseline. Their old carry is not valid under the calendar-year policy.
+    if (employee.leaveCycle?.basis !== 'calendar_year') {
+      for (const type of BALANCE_TYPES) {
+        employee.set(`leaveBalance.${type}.available`, policy.entitlements[type] || 0);
+      }
+      employee.leaveCycle = {
+        basis: 'calendar_year',
+        lastProcessedYear: year,
+        lastProcessedAt: now,
+        nextResetDate: new Date(Date.UTC(year + 1, 0, 1)),
+        carriedForward: {},
+      };
+      await employee.save();
+      updated += 1;
+      continue;
+    }
+
+    if ((employee.leaveCycle?.lastProcessedYear || 0) >= year) continue;
 
     const carriedForward = {};
     for (const type of BALANCE_TYPES) {
@@ -68,9 +74,10 @@ async function processLeaveAnniversaries(now = new Date()) {
     }
 
     employee.leaveCycle = {
+      basis: 'calendar_year',
       lastProcessedYear: year,
       lastProcessedAt: now,
-      nextAnniversary: new Date(year + 1, anniversary.getMonth(), anniversary.getDate()),
+      nextResetDate: new Date(Date.UTC(year + 1, 0, 1)),
       carriedForward,
     };
     await employee.save();
@@ -80,16 +87,19 @@ async function processLeaveAnniversaries(now = new Date()) {
       companyId: employee.companyId,
       type: 'leave_balance_updated',
       title: 'Leave balance updated',
-      message: 'Your unused leaves were carried forward and the new leave cycle is now active.',
+      message: 'Your unused leaves were carried forward and the new calendar-year leave cycle is now active.',
       link: '/leaves',
       metadata: { cycleYear: year, carriedForward },
-      dedupeKey: `leave-anniversary:${employee._id}:${year}`,
+      dedupeKey: `leave-calendar-year:${employee._id}:${year}`,
     });
     updated += 1;
   }
 
   return updated;
 }
+
+// Backwards-compatible export name for any existing callers.
+const processLeaveAnniversaries = processCalendarYearLeaveCycles;
 
 async function reconcileAttendance(now = new Date()) {
   const employees = await Employee.find({ status: 'active' })
@@ -109,7 +119,7 @@ async function reconcileAttendance(now = new Date()) {
     const date = startOfDay(new Date(now.getTime() - daysAgo * DAY_MS));
     const dayEnd = endOfDay(date);
     const [holidays, approvedLeaves] = await Promise.all([
-      Holiday.find({ date: { $gte: date, $lte: dayEnd } }).select('companyId'),
+      Holiday.find({ date: { $gte: date, $lte: dayEnd }, status: 'confirmed' }).select('companyId'),
       LeaveRequest.find({
         status: 'approved',
         startDate: { $lte: dayEnd },
@@ -203,7 +213,7 @@ async function sendMissingLeaveApplicationReminders(now = new Date()) {
 }
 
 async function runHrAutomation(now = new Date()) {
-  const leaveCyclesUpdated = await processLeaveAnniversaries(now);
+  const leaveCyclesUpdated = await processCalendarYearLeaveCycles(now);
   const attendanceCreated = await reconcileAttendance(now);
   const remindersSent = await sendMissingLeaveApplicationReminders(now);
   const result = { leaveCyclesUpdated, attendanceCreated, remindersSent };
@@ -232,6 +242,7 @@ function startHrAutomation() {
 }
 
 module.exports = {
+  processCalendarYearLeaveCycles,
   processLeaveAnniversaries,
   reconcileAttendance,
   sendMissingLeaveApplicationReminders,

@@ -1,4 +1,42 @@
 const repository = require('./companySettings.repository');
+const Employee = require('../employees/employees.model');
+
+const BALANCE_TYPES = ['paid', 'casual', 'sick', 'annual'];
+
+async function syncEmployeeEntitlements(companyId, entitlements) {
+  const availableFields = Object.fromEntries(BALANCE_TYPES.map((type) => [
+    `leaveBalance.${type}.available`,
+    {
+      $add: [
+        Number(entitlements[type] || 0),
+        {
+          $cond: [
+            {
+              $and: [
+                { $eq: ['$leaveCycle.basis', 'calendar_year'] },
+                {
+                  $gt: [
+                    { $ifNull: ['$leaveCycle.lastProcessedYear', 0] },
+                    { $year: '$joiningDate' },
+                  ],
+                },
+              ],
+            },
+            { $ifNull: [`$leaveCycle.carriedForward.${type}`, 0] },
+            0,
+          ],
+        },
+      ],
+    },
+  ]));
+
+  // A policy change affects the current entitlement of every employee in the
+  // company. Keep used days and valid calendar-year carry-forward untouched.
+  await Employee.updateMany(
+    { companyId },
+    [{ $set: availableFields }]
+  );
+}
 
 function publicSettings(document) {
   const settings = document.toObject({ getters: true });
@@ -20,7 +58,7 @@ async function getPolicy(companyId) {
 
 async function updateSettings(payload, actor) {
   const changes = { updatedBy: actor.id };
-  for (const section of ['company', 'timing', 'leavePolicy', 'notifications', 'security']) {
+  for (const section of ['company', 'holidayPolicy', 'timing', 'leavePolicy', 'notifications', 'security']) {
     if (payload[section]) changes[section] = payload[section];
   }
 
@@ -38,7 +76,11 @@ async function updateSettings(payload, actor) {
     }
   }
 
-  return publicSettings(await repository.update(actor.companyId, changes));
+  const updated = await repository.update(actor.companyId, changes);
+  if (payload.leavePolicy?.entitlements) {
+    await syncEmployeeEntitlements(actor.companyId, payload.leavePolicy.entitlements);
+  }
+  return publicSettings(updated);
 }
 
 module.exports = { getSettings, getPolicy, updateSettings };

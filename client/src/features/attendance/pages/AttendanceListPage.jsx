@@ -45,9 +45,9 @@ const STATUS_STYLES = {
   weekend:  { label: 'Weekend',  variant: 'gray',   dot: 'bg-gray-300' },
 };
 
-function fmtTime(d) {
+function fmtTime(d, timeZone) {
   if (!d) return '—';
-  return new Date(d).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', ...(timeZone && { timeZone }) });
 }
 function fmtDate(d) {
   if (!d) return '—';
@@ -93,8 +93,9 @@ function SignInWidget({ user }) {
   }
 
   const now = new Date();
-  const timeStr = now.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const dateStr = now.toLocaleDateString('en-PK', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const timeZone = record?.shiftTimezone;
+  const timeStr = now.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit', ...(timeZone && { timeZone }) });
+  const dateStr = now.toLocaleDateString('en-CA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', ...(timeZone && { timeZone }) });
 
   return (
     <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
@@ -103,12 +104,19 @@ function SignInWidget({ user }) {
         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Today</p>
         <p className="text-3xl font-bold tabular-nums">{timeStr}</p>
         <p className="text-sm text-muted-foreground mt-0.5">{dateStr}</p>
+        {timeZone && <p className="mt-0.5 text-xs text-muted-foreground">Company time · {timeZone}</p>}
+        {record?.shiftName && (
+          <p className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+            <Clock className="h-4 w-4" /> {record.shiftName}: {record.shiftStartTime} – {record.shiftEndTime}
+            {record.shiftEndTime <= record.shiftStartTime ? ' (overnight)' : ''}
+          </p>
+        )}
         {record && (
           <div className="mt-3 flex flex-wrap gap-4 text-sm">
             {record.signInTime && (
               <span className="flex items-center gap-1.5 text-emerald-600">
                 <CheckCircle2 className="h-4 w-4" />
-                Sign In: {fmtTime(record.signInTime)}
+                Sign In: {fmtTime(record.signInTime, record.shiftTimezone)}
                 {record.lateMinutes > 0 && (
                   <span className="text-amber-500 text-xs">({record.lateMinutes}m late)</span>
                 )}
@@ -117,7 +125,7 @@ function SignInWidget({ user }) {
             {record.signOutTime && (
               <span className="flex items-center gap-1.5 text-blue-600">
                 <XCircle className="h-4 w-4" />
-                Sign Out: {fmtTime(record.signOutTime)}
+                Sign Out: {fmtTime(record.signOutTime, record.shiftTimezone)}
               </span>
             )}
             {record.totalHours > 0 && (
@@ -481,7 +489,7 @@ export default function AttendanceListPage() {
                       </div>
                       <Badge variant={st.variant}>{st.label}</Badge>
                       <div className="hidden sm:block text-xs text-muted-foreground space-y-0.5 text-right">
-                        <p>{fmtTime(rec.signInTime)} – {fmtTime(rec.signOutTime)}</p>
+                        <p>{fmtTime(rec.signInTime, rec.shiftTimezone)} – {fmtTime(rec.signOutTime, rec.shiftTimezone)}</p>
                         {rec.totalHours > 0 && <p>{rec.totalHours}h</p>}
                       </div>
                       {rec.lateMinutes > 0 && (

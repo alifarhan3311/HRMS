@@ -6,6 +6,7 @@
  */
 const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
+const CompanySettings = require('../modules/companySettings/companySettings.model');
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
@@ -31,4 +32,29 @@ async function sendMail({ to, subject, html }) {
   }
 }
 
-module.exports = { transporter, sendMail };
+async function sendCompanyMail(companyId, { to, subject, html }) {
+  const settings = await CompanySettings.findOne({ companyId });
+  const smtp = settings?.smtp;
+  const companyTransporter = smtp?.host && smtp?.user && smtp?.password
+    ? nodemailer.createTransport({
+      host: smtp.host,
+      port: Number(smtp.port) || 587,
+      secure: Boolean(smtp.secure),
+      auth: { user: smtp.user, pass: smtp.password },
+    })
+    : transporter;
+
+  try {
+    return await companyTransporter.sendMail({
+      from: smtp?.from || process.env.SMTP_FROM || '"HRMS" <no-reply@hrms.local>',
+      to,
+      subject,
+      html,
+    });
+  } catch (err) {
+    logger.error('[mailer] Failed to send company email', { companyId, to, subject, error: err.message });
+    throw err;
+  }
+}
+
+module.exports = { transporter, sendMail, sendCompanyMail };

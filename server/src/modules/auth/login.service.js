@@ -28,7 +28,9 @@ function signAccessToken(employee) {
 }
 
 async function login({ email, password, userAgent, ipAddress }) {
-  const employee = await Employee.findOne({ email }).select('+passwordHash');
+  const employee = await Employee.findOne({ email })
+    .select('+passwordHash')
+    .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive');
   if (!employee || employee.status !== 'active') {
     throw createHttpError(401, 'Invalid email or password.');
   }
@@ -60,6 +62,7 @@ async function login({ email, password, userAgent, ipAddress }) {
       role: employee.role,
       companyId: employee.companyId,
       branchId: employee.branchId,
+      shift: employee.shiftId || null,
     },
   };
 }
@@ -129,7 +132,8 @@ function createSocketToken(actor) {
 
 async function getCurrentUser(employeeId) {
   const employee = await Employee.findById(employeeId)
-    .select('fullName role companyId branchId status');
+    .select('fullName role companyId branchId status shiftId')
+    .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive');
 
   if (!employee || employee.status !== 'active') {
     throw createHttpError(401, 'Account no longer active.');
@@ -141,6 +145,7 @@ async function getCurrentUser(employeeId) {
     role: employee.role,
     companyId: employee.companyId,
     branchId: employee.branchId,
+    shift: employee.shiftId || null,
   };
 }
 

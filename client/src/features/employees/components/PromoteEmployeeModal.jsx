@@ -9,9 +9,11 @@ import { Input, Select, Textarea } from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import { Avatar } from '../../../components/ui/Avatar';
 
-const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin'];
+const DEFAULT_ROLES = ['employee', 'team_lead', 'manager'];
 
-export default function PromoteEmployeeModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
+export default function PromoteEmployeeModal({
+  employee, isOpen, onClose, onSubmit, isLoading, allowedRoles = DEFAULT_ROLES,
+}) {
   const [form, setForm] = useState({
     designation: '',
     department: employee?.department || '',
@@ -83,7 +85,7 @@ export default function PromoteEmployeeModal({ employee, isOpen, onClose, onSubm
               value={form.role}
               onChange={(e) => set('role', e.target.value)}
             >
-              {ROLES.map((r) => (
+              {allowedRoles.map((r) => (
                 <option key={r} value={r}>
                   {r.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
                 </option>

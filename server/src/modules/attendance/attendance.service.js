@@ -13,6 +13,7 @@ const repository = require('./attendance.repository');
 const Employee = require('../employees/employees.model');
 const settingsService = require('../companySettings/companySettings.service');
 const notificationService = require('../notifications/notifications.service');
+const { buildShiftSchedule, lateMinutes: calculateShiftLate, earlyLeaveMinutes: calculateShiftEarlyLeave } = require('./shiftTime');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -27,6 +28,9 @@ function splitTime(value, fallback) {
 
 function calcLateMinutes(signInTime, timing) {
   const signIn = new Date(signInTime);
+  if (timing.scheduledStart) {
+    return calculateShiftLate(signIn, { scheduledStart: new Date(timing.scheduledStart) }, timing.graceMinutes || 0);
+  }
   const officeStart = new Date(signIn);
   const start = splitTime(timing.officeStart, '09:00');
   officeStart.setHours(start.hours, start.minutes, 0, 0);
@@ -38,6 +42,9 @@ function calcLateMinutes(signInTime, timing) {
 
 function calcEarlyLeaveMinutes(signOutTime, timing) {
   const signOut = new Date(signOutTime);
+  if (timing.scheduledEnd) {
+    return calculateShiftEarlyLeave(signOut, { scheduledEnd: new Date(timing.scheduledEnd) });
+  }
   const officeEnd = new Date(signOut);
   const end = splitTime(timing.officeEnd, '18:00');
   officeEnd.setHours(end.hours, end.minutes, 0, 0);
@@ -55,22 +62,55 @@ function calcTotalHours(signIn, signOut) {
 // Sign In
 // -------------------------------------------------------------------------
 async function signIn({ employeeId, method = 'manual', notes }, actor) {
-  const today = startOfDay();
-  const existing = await repository.findByEmployeeAndDate(employeeId, today);
+  const now = new Date();
+  const { shift, schedule } = await resolveShiftContext(employeeId, actor.companyId, now);
+  if (!shift.workingDays.includes(schedule.dayOfWeek)) {
+    throw createHttpError(422, `${shift.name} is not scheduled on this day. Contact HR if you need an exception.`);
+  }
+  const signInWindowStart = new Date(schedule.scheduledStart.getTime() - (4 * 60 * 60 * 1000));
+  const signInWindowEnd = new Date(schedule.scheduledEnd.getTime() + (4 * 60 * 60 * 1000));
+  if (now < signInWindowStart || now > signInWindowEnd) {
+    throw createHttpError(422, `Sign-in is outside your ${shift.name} window (${shift.startTime} - ${shift.endTime}).`);
+  }
+  const [year, month, day] = schedule.shiftDate.split('-').map(Number);
+  const attendanceDate = new Date(Date.UTC(year, month - 1, day, 12));
+  const existing = await repository.findByEmployeeAndShiftDate(employeeId, schedule.shiftDate)
+    || await repository.findByEmployeeAndDate(employeeId, attendanceDate);
   if (existing && existing.signInTime) {
-    throw createHttpError(409, 'You have already signed in today.');
+    throw createHttpError(409, `You have already signed in for the ${schedule.shiftDate} shift.`);
   }
 
-  const now = new Date();
-  const settings = await settingsService.getPolicy(actor.companyId);
-  const lateMinutes = calcLateMinutes(now, settings.timing);
+  const lateMinutes = calcLateMinutes(now, {
+    scheduledStart: schedule.scheduledStart,
+    graceMinutes: shift.graceMinutes,
+  });
   const status = lateMinutes > 0 ? 'late' : 'present';
 
   const record = existing
-    ? await repository.updateById(existing._id, { signInTime: now, status, lateMinutes, method, notes })
+    ? await repository.updateById(existing._id, {
+        signInTime: now, status, lateMinutes, method, notes,
+        shiftDate: schedule.shiftDate,
+        shiftId: shift._id || undefined,
+        shiftName: shift.name,
+        shiftStartTime: shift.startTime,
+        shiftEndTime: shift.endTime,
+        shiftGraceMinutes: shift.graceMinutes,
+        scheduledStart: schedule.scheduledStart,
+        scheduledEnd: schedule.scheduledEnd,
+        shiftTimezone: schedule.timeZone,
+      })
     : await repository.create({
         employeeId,
-        date: today,
+        date: attendanceDate,
+        shiftDate: schedule.shiftDate,
+        shiftId: shift._id || undefined,
+        shiftName: shift.name,
+        shiftStartTime: shift.startTime,
+        shiftEndTime: shift.endTime,
+        shiftGraceMinutes: shift.graceMinutes,
+        scheduledStart: schedule.scheduledStart,
+        scheduledEnd: schedule.scheduledEnd,
+        shiftTimezone: schedule.timeZone,
         signInTime: now,
         status,
         lateMinutes,
@@ -101,14 +141,13 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
 // Sign Out
 // -------------------------------------------------------------------------
 async function signOut({ employeeId, notes }, actor) {
-  const today = startOfDay();
-  const record = await repository.findByEmployeeAndDate(employeeId, today);
-  if (!record) throw createHttpError(400, 'No sign-in record found for today.');
+  const record = await repository.findOpenByEmployee(employeeId);
+  if (!record) throw createHttpError(400, 'No open shift sign-in record was found.');
   if (record.signOutTime) throw createHttpError(409, 'You have already signed out today.');
 
   const now = new Date();
   const settings = await settingsService.getPolicy(actor.companyId);
-  const earlyLeaveMinutes = calcEarlyLeaveMinutes(now, settings.timing);
+  const earlyLeaveMinutes = calcEarlyLeaveMinutes(now, recordTiming(record, settings.timing));
   const totalHours = calcTotalHours(record.signInTime, now);
 
   const updated = await repository.updateById(record._id, {
@@ -124,9 +163,51 @@ async function signOut({ employeeId, notes }, actor) {
 // -------------------------------------------------------------------------
 // Today's Attendance for current user
 // -------------------------------------------------------------------------
-async function getTodayAttendance(employeeId) {
-  const today = startOfDay();
-  return repository.findByEmployeeAndDate(employeeId, today);
+async function getTodayAttendance(employeeId, actor) {
+  const openRecord = await repository.findOpenByEmployee(employeeId);
+  if (openRecord) return openRecord;
+  const { shift, schedule } = await resolveShiftContext(employeeId, actor.companyId);
+  const record = await repository.findByEmployeeAndShiftDate(employeeId, schedule.shiftDate);
+  if (record) return record;
+  return {
+    shiftDate: schedule.shiftDate,
+    shiftName: shift.name,
+    shiftStartTime: shift.startTime,
+    shiftEndTime: shift.endTime,
+    scheduledStart: schedule.scheduledStart,
+    scheduledEnd: schedule.scheduledEnd,
+    shiftTimezone: schedule.timeZone,
+  };
+}
+
+async function resolveShiftContext(employeeId, companyId, now = new Date()) {
+  const [employee, settings] = await Promise.all([
+    Employee.findOne({ _id: employeeId, companyId }).populate('shiftId'),
+    settingsService.getPolicy(companyId),
+  ]);
+  if (!employee) throw createHttpError(404, 'Employee not found.');
+  if (employee.shiftId && !employee.shiftId.isActive) {
+    throw createHttpError(422, 'Your assigned shift is inactive. Please contact HR.');
+  }
+  const shift = employee.shiftId || {
+    _id: null,
+    name: 'General Shift', code: 'GENERAL',
+    startTime: settings.timing.officeStart, endTime: settings.timing.officeEnd,
+    graceMinutes: settings.timing.graceMinutes,
+    workingDays: [0, 1, 2, 3, 4, 5, 6].filter(day => !settings.timing.weekendDays.includes(day)),
+    isActive: true,
+  };
+  const timeZone = settings.company?.timezone || 'Asia/Karachi';
+  return { employee, shift, schedule: buildShiftSchedule(now, shift, timeZone) };
+}
+
+function recordTiming(record, fallback) {
+  if (record.scheduledStart || record.scheduledEnd) return {
+    scheduledStart: record.scheduledStart,
+    scheduledEnd: record.scheduledEnd,
+    graceMinutes: record.shiftGraceMinutes || 0,
+  };
+  return fallback;
 }
 
 async function getAttendanceById(id) {
@@ -211,12 +292,12 @@ async function manualCorrection(id, payload, actor) {
 
   if (signInTime) {
     update.signInTime = correctedSignIn;
-    update.lateMinutes = calcLateMinutes(signInTime, settings.timing);
+    update.lateMinutes = calcLateMinutes(signInTime, recordTiming(record, settings.timing));
     update.status = update.lateMinutes > 0 ? 'late' : (status || 'present');
   }
   if (signOutTime) {
     update.signOutTime = correctedSignOut;
-    update.earlyLeaveMinutes = calcEarlyLeaveMinutes(signOutTime, settings.timing);
+    update.earlyLeaveMinutes = calcEarlyLeaveMinutes(signOutTime, recordTiming(record, settings.timing));
   }
   if ((signInTime || signOutTime) && correctedSignIn && correctedSignOut) {
     update.totalHours = calcTotalHours(correctedSignIn, correctedSignOut);
@@ -328,12 +409,12 @@ async function reviewRegularization(id, { action, remarks }, actor) {
       const correctedSignOut = record.regularization.requestedSignOutTime || record.signOutTime;
       if (correctedSignIn) {
         update.signInTime = correctedSignIn;
-        update.lateMinutes = calcLateMinutes(correctedSignIn, settings.timing);
+        update.lateMinutes = calcLateMinutes(correctedSignIn, recordTiming(record, settings.timing));
         update.status = update.lateMinutes > 0 ? 'late' : 'present';
       }
       if (correctedSignOut) {
         update.signOutTime = correctedSignOut;
-        update.earlyLeaveMinutes = calcEarlyLeaveMinutes(correctedSignOut, settings.timing);
+        update.earlyLeaveMinutes = calcEarlyLeaveMinutes(correctedSignOut, recordTiming(record, settings.timing));
       }
       if (correctedSignIn && correctedSignOut) {
         if (new Date(correctedSignOut) <= new Date(correctedSignIn)) {

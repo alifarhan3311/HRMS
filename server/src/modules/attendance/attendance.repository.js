@@ -21,6 +21,15 @@ async function findByEmployeeAndDate(employeeId, date) {
   return Attendance.findOne({ employeeId, date: { $gte: start, $lte: end } });
 }
 
+async function findByEmployeeAndShiftDate(employeeId, shiftDate) {
+  return Attendance.findOne({ employeeId, shiftDate });
+}
+
+async function findOpenByEmployee(employeeId) {
+  return Attendance.findOne({ employeeId, signInTime: { $exists: true }, signOutTime: { $exists: false } })
+    .sort({ signInTime: -1 });
+}
+
 async function findAll({ filter = {}, page = 1, limit = 30, sort = '-date' } = {}) {
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -80,6 +89,8 @@ module.exports = {
   create,
   findById,
   findByEmployeeAndDate,
+  findByEmployeeAndShiftDate,
+  findOpenByEmployee,
   findAll,
   updateById,
   getMonthlySummary,

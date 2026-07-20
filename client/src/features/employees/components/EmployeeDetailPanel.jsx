@@ -185,6 +185,7 @@ export default function EmployeeDetailPanel({
                 <InfoRow icon={Briefcase} label="Designation" value={employee.designation} />
                 <InfoRow icon={User} label="Manager" value={employee.managerId?.fullName} />
                 <InfoRow icon={User} label="Team Lead" value={employee.teamLeadId?.fullName} />
+                <InfoRow icon={Clock} label="Assigned Shift" value={employee.shiftId ? `${employee.shiftId.name} (${employee.shiftId.startTime} - ${employee.shiftId.endTime})` : 'General company timing'} />
                 <InfoRow icon={CreditCard} label="Employee Card" value={employee.employeeCardNumber} />
                 <InfoRow icon={Shield} label="Insurance Card" value={employee.insuranceCardNumber} />
               </Section>

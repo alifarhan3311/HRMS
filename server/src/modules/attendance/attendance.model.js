@@ -25,6 +25,15 @@ const attendanceSchema = new mongoose.Schema(
   {
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
     date: { type: Date, required: true },
+    shiftDate: { type: String },
+    shiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift' },
+    shiftName: { type: String },
+    shiftStartTime: { type: String },
+    shiftEndTime: { type: String },
+    shiftGraceMinutes: { type: Number },
+    scheduledStart: { type: Date },
+    scheduledEnd: { type: Date },
+    shiftTimezone: { type: String },
     signInTime: { type: Date },
     signOutTime: { type: Date },
     totalHours: { type: Number, default: 0 }, // calculated on signout
@@ -61,6 +70,10 @@ const attendanceSchema = new mongoose.Schema(
 
 // Composite unique index: one record per employee per day
 attendanceSchema.index({ employeeId: 1, date: 1 }, { unique: true });
+attendanceSchema.index(
+  { employeeId: 1, shiftDate: 1 },
+  { unique: true, partialFilterExpression: { shiftDate: { $type: 'string' } } }
+);
 attendanceSchema.index({ companyId: 1, date: 1 });
 attendanceSchema.index({ employeeId: 1, status: 1 });
 

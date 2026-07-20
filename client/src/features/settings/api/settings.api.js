@@ -8,7 +8,7 @@ export const settingsApi = api.injectEndpoints({
     }),
     updateCompanySettings: builder.mutation({
       query: (body) => ({ url: '/company-settings', method: 'PUT', body }),
-      invalidatesTags: ['Settings'],
+      invalidatesTags: ['Settings', 'Employees', 'Dashboard'],
     }),
   }),
   overrideExisting: false,

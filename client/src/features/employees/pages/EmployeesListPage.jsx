@@ -61,7 +61,17 @@ function TableSkeleton() {
 
 export default function EmployeesListPage() {
   const { user } = useSelector((s) => s.auth);
-  const canManage = ['admin', 'hr', 'super_admin'].includes(user?.role);
+  const canManage = ['hr', 'super_admin'].includes(user?.role);
+  const manageableRoles = user?.role === 'super_admin'
+    ? ['admin', 'hr', 'manager', 'team_lead', 'employee']
+    : user?.role === 'hr'
+      ? ['manager', 'team_lead', 'employee']
+      : [];
+  const canManageEmployee = (employee) => (
+    String(user?.id || user?._id) !== String(employee?._id)
+    && manageableRoles.includes(employee?.role)
+  );
+  const assignableRoles = manageableRoles;
 
   // Filters
   const [search, setSearch] = useState('');
@@ -171,7 +181,7 @@ export default function EmployeesListPage() {
         setDetailEmployee(null);
       }
     } catch (err) {
-      toast.error('Failed to update status');
+      toast.error(err?.data?.error?.message || 'Failed to update status');
     }
   }
 
@@ -181,7 +191,7 @@ export default function EmployeesListPage() {
       toast.success('Employee promoted successfully');
       setPromoteEmployee(null);
     } catch (err) {
-      toast.error('Failed to promote employee');
+      toast.error(err?.data?.error?.message || 'Failed to promote employee');
     }
   }
 
@@ -461,8 +471,8 @@ export default function EmployeesListPage() {
                         {actionMenuId === emp._id && (
                           <ActionMenu
                             employee={emp}
-                            canManage={canManage}
-                            canDelete={user?.role === 'super_admin'}
+                            canManage={canManageEmployee(emp)}
+                            canDelete={user?.role === 'super_admin' && canManageEmployee(emp)}
                             isSelf={String(user?.id || user?._id) === String(emp._id)}
                             anchorRect={actionMenuAnchor}
                             onView={() => openDetail(emp)}
@@ -537,6 +547,7 @@ export default function EmployeesListPage() {
       >
         <EmployeeForm
           initial={editEmployee}
+          allowedRoles={assignableRoles}
           onSubmit={editEmployee ? handleUpdate : handleCreate}
           onClose={() => { setFormOpen(false); setEditEmployee(null); }}
           isLoading={isCreating || isUpdating}
@@ -551,12 +562,13 @@ export default function EmployeesListPage() {
         onEdit={(emp) => { openEdit(emp); setDetailEmployee(null); }}
         onStatusChange={(emp, status) => { setStatusTarget({ employee: emp, newStatus: status }); setDetailEmployee(null); }}
         onPromote={(emp) => { setPromoteEmployee(emp); setDetailEmployee(null); }}
-        canManage={canManage}
+        canManage={canManageEmployee(detailEmployee)}
       />
 
       {/* Promote Modal */}
       <PromoteEmployeeModal
         employee={promoteEmployee}
+        allowedRoles={assignableRoles}
         isOpen={!!promoteEmployee}
         onClose={() => setPromoteEmployee(null)}
         onSubmit={handlePromote}

@@ -2,6 +2,7 @@ const Joi = require('joi');
 
 const time = Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/);
 const balanceTypes = ['paid', 'casual', 'sick', 'annual'];
+const leaveTypes = [...balanceTypes, 'maternity', 'paternity', 'unpaid'];
 const entitlementSchema = Joi.object(Object.fromEntries(
   balanceTypes.map((type) => [type, Joi.number().integer().min(0).max(365).required()])
 ));
@@ -15,6 +16,10 @@ const updateSchema = Joi.object({
     address: Joi.string().trim().max(500).allow('').optional(),
     timezone: Joi.string().trim().max(100).required(),
   }).optional(),
+  holidayPolicy: Joi.object({
+    country: Joi.string().valid('CA').required(),
+    province: Joi.string().valid('AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT').required(),
+  }).optional(),
   timing: Joi.object({
     officeStart: time.required(),
     officeEnd: time.required(),
@@ -22,6 +27,7 @@ const updateSchema = Joi.object({
     weekendDays: Joi.array().items(Joi.number().integer().min(0).max(6)).unique().required(),
   }).optional(),
   leavePolicy: Joi.object({
+    enabledTypes: Joi.array().items(Joi.string().valid(...leaveTypes)).unique().min(1).required(),
     entitlements: entitlementSchema.required(),
     carryForwardTypes: Joi.array().items(Joi.string().valid(...balanceTypes)).unique().required(),
     maxCarryForward: entitlementSchema.required(),

@@ -11,7 +11,10 @@ import {
   CalendarDays,
   FileWarning,
 } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
+  CartesianGrid, ResponsiveContainer, Tooltip, Legend,
+} from 'recharts';
 import StatCard from '../../../components/ui/StatCard';
 
 const CHART_COLORS = ['#C9971F', '#22c55e', '#f59e0b', '#ef4444', '#8B5E34'];
@@ -22,9 +25,13 @@ export default function HRDashboard({ data }) {
     value,
   }));
 
-  const leaveData = Object.entries(data.leaveSummary || {}).map(([name, value]) => ({
+  const leaveData = Object.entries(Array.isArray(data.leaveSummary) ? {} : (data.leaveSummary || {})).map(([name, value]) => ({
     name,
     value,
+  }));
+  const entitlementData = Object.entries(data.leaveEntitlements || {}).map(([name, days]) => ({
+    name: name.charAt(0).toUpperCase() + name.slice(1),
+    days,
   }));
 
   return (
@@ -63,7 +70,7 @@ export default function HRDashboard({ data }) {
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
         <motion.div className="glass-card p-5 lg:col-span-1">
           <h3 className="mb-4 font-semibold flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -118,7 +125,7 @@ export default function HRDashboard({ data }) {
         </motion.div>
 
         <motion.div className="glass-card p-5">
-          <h3 className="mb-2 font-semibold">Leave Summary</h3>
+          <h3 className="mb-2 font-semibold">Leave Requests This Month</h3>
           {leaveData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -133,6 +140,23 @@ export default function HRDashboard({ data }) {
             </ResponsiveContainer>
           ) : (
             <p className="text-sm text-muted-foreground py-8 text-center">No leave requests this month</p>
+          )}
+        </motion.div>
+
+        <motion.div className="glass-card p-5">
+          <h3 className="mb-2 font-semibold">Configured Leave Entitlements</h3>
+          {entitlementData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={entitlementData}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10 }} />
+                <Tooltip formatter={(value) => [`${value} days`, 'Entitlement']} />
+                <Bar dataKey="days" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-sm text-muted-foreground py-8 text-center">No leave types configured</p>
           )}
         </motion.div>
       </div>

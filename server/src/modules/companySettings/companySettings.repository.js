@@ -1,11 +1,18 @@
 const CompanySettings = require('./companySettings.model');
 
 async function getOrCreate(companyId) {
-  return CompanySettings.findOneAndUpdate(
+  const settings = await CompanySettings.findOneAndUpdate(
     { companyId },
     { $setOnInsert: { companyId } },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
+  // Earlier Canada-holiday work temporarily made the whole company timezone
+  // Canadian. Operations are Pakistan-based; migrate that accidental value.
+  if (settings.company?.timezone?.startsWith('America/')) {
+    settings.company.timezone = 'Asia/Karachi';
+    await settings.save();
+  }
+  return settings;
 }
 
 async function update(companyId, changes) {

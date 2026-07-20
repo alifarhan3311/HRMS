@@ -176,6 +176,7 @@ app.use('/api/v1/expenses', require('./modules/expenses/expenses.routes'));
 app.use('/api/v1/projects', require('./modules/projects/projects.routes'));
 app.use('/api/v1/dashboard', require('./modules/dashboard/dashboard.routes'));
 app.use('/api/v1/holidays', require('./modules/holidays/holidays.routes'));
+app.use('/api/v1/shifts', require('./modules/shifts/shifts.routes'));
 app.use('/api/v1/notifications', require('./modules/notifications/notifications.routes'));
 app.use('/api/v1/audit-logs', require('./modules/auditLogs/auditLogs.routes'));
 app.use('/api/v1/company-settings', require('./modules/companySettings/companySettings.routes'));

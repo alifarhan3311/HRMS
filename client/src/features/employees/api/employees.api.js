@@ -20,7 +20,7 @@ export const employeesApi = api.injectEndpoints({
     }),
     updateEmployee: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/employees/${id}`, method: 'PUT', body }),
-      invalidatesTags: (result, error, { id }) => [{ type: 'Employees', id }, 'Employees'],
+      invalidatesTags: (result, error, { id }) => [{ type: 'Employees', id }, 'Employees', 'Auth'],
     }),
     deleteEmployee: builder.mutation({
       query: (id) => ({ url: `/employees/${id}`, method: 'DELETE' }),

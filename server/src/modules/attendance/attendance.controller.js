@@ -24,7 +24,7 @@ const signOut = asyncHandler(async (req, res) => {
 });
 
 const today = asyncHandler(async (req, res) => {
-  const record = await service.getTodayAttendance(req.user.id);
+  const record = await service.getTodayAttendance(req.user.id, req.user);
   res.status(200).json({ success: true, data: record || null });
 });
 

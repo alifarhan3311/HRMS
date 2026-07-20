@@ -52,6 +52,12 @@ export default function EmployeeDashboard({ data }) {
             day: 'numeric',
           })}
         </p>
+        {data.assignedShift && (
+          <p className="mt-2 inline-flex items-center gap-2 rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+            <Clock className="h-4 w-4" /> {data.assignedShift.name}: {data.assignedShift.startTime} – {data.assignedShift.endTime}
+            {data.assignedShift.endTime <= data.assignedShift.startTime ? ' (overnight)' : ''}
+          </p>
+        )}
       </motion.div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -115,8 +121,11 @@ export default function EmployeeDashboard({ data }) {
           <div className="mt-3 grid grid-cols-2 gap-2">
             {(data.leaveSummary || []).map((l) => (
               <div key={l.type} className="rounded-lg bg-muted/50 px-3 py-2 text-xs">
-                <span className="font-medium capitalize">{l.type}</span>: {l.remaining} left /{' '}
-                {l.used} used
+                <div><span className="font-medium capitalize">{l.type}</span>: {l.remaining} left / {l.used} used</div>
+                <div className="mt-1 text-[10px] text-muted-foreground">
+                  Policy: {l.entitlement ?? l.available} days
+                  {l.carriedForward > 0 ? ` + ${l.carriedForward} carried` : ''}
+                </div>
               </div>
             ))}
           </div>

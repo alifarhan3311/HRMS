@@ -58,6 +58,7 @@ export default function ReportsPage() {
 
   const { data: attendanceData } = useListAttendanceQuery({ limit: 200, ...filters });
   const { data: leavesData }     = useListLeavesQuery({ limit: 200, ...filters });
+  const { data: leavesYearData } = useListLeavesQuery({ limit: 100, year: filters.year });
   const { data: payrollData }    = useListPayrollQuery({ limit: 200, year: filters.year });
   const { data: expensesData }   = useListExpensesQuery({ limit: 200 });
 
@@ -72,6 +73,15 @@ export default function ReportsPage() {
   const leaveByType = {};
   leaveRecords.forEach(r => { leaveByType[r.leaveType] = (leaveByType[r.leaveType] || 0) + (r.totalDays || 0); });
   const leaveChartData = Object.entries(leaveByType).map(([name, days]) => ({ name, days }));
+  const leaveByStatus = {};
+  leaveRecords.forEach(r => { leaveByStatus[r.status] = (leaveByStatus[r.status] || 0) + 1; });
+  const leaveStatusData = Object.entries(leaveByStatus).map(([name, value]) => ({ name, value }));
+  const leaveByMonth = Object.fromEntries(MONTHS.map(month => [month, 0]));
+  (leavesYearData?.items || []).forEach(r => {
+    const month = MONTHS[new Date(r.startDate).getUTCMonth()];
+    leaveByMonth[month] += Number(r.totalDays || 0);
+  });
+  const leaveTrendData = Object.entries(leaveByMonth).map(([month, days]) => ({ month, days }));
 
   // ── Payroll chart data ──
   const payrollRecords = payrollData?.items || [];
@@ -185,6 +195,42 @@ export default function ReportsPage() {
                 </BarChart>
               </ResponsiveContainer>
             )}
+          </motion.div>
+        )}
+
+        {/* Leave request status */}
+        {activeReport === 'leave' && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5">
+            <h3 className="font-semibold mb-4 flex items-center gap-2"><FileText className="h-4 w-4" /> Leave Requests by Status</h3>
+            {leaveStatusData.length === 0 ? (
+              <div className="h-52 flex items-center justify-center text-sm text-muted-foreground">No leave requests for selected period</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={leaveStatusData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45}
+                    outerRadius={80} paddingAngle={3} label={({ name, value }) => `${name}: ${value}`}>
+                    {leaveStatusData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </motion.div>
+        )}
+
+        {/* Yearly leave trend */}
+        {activeReport === 'leave' && (
+          <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 lg:col-span-2">
+            <h3 className="font-semibold mb-4 flex items-center gap-2"><TrendingUp className="h-4 w-4" /> Leave Days Trend — {filters.year}</h3>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={leaveTrendData}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={value => [`${value} days`, 'Leave']} />
+                <Line type="monotone" dataKey="days" stroke="#8b5cf6" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              </LineChart>
+            </ResponsiveContainer>
           </motion.div>
         )}
 

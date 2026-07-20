@@ -7,13 +7,17 @@
  *  - Approval flow for managers/HR
  *  - Cancel with confirm
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
   CalendarDays, Plus, CheckCircle2, XCircle, Clock, RefreshCw,
   ChevronLeft, ChevronRight, AlertCircle, Ban,
 } from 'lucide-react';
+import {
+  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis,
+  CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from 'recharts';
 import {
   useListLeavesQuery, useApplyLeaveMutation, useApproveLeaveMutation,
   useRejectLeaveMutation, useCancelLeaveMutation, useGetPendingApprovalsQuery,
@@ -30,7 +34,8 @@ import { Avatar } from '../../../components/ui/Avatar';
 import { Skeleton } from '../../../components/ui/Skeleton';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const LEAVE_TYPES = ['paid','casual','sick','annual','maternity','paternity','unpaid'];
+const DEFAULT_LEAVE_TYPES = ['paid', 'casual', 'sick', 'annual'];
+const CHART_COLORS = ['#C9971F', '#10b981', '#ef4444', '#64748b', '#8b5cf6', '#0ea5e9', '#f97316'];
 const STATUS_STYLES = {
   pending:   { label: 'Pending',   variant: 'yellow' },
   approved:  { label: 'Approved',  variant: 'green'  },
@@ -61,12 +66,17 @@ function LeaveBalanceCards({ balance }) {
             </p>
             <div className="flex items-end justify-between mb-2">
               <span className="text-2xl font-bold">{remaining}</span>
-              <span className="text-xs text-muted-foreground">{bal.used}/{bal.available}</span>
+              <span className="text-xs text-muted-foreground">Remaining</span>
             </div>
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
               <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1">{pct}% used</p>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+              <span>Policy: <strong className="text-foreground">{bal.entitlement ?? bal.available}</strong></span>
+              <span>Carried: <strong className="text-foreground">{bal.carriedForward || 0}</strong></span>
+              <span>Used: <strong className="text-foreground">{bal.used || 0}</strong></span>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Total balance: {bal.available} · {pct}% used</p>
           </motion.div>
         );
       })}
@@ -75,15 +85,22 @@ function LeaveBalanceCards({ balance }) {
 }
 
 // ─── Apply Leave Form ────────────────────────────────────────────────────────
-function ApplyLeaveForm({ onSubmit, onClose, isLoading }) {
+function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes }) {
   const [form, setForm] = useState({
-    leaveType: 'casual', startDate: '', endDate: '', reason: '', emergencyContact: '',
+    leaveType: leaveTypes[0] || '', startDate: '', endDate: '', reason: '', emergencyContact: '',
   });
   const [errors, setErrors] = useState({});
+  useEffect(() => {
+    if (!leaveTypes.includes(form.leaveType)) {
+      setForm((previous) => ({ ...previous, leaveType: leaveTypes[0] || '' }));
+    }
+  }, [form.leaveType, leaveTypes]);
+
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); if (errors[k]) setErrors(p => ({ ...p, [k]: '' })); }
 
   function validate() {
     const e = {};
+    if (!form.leaveType) e.leaveType = 'Leave type required';
     if (!form.startDate) e.startDate = 'Start date required';
     if (!form.endDate) e.endDate = 'End date required';
     if (form.endDate && form.startDate && form.endDate < form.startDate) e.endDate = 'End must be after start';
@@ -108,8 +125,9 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading }) {
   return (
     <form onSubmit={handleSubmit}>
       <div className="px-6 py-5 space-y-4">
-        <Select label="Leave Type" required value={form.leaveType} onChange={(e) => set('leaveType', e.target.value)}>
-          {LEAVE_TYPES.map(t => <option key={t} value={t}>{capitalize(t)} Leave</option>)}
+        <Select label="Leave Type" required value={form.leaveType} onChange={(e) => set('leaveType', e.target.value)}
+          error={errors.leaveType}>
+          {leaveTypes.map(t => <option key={t} value={t}>{capitalize(t)} Leave</option>)}
         </Select>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label="Start Date" required type="date" value={form.startDate}
@@ -189,8 +207,10 @@ export default function LeavesListPage() {
 
   const { data: empData } = useGetEmployeeByIdQuery(user?.id, { skip: !user?.id });
   const balance = empData?.data?.leaveBalance;
+  const enabledLeaveTypes = empData?.data?.enabledLeaveTypes || DEFAULT_LEAVE_TYPES;
 
   const { data, isLoading, isFetching, refetch } = useListLeavesQuery({ page, limit: 15, ...filters });
+  const { data: analyticsData } = useListLeavesQuery({ limit: 100, sort: '-createdAt' });
   const { data: pendingData } = useGetPendingApprovalsQuery(undefined, { skip: !isApprover });
   const [applyLeave, { isLoading: applying }] = useApplyLeaveMutation();
   const [approveLeave, { isLoading: approving }] = useApproveLeaveMutation();
@@ -201,6 +221,24 @@ export default function LeavesListPage() {
   const total = data?.total || 0;
   const totalPages = data?.totalPages || 1;
   const pending = pendingData?.data || [];
+  const analyticsLeaves = analyticsData?.items || [];
+  const balanceChartData = Object.entries(balance || {}).map(([type, values]) => ({
+    name: capitalize(type),
+    used: Number(values?.used || 0),
+    remaining: Math.max(Number(values?.available || 0) - Number(values?.used || 0), 0),
+  }));
+  const statusCounts = analyticsLeaves.reduce((counts, leave) => {
+    counts[leave.status] = (counts[leave.status] || 0) + 1;
+    return counts;
+  }, {});
+  const statusChartData = Object.entries(statusCounts).map(([name, value]) => ({ name: capitalize(name), value }));
+  const typeDays = analyticsLeaves.reduce((totals, leave) => {
+    if (enabledLeaveTypes.includes(leave.leaveType)) {
+      totals[leave.leaveType] = (totals[leave.leaveType] || 0) + Number(leave.totalDays || 0);
+    }
+    return totals;
+  }, {});
+  const typeChartData = Object.entries(typeDays).map(([name, days]) => ({ name: capitalize(name), days }));
 
   async function handleApply(payload) {
     try { await applyLeave(payload).unwrap(); toast.success('Leave request submitted'); setApplyOpen(false); }
@@ -243,6 +281,62 @@ export default function LeavesListPage() {
 
       {/* Balance cards */}
       {balance && <LeaveBalanceCards balance={balance} />}
+
+      {/* Leave analytics */}
+      <div className="grid gap-5 xl:grid-cols-3">
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 xl:col-span-2">
+          <h3 className="font-semibold mb-4">Leave Balance Usage</h3>
+          {balanceChartData.length ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={balanceChartData}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="used" stackId="balance" fill="#C9971F" radius={[0, 0, 4, 4]} />
+                <Bar dataKey="remaining" stackId="balance" fill="#10b981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">No balance data available</div>
+          )}
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5">
+          <h3 className="font-semibold mb-4">Requests by Status</h3>
+          {statusChartData.length ? (
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie data={statusChartData} dataKey="value" nameKey="name" cx="50%" cy="46%" innerRadius={48}
+                  outerRadius={78} paddingAngle={3} label={({ name, value }) => `${name}: ${value}`}>
+                  {statusChartData.map((_, index) => <Cell key={index} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">No leave requests yet</div>
+          )}
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5 xl:col-span-3">
+          <h3 className="font-semibold mb-4">Requested Days by Leave Type</h3>
+          {typeChartData.length ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={typeChartData} layout="vertical" margin={{ left: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="name" width={85} tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(value) => [`${value} days`, 'Requested']} />
+                <Bar dataKey="days" fill="#8b5cf6" radius={[0, 6, 6, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-52 flex items-center justify-center text-sm text-muted-foreground">No leave usage data available</div>
+          )}
+        </motion.div>
+      </div>
 
       {/* Pending approvals (approvers only) */}
       {isApprover && pending.length > 0 && (
@@ -292,7 +386,7 @@ export default function LeavesListPage() {
             <select className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
               value={filters.leaveType} onChange={(e) => { setFilters(p => ({ ...p, leaveType: e.target.value })); setPage(1); }}>
               <option value="">All Types</option>
-              {LEAVE_TYPES.map(t => <option key={t} value={t}>{capitalize(t)}</option>)}
+              {enabledLeaveTypes.map(t => <option key={t} value={t}>{capitalize(t)}</option>)}
             </select>
           </div>
         </div>
@@ -377,7 +471,8 @@ export default function LeavesListPage() {
 
       {/* Apply Modal */}
       <Modal isOpen={applyOpen} onClose={() => setApplyOpen(false)} title="Apply for Leave" size="md">
-        <ApplyLeaveForm onSubmit={handleApply} onClose={() => setApplyOpen(false)} isLoading={applying} />
+        <ApplyLeaveForm onSubmit={handleApply} onClose={() => setApplyOpen(false)} isLoading={applying}
+          leaveTypes={enabledLeaveTypes} />
       </Modal>
 
       {/* Review Modal */}

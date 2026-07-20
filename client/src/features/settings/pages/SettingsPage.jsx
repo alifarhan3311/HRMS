@@ -10,11 +10,17 @@ import { toast } from '../../../utils/toast';
 import { Input, Select } from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import { useGetCompanySettingsQuery, useUpdateCompanySettingsMutation } from '../api/settings.api';
+import HolidaySettings from '../components/HolidaySettings';
+import ShiftSettings from '../components/ShiftSettings';
+
+const ALL_LEAVE_TYPES = ['paid', 'casual', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'];
 
 const TABS = [
   { id: 'company',  label: 'Company',  icon: Building2 },
   { id: 'timing',   label: 'Timing',   icon: Clock },
+  { id: 'shifts',   label: 'Shifts',   icon: Clock },
   { id: 'leave',    label: 'Leave Policy', icon: CalendarDays },
+  { id: 'holidays', label: 'Canada Holidays', icon: CalendarDays },
   { id: 'email',    label: 'Email',    icon: Mail },
   { id: 'security', label: 'Security', icon: ShieldCheck },
 ];
@@ -40,7 +46,7 @@ function SectionCard({ title, children }) {
 }
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState('company');
+  const [activeTab, setActiveTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'company');
   const [saved, setSaved] = useState(false);
   const { data: settingsData, isLoading } = useGetCompanySettingsQuery();
   const [updateCompanySettings, { isLoading: isSaving }] = useUpdateCompanySettingsMutation();
@@ -48,8 +54,9 @@ export default function SettingsPage() {
   const [companyForm, setCompanyForm] = useState({
     name: 'My Company', website: '', industry: '', address: '', timezone: 'Asia/Karachi',
   });
+  const [holidayForm, setHolidayForm] = useState({ country: 'CA', province: 'ON' });
   const [timingForm, setTimingForm] = useState({
-    officeStart: '09:00', officeEnd: '18:00', graceMinutes: '15',
+    officeStart: '09:00', officeEnd: '17:00', graceMinutes: '15',
     weekendDays: ['Saturday', 'Sunday'],
   });
   const [emailForm, setEmailForm] = useState({
@@ -57,6 +64,7 @@ export default function SettingsPage() {
     smtpSecure: false, enableNotifications: false, enableInApp: true, enableWhatsapp: false,
   });
   const [leaveForm, setLeaveForm] = useState({
+    enabledTypes: ['paid', 'casual', 'sick', 'annual'],
     entitlements: { paid: 12, casual: 10, sick: 8, annual: 14 },
     carryForwardTypes: ['paid', 'casual', 'sick', 'annual'],
     maxCarryForward: { paid: 365, casual: 365, sick: 365, annual: 365 },
@@ -69,12 +77,21 @@ export default function SettingsPage() {
   useEffect(() => {
     const settings = settingsData?.data;
     if (!settings) return;
-    setCompanyForm(settings.company);
+    setCompanyForm({ timezone: 'Asia/Karachi', ...settings.company });
+    setHolidayForm({ country: 'CA', province: 'ON', ...settings.holidayPolicy });
     setTimingForm({
       ...settings.timing,
       weekendDays: settings.timing.weekendDays.map((day) => DAYS[day === 0 ? 6 : day - 1]),
     });
-    setLeaveForm(settings.leavePolicy);
+    setLeaveForm((previous) => ({
+      ...previous,
+      ...settings.leavePolicy,
+      enabledTypes: settings.leavePolicy?.enabledTypes?.length
+        ? settings.leavePolicy.enabledTypes
+        : ['paid', 'casual', 'sick', 'annual'],
+      entitlements: { ...previous.entitlements, ...settings.leavePolicy?.entitlements },
+      maxCarryForward: { ...previous.maxCarryForward, ...settings.leavePolicy?.maxCarryForward },
+    }));
     setEmailForm({
       smtpHost: settings.smtp?.host || '',
       smtpPort: String(settings.smtp?.port || 587),
@@ -99,6 +116,7 @@ export default function SettingsPage() {
     try {
       await updateCompanySettings({
         company: companyForm,
+        holidayPolicy: holidayForm,
         timing: {
           ...timingForm,
           graceMinutes: Number(timingForm.graceMinutes),
@@ -195,8 +213,8 @@ export default function SettingsPage() {
                   </div>
                   <Select label="Timezone" value={companyForm.timezone}
                     onChange={e => setCompanyForm(p => ({ ...p, timezone: e.target.value }))}>
-                    <option value="Asia/Karachi">Asia/Karachi (PKT UTC+5)</option>
-                    <option value="Asia/Dubai">Asia/Dubai (GST UTC+4)</option>
+                    <option value="Asia/Karachi">Pakistan (Asia/Karachi)</option>
+                    <option value="Asia/Dubai">Dubai (Asia/Dubai)</option>
                     <option value="UTC">UTC</option>
                   </Select>
                 </div>
@@ -243,13 +261,51 @@ export default function SettingsPage() {
             </motion.div>
           )}
 
+          {activeTab === 'shifts' && (
+            <motion.div key="shifts" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
+              <ShiftSettings />
+            </motion.div>
+          )}
+
           {activeTab === 'leave' && (
             <motion.div key="leave" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
               className="space-y-5">
+              <SectionCard title="Available Leave Types">
+                <p className="text-sm text-muted-foreground">
+                  Select the leave types employees can apply for. At least one type must remain enabled.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {ALL_LEAVE_TYPES.map((type) => {
+                    const selected = leaveForm.enabledTypes.includes(type);
+                    return (
+                      <button key={type} type="button" onClick={() => setLeaveForm((previous) => {
+                        if (selected && previous.enabledTypes.length === 1) {
+                          toast.error('At least one leave type must remain enabled.');
+                          return previous;
+                        }
+                        const enabledTypes = selected
+                          ? previous.enabledTypes.filter((item) => item !== type)
+                          : [...previous.enabledTypes, type];
+                        return {
+                          ...previous,
+                          enabledTypes,
+                          carryForwardTypes: previous.carryForwardTypes.filter((item) => enabledTypes.includes(item)),
+                        };
+                      })} className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
+                        selected ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'
+                      }`}>
+                        {type[0].toUpperCase()}{type.slice(1)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </SectionCard>
+
               <SectionCard title="Annual Leave Entitlements">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {Object.entries(leaveForm.entitlements).map(([type, value]) => (
                     <Input key={type} label={`${type[0].toUpperCase()}${type.slice(1)} Days`} type="number"
+                      disabled={!leaveForm.enabledTypes.includes(type)}
                       value={value} onChange={(event) => setLeaveForm((previous) => ({
                         ...previous,
                         entitlements: { ...previous.entitlements, [type]: event.target.value },
@@ -260,10 +316,10 @@ export default function SettingsPage() {
 
               <SectionCard title="Carry Forward Policy">
                 <p className="text-sm text-muted-foreground">
-                  Select leave types whose unused balance carries forward on the employee joining anniversary.
+                  Select leave types whose unused balance carries forward for everyone on January 1.
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {Object.keys(leaveForm.entitlements).map((type) => {
+                  {Object.keys(leaveForm.entitlements).filter((type) => leaveForm.enabledTypes.includes(type)).map((type) => {
                     const selected = leaveForm.carryForwardTypes.includes(type);
                     return (
                       <button key={type} type="button" onClick={() => setLeaveForm((previous) => ({
@@ -280,7 +336,7 @@ export default function SettingsPage() {
                   })}
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {Object.entries(leaveForm.maxCarryForward).map(([type, value]) => (
+                  {Object.entries(leaveForm.maxCarryForward).filter(([type]) => leaveForm.enabledTypes.includes(type)).map(([type, value]) => (
                     <Input key={type} label={`Max ${type}`} type="number" value={value}
                       onChange={(event) => setLeaveForm((previous) => ({
                         ...previous,
@@ -335,6 +391,13 @@ export default function SettingsPage() {
                   <span className="text-sm">Enable WhatsApp notifications</span>
                 </label>
               </SectionCard>
+            </motion.div>
+          )}
+
+          {activeTab === 'holidays' && (
+            <motion.div key="holidays" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
+              <HolidaySettings province={holidayForm.province}
+                onProvinceChange={(province) => setHolidayForm(previous => ({ ...previous, province }))} />
             </motion.div>
           )}
 

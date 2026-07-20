@@ -18,13 +18,22 @@ const companySettingsSchema = new mongoose.Schema(
       address: String,
       timezone: { type: String, default: 'Asia/Karachi' },
     },
+    holidayPolicy: {
+      country: { type: String, default: 'CA' },
+      province: { type: String, default: 'ON' },
+    },
     timing: {
       officeStart: { type: String, default: '09:00' },
-      officeEnd: { type: String, default: '18:00' },
+      officeEnd: { type: String, default: '17:00' },
       graceMinutes: { type: Number, default: 15, min: 0, max: 180 },
       weekendDays: { type: [Number], default: [0, 6] },
     },
     leavePolicy: {
+      enabledTypes: {
+        type: [String],
+        enum: ['paid', 'casual', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'],
+        default: ['paid', 'casual', 'sick', 'annual'],
+      },
       entitlements: {
         paid: { type: Number, default: 12, min: 0 },
         casual: { type: Number, default: 10, min: 0 },

@@ -63,6 +63,10 @@ async function applyLeave(payload, actor) {
   const end = new Date(endDate);
   if (end < start) throw createHttpError(400, 'End date cannot be before start date.');
   const settings = await settingsService.getPolicy(actor.companyId);
+  const enabledTypes = settings.leavePolicy?.enabledTypes || Object.keys(LEAVE_BALANCE_KEYS);
+  if (!enabledTypes.includes(leaveType)) {
+    throw createHttpError(400, `${leaveType} leave is not enabled for your company.`);
+  }
 
   // Check for overlapping leaves
   const overlapping = await repository.countActiveLeaves(actor.id, start, end);
@@ -206,7 +210,7 @@ async function cancelLeave(id, { reason }, actor) {
 
 // ─── List ────────────────────────────────────────────────────────────────────
 async function listLeaves(query, actor) {
-  const { page = 1, limit = 20, status, leaveType, employeeId, sort = '-createdAt' } = query;
+  const { page = 1, limit = 20, status, leaveType, employeeId, year, month, sort = '-createdAt' } = query;
   const filter = { companyId: actor.companyId };
 
   if (!['admin', 'hr', 'super_admin', 'manager', 'team_lead'].includes(actor.role)) {
@@ -217,6 +221,23 @@ async function listLeaves(query, actor) {
 
   if (status) filter.status = status;
   if (leaveType) filter.leaveType = leaveType;
+  if (year) {
+    const numericYear = Number(year);
+    const numericMonth = month ? Number(month) : null;
+    if (!Number.isInteger(numericYear) || numericYear < 2000 || numericYear > 2200) {
+      throw createHttpError(400, 'Year must be between 2000 and 2200.');
+    }
+    if (numericMonth !== null && (!Number.isInteger(numericMonth) || numericMonth < 1 || numericMonth > 12)) {
+      throw createHttpError(400, 'Month must be between 1 and 12.');
+    }
+    const start = numericMonth
+      ? new Date(Date.UTC(numericYear, numericMonth - 1, 1))
+      : new Date(Date.UTC(numericYear, 0, 1));
+    const end = numericMonth
+      ? new Date(Date.UTC(numericYear, numericMonth, 1))
+      : new Date(Date.UTC(numericYear + 1, 0, 1));
+    filter.startDate = { $gte: start, $lt: end };
+  }
 
   return repository.findAll({ filter, page: Number(page), limit: Math.min(Number(limit), 100), sort });
 }

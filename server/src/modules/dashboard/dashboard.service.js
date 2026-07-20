@@ -10,6 +10,7 @@ const Payslip = require('../payroll/payroll.model');
 const Expense = require('../expenses/expenses.model');
 const Project = require('../projects/projects.model');
 const Holiday = require('../holidays/holidays.model');
+const settingsService = require('../companySettings/companySettings.service');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -43,6 +44,7 @@ function daysBetween(from, to) {
 async function getUpcomingHolidays(companyId, limit = 5) {
   return Holiday.find({
     companyId,
+    status: 'confirmed',
     date: { $gte: startOfDay() },
   })
     .sort({ date: 1 })
@@ -56,12 +58,23 @@ async function getEmployeeDashboard(user) {
   const monthEnd = endOfMonth();
   const now = new Date();
 
-  const employee = await Employee.findById(user.id).lean();
+  const [employee, settings] = await Promise.all([
+    Employee.findById(user.id)
+      .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive')
+      .lean(),
+    settingsService.getPolicy(user.companyId),
+  ]);
   if (!employee) return null;
 
   const [todayAttendance, monthPayslip, pendingLeaves, monthLateCount, projectIncentives, holidays] =
     await Promise.all([
-      Attendance.findOne({ employeeId: user.id, date: { $gte: today, $lte: endOfDay() } }).lean(),
+      Attendance.findOne({
+        employeeId: user.id,
+        $or: [
+          { signInTime: { $exists: true }, signOutTime: { $exists: false } },
+          { date: { $gte: today, $lte: endOfDay() } },
+        ],
+      }).sort({ signInTime: -1 }).lean(),
       Payslip.findOne({
         employeeId: user.id,
         month: now.getMonth() + 1,
@@ -86,13 +99,27 @@ async function getEmployeeDashboard(user) {
       getUpcomingHolidays(user.companyId, 5),
     ]);
 
-  const balance = employee.leaveBalance || {};
-  const leaveSummary = Object.entries(balance).map(([type, vals]) => ({
-    type,
-    available: vals?.available ?? 0,
-    used: vals?.used ?? 0,
-    remaining: (vals?.available ?? 0) - (vals?.used ?? 0),
-  }));
+  const enabledTypes = settings.leavePolicy?.enabledTypes || ['paid', 'casual', 'sick', 'annual'];
+  const leaveSummary = enabledTypes
+    .filter((type) => settings.leavePolicy?.entitlements?.[type] !== undefined)
+    .map((type) => {
+      const entitlement = Number(settings.leavePolicy.entitlements[type] || 0);
+      const joiningYear = employee.joiningDate ? new Date(employee.joiningDate).getFullYear() : Infinity;
+      const processedYear = Number(employee.leaveCycle?.lastProcessedYear || 0);
+      const carriedForward = employee.leaveCycle?.basis === 'calendar_year' && processedYear > joiningYear
+        ? Number(employee.leaveCycle?.carriedForward?.[type] || 0)
+        : 0;
+      const used = Number(employee.leaveBalance?.[type]?.used || 0);
+      const available = entitlement + carriedForward;
+      return {
+        type,
+        entitlement,
+        carriedForward,
+        available,
+        used,
+        remaining: Math.max(available - used, 0),
+      };
+    });
 
   const tenure = employee.joiningDate
     ? daysBetween(new Date(employee.joiningDate), now)
@@ -101,6 +128,7 @@ async function getEmployeeDashboard(user) {
   return {
     role: 'employee',
     greeting: employee.fullName,
+    assignedShift: employee.shiftId || null,
     todayAttendance: todayAttendance
       ? {
           signInTime: todayAttendance.signInTime,
@@ -153,6 +181,7 @@ async function getHRDashboard(user) {
     holidays,
     totalEmployees,
     activeEmployees,
+    settings,
   ] = await Promise.all([
     LeaveRequest.find({ companyId: user.companyId, status: 'pending' })
       .populate('employeeId', 'fullName employeeCode department')
@@ -217,7 +246,13 @@ async function getHRDashboard(user) {
     getUpcomingHolidays(user.companyId, 8),
     Employee.countDocuments({ companyId: user.companyId }),
     Employee.countDocuments({ companyId: user.companyId, status: 'active' }),
+    settingsService.getPolicy(user.companyId),
   ]);
+
+  const enabledLeaveTypes = settings.leavePolicy?.enabledTypes || ['paid', 'casual', 'sick', 'annual'];
+  const leaveEntitlements = Object.fromEntries(enabledLeaveTypes
+    .filter((type) => settings.leavePolicy?.entitlements?.[type] !== undefined)
+    .map((type) => [type, Number(settings.leavePolicy.entitlements[type] || 0)]));
 
   return {
     role: 'hr',
@@ -240,6 +275,7 @@ async function getHRDashboard(user) {
       acc[row._id] = row.count;
       return acc;
     }, {}),
+    leaveEntitlements,
     upcomingHolidays: holidays,
     pendingDocuments: [],
     recruitmentStatus: { openPositions: 0, inInterview: 0, offersPending: 0 },

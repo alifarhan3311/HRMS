@@ -7,20 +7,28 @@ const bcrypt = require('bcrypt');
 const createHttpError = require('http-errors');
 const repository = require('./employees.repository');
 const Session = require('../auth/auth.model');
+const Shift = require('../shifts/shifts.model');
+const settingsService = require('../companySettings/companySettings.service');
 
 const PASSWORD_SALT_ROUNDS = 12;
+const LEAVE_BALANCE_TYPES = ['paid', 'casual', 'sick', 'annual'];
+const MANAGEABLE_ROLES = {
+  super_admin: ['admin', 'hr', 'manager', 'team_lead', 'employee'],
+  hr: ['manager', 'team_lead', 'employee'],
+};
 
 // -------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------
 
-/**
- * Auto-generate employee code if not supplied, based on department prefix.
- */
-async function generateEmployeeCode(department, companyId) {
-  const prefix = (department || 'EMP').replace(/\s+/g, '').substring(0, 3).toUpperCase();
-  const count = await repository.countByCompany(companyId);
-  return `${prefix}${String(count + 1).padStart(4, '0')}`;
+async function generateEmployeeIdentifiers(companyId) {
+  const sequence = await repository.nextSequence(companyId);
+  const companyTag = String(companyId).slice(-4).toUpperCase();
+  const number = String(sequence).padStart(6, '0');
+  return {
+    employeeCode: `EMP-${companyTag}-${number}`,
+    employeeCardNumber: `CARD-${companyTag}-${number}`,
+  };
 }
 
 /**
@@ -39,10 +47,91 @@ function calcTenure(joiningDate) {
 
 function normalizeOptionalReferences(payload) {
   const normalized = { ...payload };
-  for (const field of ['managerId', 'teamLeadId']) {
+  for (const field of ['managerId', 'teamLeadId', 'shiftId']) {
     if (normalized[field] === '') normalized[field] = null;
   }
   return normalized;
+}
+
+async function validateAssignedShift(shiftId, companyId) {
+  if (!shiftId) return;
+  const exists = await Shift.exists({ _id: shiftId, companyId, isActive: true });
+  if (!exists) throw createHttpError(422, 'Selected shift is invalid or inactive.');
+}
+
+function assertCanManageEmployee(actor, target, { allowSelf = false, action = 'manage' } = {}) {
+  const isSelf = String(actor.id) === String(target._id);
+  if (isSelf) {
+    if (allowSelf) return;
+    throw createHttpError(400, `You cannot ${action} your own account.`);
+  }
+
+  const manageableRoles = MANAGEABLE_ROLES[actor.role] || [];
+  if (!manageableRoles.includes(target.role)) {
+    if (target.role === 'super_admin') {
+      throw createHttpError(403, 'Super Admin accounts are protected and cannot be managed or deactivated.');
+    }
+    throw createHttpError(403, `Your role cannot ${action} this account.`);
+  }
+}
+
+function assertCanAssignRole(actor, role) {
+  const manageableRoles = MANAGEABLE_ROLES[actor.role] || [];
+  if (!manageableRoles.includes(role)) {
+    throw createHttpError(403, `Your role cannot create or assign the ${role} role.`);
+  }
+}
+
+function balanceFromPolicy(entitlements, existingBalance = {}, carriedForward = {}) {
+  return Object.fromEntries(LEAVE_BALANCE_TYPES.map((type) => [type, {
+    available: Number(entitlements?.[type] || 0) + Number(carriedForward?.[type] || 0),
+    used: Number(existingBalance?.[type]?.used || 0),
+  }]));
+}
+
+function validCarriedForward(employee) {
+  const joiningYear = employee.joiningDate ? new Date(employee.joiningDate).getFullYear() : Infinity;
+  const processedYear = Number(employee.leaveCycle?.lastProcessedYear || 0);
+  return employee.leaveCycle?.basis === 'calendar_year' && processedYear > joiningYear
+    ? (employee.leaveCycle?.carriedForward || {})
+    : {};
+}
+
+function visibleLeaveBalance(balance, enabledTypes = LEAVE_BALANCE_TYPES, entitlements = {}, carriedForward = {}) {
+  return Object.fromEntries(Object.entries(balance || {})
+    .filter(([type]) => enabledTypes.includes(type))
+    .map(([type, values]) => {
+      const entitlement = Number(entitlements?.[type] || 0);
+      const carried = Number(carriedForward?.[type] || 0);
+      return [type, {
+        ...values,
+        available: entitlement + carried,
+        entitlement,
+        carriedForward: carried,
+      }];
+    }));
+}
+
+async function reconcileLeaveBalance(employee) {
+  const settings = await settingsService.getPolicy(employee.companyId);
+  const expected = balanceFromPolicy(
+    settings.leavePolicy?.entitlements,
+    employee.leaveBalance,
+    validCarriedForward(employee)
+  );
+  const needsUpdate = LEAVE_BALANCE_TYPES.some((type) => (
+    Number(employee.leaveBalance?.[type]?.available || 0) !== expected[type].available
+  ));
+
+  if (needsUpdate) {
+    employee.leaveBalance = expected;
+    await employee.save();
+  }
+  return {
+    employee,
+    enabledTypes: settings.leavePolicy?.enabledTypes || LEAVE_BALANCE_TYPES,
+    entitlements: settings.leavePolicy?.entitlements || {},
+  };
 }
 
 // -------------------------------------------------------------------------
@@ -51,6 +140,7 @@ function normalizeOptionalReferences(payload) {
 
 async function createEmployee(payload, actor) {
   payload = normalizeOptionalReferences(payload);
+  assertCanAssignRole(actor, payload.role);
   // Validate uniqueness
   const existing = await repository.findByEmail(payload.email, actor.companyId);
   if (existing) throw createHttpError(409, 'An employee with this email already exists.');
@@ -60,16 +150,29 @@ async function createEmployee(payload, actor) {
     if (cnicExists) throw createHttpError(409, 'An employee with this CNIC already exists.');
   }
 
-  // Auto-generate employee code if not provided
-  const employeeCode = payload.employeeCode || await generateEmployeeCode(payload.department, actor.companyId);
+  await validateAssignedShift(payload.shiftId, actor.companyId);
+
+  // Both identifiers come from one atomic company sequence, so concurrent
+  // employee creation cannot issue duplicate codes or card numbers.
+  const identifiers = await generateEmployeeIdentifiers(actor.companyId);
 
   // Hash the initial password
   const passwordHash = await bcrypt.hash(payload.password, PASSWORD_SALT_ROUNDS);
+  const settings = await settingsService.getPolicy(actor.companyId);
+  const currentYear = new Date().getFullYear();
 
   const data = {
     ...payload,
-    employeeCode,
+    ...identifiers,
     passwordHash,
+    leaveBalance: balanceFromPolicy(settings.leavePolicy?.entitlements),
+    leaveCycle: {
+      basis: 'calendar_year',
+      lastProcessedYear: currentYear,
+      lastProcessedAt: new Date(),
+      nextResetDate: new Date(Date.UTC(currentYear + 1, 0, 1)),
+      carriedForward: {},
+    },
     companyId: actor.companyId,
     branchId: actor.branchId,
   };
@@ -80,9 +183,18 @@ async function createEmployee(payload, actor) {
 }
 
 async function getEmployeeById(id) {
-  const record = await repository.findById(id);
+  let record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Employee not found.');
+  const reconciled = await reconcileLeaveBalance(record);
+  record = reconciled.employee;
   const obj = record.toObject({ getters: true });
+  obj.enabledLeaveTypes = reconciled.enabledTypes;
+  obj.leaveBalance = visibleLeaveBalance(
+    obj.leaveBalance,
+    reconciled.enabledTypes,
+    reconciled.entitlements,
+    validCarriedForward(record)
+  );
   obj.tenure = obj.joiningDate ? calcTenure(obj.joiningDate) : null;
   return obj;
 }
@@ -112,16 +224,31 @@ async function listEmployees(query, actor) {
     ];
   }
 
-  const result = await repository.findAll({
-    filter,
-    page: Number(page),
-    limit: Math.min(Number(limit), 100),
-    sort,
-  });
+  const [result, settings] = await Promise.all([
+    repository.findAll({
+      filter,
+      page: Number(page),
+      limit: Math.min(Number(limit), 100),
+      sort,
+    }),
+    settingsService.getPolicy(actor.companyId),
+  ]);
+  const enabledTypes = settings.leavePolicy?.enabledTypes || LEAVE_BALANCE_TYPES;
 
   result.items = result.items.map((e) => {
     const obj = e.toObject ? e.toObject({ getters: true }) : e;
-    return { ...obj, tenure: obj.joiningDate ? calcTenure(obj.joiningDate) : null };
+    const carriedForward = validCarriedForward(obj);
+    return {
+      ...obj,
+      enabledLeaveTypes: enabledTypes,
+      leaveBalance: visibleLeaveBalance(
+        obj.leaveBalance,
+        enabledTypes,
+        settings.leavePolicy?.entitlements,
+        carriedForward
+      ),
+      tenure: obj.joiningDate ? calcTenure(obj.joiningDate) : null,
+    };
   });
 
   return result;
@@ -131,6 +258,7 @@ async function updateEmployee(id, payload, actor) {
   payload = normalizeOptionalReferences(payload);
   const existing = await repository.findById(id);
   if (!existing) throw createHttpError(404, 'Employee not found.');
+  assertCanManageEmployee(actor, existing, { allowSelf: true, action: 'edit' });
 
   // If email is being changed, check uniqueness
   if (payload.email && payload.email !== existing.email) {
@@ -140,8 +268,10 @@ async function updateEmployee(id, payload, actor) {
     }
   }
 
+  await validateAssignedShift(payload.shiftId, actor.companyId);
+
   // Never allow these fields via general update
-  const forbidden = ['passwordHash', 'password', 'companyId', 'role', 'employeeCode'];
+  const forbidden = ['passwordHash', 'password', 'companyId', 'role', 'employeeCode', 'employeeCardNumber'];
   forbidden.forEach((f) => delete payload[f]);
 
   const updated = await repository.updateById(id, payload);
@@ -150,12 +280,9 @@ async function updateEmployee(id, payload, actor) {
 }
 
 async function deleteEmployee(id, actor) {
-  if (String(id) === String(actor.id)) {
-    throw createHttpError(400, 'You cannot permanently delete your own account.');
-  }
-
   const existing = await repository.findById(id);
   if (!existing) throw createHttpError(404, 'Employee not found.');
+  assertCanManageEmployee(actor, existing, { action: 'permanently delete' });
 
   // Preserve historical business records, but remove live account/session and
   // reporting-line references so no employee points at a deleted account.
@@ -176,6 +303,7 @@ async function deleteEmployee(id, actor) {
 async function changeStatus(id, { status, reason }, actor) {
   const employee = await repository.findById(id);
   if (!employee) throw createHttpError(404, 'Employee not found.');
+  assertCanManageEmployee(actor, employee, { action: status === 'active' ? 'activate' : 'deactivate' });
 
   const update = { status };
   if (status === 'resigned') {
@@ -194,6 +322,8 @@ async function changeStatus(id, { status, reason }, actor) {
 async function promoteEmployee(id, promotionData, actor) {
   const employee = await repository.findById(id);
   if (!employee) throw createHttpError(404, 'Employee not found.');
+  assertCanManageEmployee(actor, employee, { action: 'promote' });
+  if (promotionData.role) assertCanAssignRole(actor, promotionData.role);
 
   const historyEntry = {
     designation: employee.designation,

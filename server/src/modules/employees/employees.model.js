@@ -10,7 +10,7 @@ const { encryptField, decryptField } = require('../../utils/crypto');
 
 const employeesSchema = new mongoose.Schema(
   {
-  employeeCode: { type: String, required: true, unique: true },
+  employeeCode: { type: String, required: true, unique: true, immutable: true },
   fullName: { type: String, required: true },
   fatherName: { type: String },
   cnic: { type: String, required: true, set: encryptField, get: decryptField },
@@ -26,6 +26,7 @@ const employeesSchema = new mongoose.Schema(
   designation: { type: String },
   managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   teamLeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  shiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift' },
   currentSalary: { type: String, set: encryptField, get: decryptField },
   status: {
     type: String,
@@ -47,8 +48,11 @@ const employeesSchema = new mongoose.Schema(
     annual: { available: { type: Number, default: 14 }, used: { type: Number, default: 0 } },
   },
   leaveCycle: {
+    basis: { type: String, enum: ['calendar_year'] },
     lastProcessedYear: Number,
     lastProcessedAt: Date,
+    nextResetDate: Date,
+    // Legacy field retained so old documents can be migrated safely.
     nextAnniversary: Date,
     carriedForward: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
@@ -59,7 +63,7 @@ const employeesSchema = new mongoose.Schema(
     required: true,
   },
   // Card details
-  employeeCardNumber: { type: String },
+  employeeCardNumber: { type: String, immutable: true },
   insuranceCardNumber: { type: String },
 
   // Exit / resignation
@@ -97,5 +101,9 @@ const employeesSchema = new mongoose.Schema(
 );
 
 employeesSchema.index({ companyId: 1 });
+employeesSchema.index(
+  { employeeCardNumber: 1 },
+  { unique: true, partialFilterExpression: { employeeCardNumber: { $gt: '' } } }
+);
 
 module.exports = mongoose.model('Employee', employeesSchema);
