@@ -224,7 +224,7 @@ export default function Header({ onMenuClick = () => {} }) {
         <div className="relative ml-1" ref={profileRef}>
           <button onClick={() => { setProfileOpen(open => !open); setNotifOpen(false); }}
             className="flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-colors hover:bg-accent">
-            <Avatar name={user?.fullName || 'User'} size="sm" />
+            <Avatar name={user?.fullName || 'User'} src={user?.profilePicture} size="sm" />
             <span className="hidden text-left sm:block">
               <span className="block text-xs font-semibold leading-tight">{user?.fullName || 'User'}</span>
               <span className="block text-[11px] leading-tight text-muted-foreground">{getRoleLabel(user?.role)}</span>
@@ -240,7 +240,7 @@ export default function Header({ onMenuClick = () => {} }) {
                   <p className="truncate text-xs text-muted-foreground">{user?.email || getRoleLabel(user?.role)}</p>
                 </div>
                 <div className="py-1">
-                  <MenuAction icon={User} label="Dashboard" onClick={() => { navigate('/dashboard'); setProfileOpen(false); }} />
+                  <MenuAction icon={User} label="My Profile" onClick={() => { navigate('/profile'); setProfileOpen(false); }} />
                   {quickLinks.some(item => item.path === '/settings') && (
                     <MenuAction icon={Settings} label="Settings" onClick={() => { navigate('/settings'); setProfileOpen(false); }} />
                   )}

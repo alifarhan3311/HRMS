@@ -63,9 +63,21 @@ const me = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: { user } });
 });
 
+const updateProfile = asyncHandler(async (req, res) => {
+  const user = await loginService.updateProfile(req.user.id, req.body);
+  res.status(200).json({ success: true, data: { user } });
+});
+
+const changePassword = asyncHandler(async (req, res) => {
+  await loginService.changePassword(req.user.id, req.body);
+  res.clearCookie('accessToken', COOKIE_OPTS);
+  res.clearCookie('refreshToken', { ...COOKIE_OPTS, path: '/api/v1/auth/refresh' });
+  res.status(200).json({ success: true, message: 'Password changed. Please sign in again.' });
+});
+
 const socketToken = asyncHandler(async (req, res) => {
   const token = loginService.createSocketToken(req.user);
   res.status(200).json({ success: true, data: { token, expiresIn: 900 } });
 });
 
-module.exports = { login, refresh, logout, me, socketToken };
+module.exports = { login, refresh, logout, me, updateProfile, changePassword, socketToken };

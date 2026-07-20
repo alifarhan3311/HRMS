@@ -23,6 +23,14 @@ export const authApi = api.injectEndpoints({
       query: () => '/auth/me',
       providesTags: ['Auth'],
     }),
+    updateProfile: builder.mutation({
+      query: (body) => ({ url: '/auth/profile', method: 'PATCH', body }),
+      invalidatesTags: ['Auth', 'Employees'],
+    }),
+    changePassword: builder.mutation({
+      query: (body) => ({ url: '/auth/change-password', method: 'PATCH', body }),
+      invalidatesTags: ['Auth'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -32,4 +40,6 @@ export const {
   useLogoutMutation,
   useGetCurrentUserQuery,
   useGetMeQuery,
+  useUpdateProfileMutation,
+  useChangePasswordMutation,
 } = authApi;

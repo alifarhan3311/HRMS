@@ -7,6 +7,8 @@ const express = require('express');
 const loginController = require('./login.controller');
 const sessionController = require('./auth.controller');
 const { authenticate, authorize } = require('../../middlewares/auth.middleware');
+const validate = require('../../middlewares/validate.middleware');
+const { profileUpdateSchema, changePasswordSchema } = require('./auth.validation');
 
 const router = express.Router();
 
@@ -17,6 +19,8 @@ router.post('/refresh', loginController.refresh);
 // Requires a valid access token
 router.post('/logout', authenticate, loginController.logout);
 router.get('/me', authenticate, loginController.me);
+router.patch('/profile', authenticate, validate(profileUpdateSchema), loginController.updateProfile);
+router.patch('/change-password', authenticate, validate(changePasswordSchema), loginController.changePassword);
 router.post('/socket-token', authenticate, loginController.socketToken);
 
 // Admin session management

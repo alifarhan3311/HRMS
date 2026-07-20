@@ -17,6 +17,7 @@ import projectsRoutes      from './features/projects/routes/projects.routes';
 import settingsRoutes      from './features/settings/routes/settings.routes';
 import reportsRoutes       from './features/reports/routes/reports.routes';
 import notificationsRoutes from './features/notifications/routes/notifications.routes';
+import profileRoutes       from './features/profile/routes/profile.routes';
 
 const router = createBrowserRouter([
   ...authRoutes,
@@ -39,6 +40,7 @@ const router = createBrowserRouter([
       ...settingsRoutes,
       ...reportsRoutes,
       ...notificationsRoutes,
+      ...profileRoutes,
     ],
   },
   // 404 fallback

@@ -132,21 +132,46 @@ function createSocketToken(actor) {
 
 async function getCurrentUser(employeeId) {
   const employee = await Employee.findById(employeeId)
-    .select('fullName role companyId branchId status shiftId')
+    .select('-passwordHash -__v')
+    .populate('managerId', 'fullName employeeCode designation')
+    .populate('teamLeadId', 'fullName employeeCode designation')
     .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive');
 
   if (!employee || employee.status !== 'active') {
     throw createHttpError(401, 'Account no longer active.');
   }
 
-  return {
-    id: employee._id,
-    fullName: employee.fullName,
-    role: employee.role,
-    companyId: employee.companyId,
-    branchId: employee.branchId,
-    shift: employee.shiftId || null,
-  };
+  const user = employee.toObject({ getters: true });
+  user.id = employee._id;
+  user.shift = employee.shiftId || null;
+  delete user.passwordHash;
+  return user;
 }
 
-module.exports = { login, refresh, logout, getCurrentUser, createSocketToken };
+async function updateProfile(employeeId, payload) {
+  const employee = await Employee.findByIdAndUpdate(employeeId, payload, {
+    new: true,
+    runValidators: true,
+  });
+  if (!employee || employee.status !== 'active') throw createHttpError(404, 'Employee profile not found.');
+  return getCurrentUser(employeeId);
+}
+
+async function changePassword(employeeId, { currentPassword, newPassword }) {
+  const employee = await Employee.findById(employeeId).select('+passwordHash');
+  if (!employee || employee.status !== 'active') throw createHttpError(404, 'Employee account not found.');
+  if (!(await bcrypt.compare(currentPassword, employee.passwordHash))) {
+    throw createHttpError(422, 'Current password is incorrect.');
+  }
+  if (await bcrypt.compare(newPassword, employee.passwordHash)) {
+    throw createHttpError(422, 'New password must be different from the current password.');
+  }
+  employee.passwordHash = await bcrypt.hash(newPassword, 12);
+  employee.tokenVersion = (employee.tokenVersion || 0) + 1;
+  await employee.save();
+  await Session.updateMany({ employeeId, revoked: false }, { $set: { revoked: true } });
+}
+
+module.exports = {
+  login, refresh, logout, getCurrentUser, createSocketToken, updateProfile, changePassword,
+};
