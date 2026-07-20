@@ -9,6 +9,14 @@ const Joi = require('joi');
 const GENDERS = ['male', 'female', 'other'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
+const bloodGroupSchema = Joi.string().trim().custom((value, helpers) => {
+  const normalized = value.toLowerCase();
+  if (['unknown', 'not known', 'not specified', 'n/a', 'na'].includes(normalized)) {
+    return 'Unknown';
+  }
+  const canonical = BLOOD_GROUPS.find((group) => group.toLowerCase() === normalized);
+  return canonical || helpers.message({ custom: 'Blood group must be A+, A-, B+, B-, AB+, AB-, O+, O-, or Unknown.' });
+}).empty('').optional();
 
 const createSchema = Joi.object({
   employeeId: Joi.any(),
@@ -35,7 +43,7 @@ const profileUpdateSchema = Joi.object({
   dateOfBirth: Joi.date().max('now').empty('').optional(),
   gender: Joi.string().valid(...GENDERS).empty('').optional(),
   maritalStatus: Joi.string().valid(...MARITAL_STATUSES).empty('').optional(),
-  bloodGroup: Joi.string().valid(...BLOOD_GROUPS).empty('').optional(),
+  bloodGroup: bloodGroupSchema,
   contactNumber: Joi.string().trim().max(20).allow('').optional(),
   address: Joi.string().trim().max(500).allow('').optional(),
   emergencyContact: Joi.string().trim().max(200).allow('').optional(),
