@@ -9,7 +9,7 @@ const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin']
 const STATUSES = ['active', 'inactive', 'on_leave', 'resigned'];
 const GENDERS = ['male', 'female', 'other'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
-const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
 
 const createSchema = Joi.object({
   // Identity

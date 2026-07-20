@@ -24,7 +24,7 @@ const TABS = [
 ];
 
 const GENDERS = ['male', 'female', 'other'];
-const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
 const DEFAULT_ROLES = ['employee', 'team_lead', 'manager'];
 const TAB_FIELDS = {
@@ -321,7 +321,7 @@ export default function EmployeeForm({
                 >
                   <option value="">Select blood group</option>
                   {BLOOD_GROUPS.map((b) => (
-                    <option key={b} value={b}>{b}</option>
+                    <option key={b} value={b}>{b === 'Unknown' ? 'Not Known' : b}</option>
                   ))}
                 </Select>
               </div>

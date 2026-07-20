@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, Mail, Lock, ArrowRight } from 'lucide-react';
+import { Building2, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useLoginMutation } from '../api/auth.api';
 import { setCredentials } from '../store/auth.slice';
 import Button from '../../../components/ui/Button';
@@ -17,6 +17,7 @@ const fieldVariants = {
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' });
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState(null);
   const [login, { isLoading }] = useLoginMutation();
   const dispatch = useDispatch();
@@ -123,13 +124,22 @@ export default function LoginPage() {
                 <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
                   id="password"
-                  type="password"
+                  type={passwordVisible ? 'text' : 'password'}
                   required
                   placeholder="••••••••"
-                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:scale-[1.01]"
+                  className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-11 text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:scale-[1.01]"
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                 />
+                <button
+                  type="button"
+                  onClick={() => setPasswordVisible((visible) => !visible)}
+                  aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                  title={passwordVisible ? 'Hide password' : 'Show password'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </motion.div>
 

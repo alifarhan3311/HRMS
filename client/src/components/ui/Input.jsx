@@ -2,12 +2,16 @@
  * components/ui/Input.jsx
  * Reusable form input with label, error, and icon support.
  */
-import { forwardRef } from 'react';
+import { forwardRef, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 
 export const Input = forwardRef(function Input(
-  { label, error, icon: Icon, className = '', ...props },
+  { label, error, icon: Icon, className = '', type = 'text', ...props },
   ref
 ) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const isPassword = type === 'password';
+
   return (
     <div className="space-y-1.5">
       {label && (
@@ -22,15 +26,27 @@ export const Input = forwardRef(function Input(
         )}
         <input
           ref={ref}
+          type={isPassword && passwordVisible ? 'text' : type}
           className={`w-full rounded-lg border bg-background py-2.5 text-sm outline-none transition-all duration-200
             placeholder:text-muted-foreground
             focus:border-primary focus:ring-2 focus:ring-primary/20 focus:scale-[1.01]
             disabled:cursor-not-allowed disabled:opacity-50
             ${error ? 'border-destructive focus:ring-destructive/20' : 'border-border'}
-            ${Icon ? 'pl-10 pr-4' : 'px-3'}
+            ${Icon ? 'pl-10' : 'pl-3'} ${isPassword ? 'pr-11' : 'pr-3'}
             ${className}`}
           {...props}
         />
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setPasswordVisible((visible) => !visible)}
+            aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+            title={passwordVisible ? 'Hide password' : 'Show password'}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        )}
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
