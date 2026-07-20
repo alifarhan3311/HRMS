@@ -17,6 +17,7 @@ import { Modal, ModalFooter } from '../../../components/ui/Modal';
 import { Input, Select, Textarea } from '../../../components/ui/Input';
 import StatCard from '../../../components/ui/StatCard';
 import { Skeleton } from '../../../components/ui/Skeleton';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 const STATUS_STYLES = {
   planning:  { label: 'Planning',   variant: 'blue',   Icon: Circle },
@@ -31,8 +32,8 @@ function fmtDate(d) {
   return new Date(d).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function ProjectForm({ initial, onSubmit, onClose, isLoading }) {
-  const [form, setForm] = useState({
+function ProjectForm({ initial, onSubmit, onClose, isLoading, draftKey }) {
+  const [form, setForm, clearDraft] = useFormDraft(initial ? null : draftKey, {
     name:         initial?.name         || '',
     clientName:   initial?.clientName   || '',
     description:  initial?.description  || '',
@@ -43,10 +44,11 @@ function ProjectForm({ initial, onSubmit, onClose, isLoading }) {
     incentivePool:initial?.incentivePool|| '',
   });
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!form.name.trim()) { toast.error('Project name is required'); return; }
-    onSubmit(form);
+    const saved = await onSubmit(form);
+    if (!initial && saved !== false) clearDraft();
   }
   return (
     <form onSubmit={handleSubmit}>
@@ -99,7 +101,8 @@ export default function ProjectsListPage() {
       if (editProj) { await updateProject({ id: editProj._id, ...payload }).unwrap(); toast.success('Project updated'); }
       else          { await createProject(payload).unwrap(); toast.success('Project created'); }
       setFormOpen(false); setEditProj(null);
-    } catch (err) { toast.error(err?.data?.error?.message || 'Operation failed'); }
+      return true;
+    } catch (err) { toast.error(err?.data?.error?.message || 'Operation failed'); return false; }
   }
 
   return (
@@ -191,7 +194,7 @@ export default function ProjectsListPage() {
       <Modal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditProj(null); }}
         title={editProj ? 'Edit Project' : 'New Project'} size="md">
         <ProjectForm initial={editProj} onSubmit={handleSubmit} onClose={() => { setFormOpen(false); setEditProj(null); }}
-          isLoading={creating || updating} />
+          isLoading={creating || updating} draftKey={`hrms:draft:project:create:${user?.id || 'user'}`} />
       </Modal>
     </div>
   );

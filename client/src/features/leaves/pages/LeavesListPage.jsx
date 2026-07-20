@@ -28,6 +28,7 @@ import StatCard from '../../../components/ui/StatCard';
 import Button from '../../../components/ui/Button';
 import { Badge } from '../../../components/ui/Badge';
 import { Modal, ModalFooter } from '../../../components/ui/Modal';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import { Input, Select, Textarea } from '../../../components/ui/Input';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Avatar } from '../../../components/ui/Avatar';
@@ -85,8 +86,8 @@ function LeaveBalanceCards({ balance }) {
 }
 
 // ─── Apply Leave Form ────────────────────────────────────────────────────────
-function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes }) {
-  const [form, setForm] = useState({
+function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) {
+  const [form, setForm, clearDraft] = useFormDraft(draftKey, {
     leaveType: leaveTypes[0] || '', startDate: '', endDate: '', reason: '', emergencyContact: '',
   });
   const [errors, setErrors] = useState({});
@@ -119,7 +120,12 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes }) {
     return count;
   }
 
-  function handleSubmit(e) { e.preventDefault(); if (!validate()) return; onSubmit(form); }
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!validate()) return;
+    const saved = await onSubmit(form);
+    if (saved !== false) clearDraft();
+  }
   const days = workingDays();
 
   return (
@@ -241,8 +247,8 @@ export default function LeavesListPage() {
   const typeChartData = Object.entries(typeDays).map(([name, days]) => ({ name: capitalize(name), days }));
 
   async function handleApply(payload) {
-    try { await applyLeave(payload).unwrap(); toast.success('Leave request submitted'); setApplyOpen(false); }
-    catch (err) { toast.error(err?.data?.error?.message || 'Failed to submit'); }
+    try { await applyLeave(payload).unwrap(); toast.success('Leave request submitted'); setApplyOpen(false); return true; }
+    catch (err) { toast.error(err?.data?.error?.message || 'Failed to submit'); return false; }
   }
   async function handleApprove() {
     try { await approveLeave({ id: reviewTarget._id, remarks: remarkText }).unwrap();
@@ -472,7 +478,7 @@ export default function LeavesListPage() {
       {/* Apply Modal */}
       <Modal isOpen={applyOpen} onClose={() => setApplyOpen(false)} title="Apply for Leave" size="md">
         <ApplyLeaveForm onSubmit={handleApply} onClose={() => setApplyOpen(false)} isLoading={applying}
-          leaveTypes={enabledLeaveTypes} />
+          leaveTypes={enabledLeaveTypes} draftKey={`hrms:draft:leave:create:${user?.id || 'user'}`} />
       </Modal>
 
       {/* Review Modal */}

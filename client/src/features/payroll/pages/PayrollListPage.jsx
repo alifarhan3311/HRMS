@@ -26,6 +26,7 @@ import { Modal, ModalFooter } from '../../../components/ui/Modal';
 import { Input, Select } from '../../../components/ui/Input';
 import { Avatar } from '../../../components/ui/Avatar';
 import { Skeleton } from '../../../components/ui/Skeleton';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -166,9 +167,9 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canManage, isA
 }
 
 // ─── Generate Payslip Form ────────────────────────────────────────────────────
-function GenerateForm({ onSubmit, onClose, isLoading }) {
+function GenerateForm({ onSubmit, onClose, isLoading, draftKey }) {
   const now = new Date();
-  const [form, setForm] = useState({
+  const [form, setForm, clearDraft] = useFormDraft(draftKey, {
     employeeId: '',
     month: now.getMonth() + 1,
     year: now.getFullYear(),
@@ -187,10 +188,10 @@ function GenerateForm({ onSubmit, onClose, isLoading }) {
   function addAllowance() { setForm(p => ({ ...p, allowanceItems: [...p.allowanceItems, { label: '', amount: '' }] })); }
   function removeAllowance(i) { setForm(p => ({ ...p, allowanceItems: p.allowanceItems.filter((_, idx) => idx !== i) })); }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!form.employeeId) { toast.error('Employee ID is required'); return; }
-    onSubmit({
+    const saved = await onSubmit({
       ...form,
       month: Number(form.month),
       year: Number(form.year),
@@ -203,6 +204,7 @@ function GenerateForm({ onSubmit, onClose, isLoading }) {
         .filter(a => a.label && a.amount)
         .map(a => ({ label: a.label, amount: Number(a.amount) })),
     });
+    if (saved !== false) clearDraft();
   }
 
   return (
@@ -288,8 +290,8 @@ export default function PayrollListPage() {
   };
 
   async function handleGenerate(payload) {
-    try { await generatePayroll(payload).unwrap(); toast.success('Payslip generated'); setGenerateOpen(false); }
-    catch (err) { toast.error(err?.data?.error?.message || 'Failed to generate payslip'); }
+    try { await generatePayroll(payload).unwrap(); toast.success('Payslip generated'); setGenerateOpen(false); return true; }
+    catch (err) { toast.error(err?.data?.error?.message || 'Failed to generate payslip'); return false; }
   }
 
   async function handleAction(action, id) {
@@ -447,7 +449,8 @@ export default function PayrollListPage() {
 
       {/* Generate Modal */}
       <Modal isOpen={generateOpen} onClose={() => setGenerateOpen(false)} title="Generate Payslip" size="lg">
-        <GenerateForm onSubmit={handleGenerate} onClose={() => setGenerateOpen(false)} isLoading={generating} />
+        <GenerateForm onSubmit={handleGenerate} onClose={() => setGenerateOpen(false)} isLoading={generating}
+          draftKey={`hrms:draft:payroll:create:${user?.id || 'user'}`} />
       </Modal>
 
       {/* Detail Modal */}

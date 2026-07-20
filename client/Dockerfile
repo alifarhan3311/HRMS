@@ -11,7 +11,7 @@ RUN npm install
 COPY . .
 
 # Direct ENV define kar diya bina kisi ARG ke
-ENV VITE_API_BASE_URL=https://www.mhcirclesolutions.com/api/v1
+ENV VITE_API_BASE_URL=https://www.hr.mhcirclesolutions.com/api/v1
 
 RUN npm run build
 

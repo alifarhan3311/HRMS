@@ -27,6 +27,7 @@ import { Modal, ModalFooter } from '../../../components/ui/Modal';
 import { Input, Select, Textarea } from '../../../components/ui/Input';
 import { Avatar } from '../../../components/ui/Avatar';
 import { Skeleton } from '../../../components/ui/Skeleton';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PAYMENT_METHODS = ['Cash','Bank Transfer','Credit Card','Cheque','Online'];
@@ -46,9 +47,9 @@ function fmtDate(d) {
 }
 
 // ─── Submit Expense Form ──────────────────────────────────────────────────────
-function SubmitExpenseForm({ onSubmit, onClose, isLoading, categories }) {
+function SubmitExpenseForm({ onSubmit, onClose, isLoading, categories, draftKey }) {
   const today = new Date().toISOString().substring(0, 10);
-  const [form, setForm] = useState({
+  const [form, setForm, clearDraft] = useFormDraft(draftKey, {
     category: categories[0] || '', vendorName: '', amount: '',
     expenseDate: today, paymentMethod: 'Cash', remarks: '',
   });
@@ -65,7 +66,12 @@ function SubmitExpenseForm({ onSubmit, onClose, isLoading, categories }) {
     setErrors(e);
     return !Object.keys(e).length;
   }
-  function handleSubmit(e) { e.preventDefault(); if (!validate()) return; onSubmit({ ...form, amount: Number(form.amount) }); }
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!validate()) return;
+    const saved = await onSubmit({ ...form, amount: Number(form.amount) });
+    if (saved !== false) clearDraft();
+  }
 
   return (
     <form onSubmit={handleSubmit}>
@@ -314,8 +320,8 @@ export default function ExpensesListPage() {
   })).filter(d => d.amount > 0);
 
   async function handleSubmit(payload) {
-    try { await submitExpense(payload).unwrap(); toast.success('Expense submitted'); setSubmitOpen(false); }
-    catch (err) { toast.error(err?.data?.error?.message || 'Submission failed'); }
+    try { await submitExpense(payload).unwrap(); toast.success('Expense submitted'); setSubmitOpen(false); return true; }
+    catch (err) { toast.error(err?.data?.error?.message || 'Submission failed'); return false; }
   }
   async function handleApprove(id, remarks) {
     try { await approveExpense({ id, remarks }).unwrap(); toast.success('Expense approved'); setDetailExpense(null); }
@@ -461,7 +467,8 @@ export default function ExpensesListPage() {
       {/* Submit Modal */}
       <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Submit New Expense" size="md">
         <SubmitExpenseForm onSubmit={handleSubmit} onClose={() => setSubmitOpen(false)}
-          isLoading={submitting} categories={categories} />
+          isLoading={submitting} categories={categories}
+          draftKey={`hrms:draft:expense:create:${user?.id || 'user'}`} />
       </Modal>
 
       <CategoryManagerModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)}
