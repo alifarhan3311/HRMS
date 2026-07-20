@@ -107,6 +107,16 @@ export default function EmployeeForm({
   const availableTeamLeads = form.managerId
     ? teamLeads.filter((lead) => String(lead.managerId?._id || lead.managerId || '') === String(form.managerId))
     : teamLeads;
+  const departmentManager = managers.find((manager) => (
+    String(manager.department || '').trim().toLowerCase() === String(form.department || '').trim().toLowerCase()
+  ));
+
+  useEffect(() => {
+    if (!['employee', 'team_lead'].includes(form.role) || !departmentManager) return;
+    if (String(form.managerId || '') !== String(departmentManager._id)) {
+      setForm((previous) => ({ ...previous, managerId: departmentManager._id }));
+    }
+  }, [departmentManager, form.managerId, form.role]);
 
   // New employees must always have a concrete shift. Select the first active
   // company shift as soon as the async list becomes available.
@@ -447,10 +457,11 @@ export default function EmployeeForm({
                   onChange={(e) => set('currentSalary', e.target.value)}
                   error={errors.currentSalary}
                 />
-                {managers.length > 0 && (
+                {managers.length > 0 && ['employee', 'team_lead'].includes(form.role) && (
                   <Select
-                    label="Reporting Manager"
+                    label={departmentManager ? 'Reporting Manager (Auto-assigned)' : 'Reporting Manager'}
                     value={form.managerId}
+                    disabled={Boolean(departmentManager)}
                     onChange={(e) => {
                       const managerId = e.target.value;
                       set('managerId', managerId);
@@ -464,7 +475,12 @@ export default function EmployeeForm({
                     ))}
                   </Select>
                 )}
-                {availableTeamLeads.length > 0 && (
+                {departmentManager && (
+                  <p className="text-xs text-emerald-600">
+                    {departmentManager.fullName} is automatically assigned because they manage the {form.department} department.
+                  </p>
+                )}
+                {availableTeamLeads.length > 0 && form.role === 'employee' && (
                   <Select
                     label="Team Lead"
                     value={form.teamLeadId}

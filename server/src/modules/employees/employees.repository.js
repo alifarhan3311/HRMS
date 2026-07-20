@@ -65,6 +65,52 @@ async function clearReportingReferences(id) {
   ]);
 }
 
+function departmentPattern(department) {
+  const escaped = String(department || '').trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^${escaped}$`, 'i');
+}
+
+async function findActiveDepartmentManager(companyId, department, excludeId = null) {
+  if (!String(department || '').trim()) return null;
+  const filter = {
+    companyId,
+    department: departmentPattern(department),
+    role: 'manager',
+    status: 'active',
+  };
+  if (excludeId) filter._id = { $ne: excludeId };
+  return Employee.findOne(filter).sort({ createdAt: 1 });
+}
+
+async function assignDepartmentManager(companyId, department, managerId) {
+  if (!String(department || '').trim()) return { modifiedCount: 0 };
+  return Employee.updateMany({
+    companyId,
+    department: departmentPattern(department),
+    role: { $in: ['team_lead', 'employee'] },
+    _id: { $ne: managerId },
+    status: { $ne: 'resigned' },
+  }, { $set: { managerId } });
+}
+
+async function clearManagerReferences(managerId) {
+  return Employee.updateMany({ managerId }, { $unset: { managerId: '' } });
+}
+
+async function syncDepartmentManagers(companyId) {
+  const managers = await Employee.find({ companyId, role: 'manager', status: 'active', department: { $nin: [null, ''] } })
+    .sort({ createdAt: 1 });
+  for (const manager of managers) {
+    // Intentionally sequential: the oldest active manager remains canonical
+    // if legacy data contains duplicate managers for one department.
+    // eslint-disable-next-line no-await-in-loop
+    const canonical = await findActiveDepartmentManager(companyId, manager.department);
+    if (String(canonical?._id) !== String(manager._id)) continue;
+    // eslint-disable-next-line no-await-in-loop
+    await assignDepartmentManager(companyId, manager.department, manager._id);
+  }
+}
+
 async function countByCompany(companyId) {
   return Employee.countDocuments({ companyId });
 }
@@ -128,6 +174,10 @@ module.exports = {
   updateRaw,
   deleteById,
   clearReportingReferences,
+  findActiveDepartmentManager,
+  assignDepartmentManager,
+  clearManagerReferences,
+  syncDepartmentManagers,
   countByCompany,
   nextSequence,
   getDistinctDepartments,

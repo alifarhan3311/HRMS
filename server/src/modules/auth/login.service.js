@@ -8,7 +8,8 @@ const jwt = require('jsonwebtoken');
 const createHttpError = require('http-errors');
 const Employee = require('../employees/employees.model');
 const Session = require('./auth.model');
-const { generateSecureToken } = require('../../utils/crypto');
+const { decryptField, generateSecureToken } = require('../../utils/crypto');
+const logger = require('../../utils/logger');
 
 const ACCESS_TOKEN_TTL = '15m';
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -135,13 +136,41 @@ async function getCurrentUser(employeeId) {
     .select('-passwordHash -__v')
     .populate('managerId', 'fullName employeeCode designation')
     .populate('teamLeadId', 'fullName employeeCode designation')
-    .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive');
+    .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive')
+    // Read the stored values without schema getters first. Older production
+    // records may contain plaintext fields, while records encrypted with a
+    // previous master key must not make the entire /auth/me request fail.
+    .lean({ getters: false, virtuals: false });
 
   if (!employee || employee.status !== 'active') {
     throw createHttpError(401, 'Account no longer active.');
   }
 
-  const user = employee.toObject({ getters: true });
+  const user = { ...employee };
+  for (const field of ['cnic', 'contactNumber', 'address', 'currentSalary', 'emergencyContact']) {
+    const storedValue = employee[field];
+    if (storedValue === null || storedValue === undefined || storedValue === '') continue;
+
+    // Before field encryption was introduced these values were stored as
+    // plaintext. Preserve those legacy values and decrypt only ciphertext
+    // bundles matching the current storage format.
+    if (typeof storedValue !== 'string' || storedValue.split(':').length !== 3) continue;
+
+    try {
+      user[field] = decryptField(storedValue);
+    } catch (error) {
+      // A stale/mismatched deployment key should redact only the affected
+      // field. Authentication and the rest of the employee profile remain
+      // usable, and operators get a diagnostic without leaking PII.
+      user[field] = null;
+      logger.error('[auth] Could not decrypt employee profile field', {
+        employeeId: String(employee._id),
+        field,
+        error: error.message,
+      });
+    }
+  }
+
   user.id = employee._id;
   user.shift = employee.shiftId || null;
   delete user.passwordHash;

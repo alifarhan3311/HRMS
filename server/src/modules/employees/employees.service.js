@@ -78,6 +78,23 @@ async function validateReportingLine({ managerId, teamLeadId }, companyId, emplo
   }
 }
 
+async function applyDepartmentManager(payload, companyId, role, employeeId = null) {
+  const department = String(payload.department || '').trim();
+  if (role === 'manager') {
+    payload.managerId = null;
+    payload.teamLeadId = null;
+    if (!department) return;
+    const duplicate = await repository.findActiveDepartmentManager(companyId, department, employeeId);
+    if (duplicate) {
+      throw createHttpError(409, `${department} already has an active Manager: ${duplicate.fullName}.`);
+    }
+    return;
+  }
+  if (!['team_lead', 'employee'].includes(role) || !department) return;
+  const departmentManager = await repository.findActiveDepartmentManager(companyId, department);
+  if (departmentManager) payload.managerId = departmentManager._id;
+}
+
 function assertCanManageEmployee(actor, target, { allowSelf = false, action = 'manage' } = {}) {
   const isSelf = String(actor.id) === String(target._id);
   if (isSelf) {
@@ -160,6 +177,7 @@ async function reconcileLeaveBalance(employee) {
 async function createEmployee(payload, actor) {
   payload = normalizeOptionalReferences(payload);
   assertCanAssignRole(actor, payload.role);
+  await applyDepartmentManager(payload, actor.companyId, payload.role);
   // Validate uniqueness
   const existing = await repository.findByEmail(payload.email, actor.companyId);
   if (existing) throw createHttpError(409, 'An employee with this email already exists.');
@@ -199,6 +217,9 @@ async function createEmployee(payload, actor) {
   delete data.password; // never store plaintext
 
   const employee = await repository.create(data);
+  if (employee.role === 'manager' && employee.department) {
+    await repository.assignDepartmentManager(actor.companyId, employee.department, employee._id);
+  }
   return sanitize(employee);
 }
 
@@ -279,6 +300,9 @@ async function updateEmployee(id, payload, actor) {
   const existing = await repository.findById(id);
   if (!existing) throw createHttpError(404, 'Employee not found.');
   assertCanManageEmployee(actor, existing, { allowSelf: true, action: 'edit' });
+  const effectiveDepartment = payload.department !== undefined ? payload.department : existing.department;
+  payload.department = effectiveDepartment;
+  await applyDepartmentManager(payload, actor.companyId, existing.role, id);
 
   // If email is being changed, check uniqueness
   if (payload.email && payload.email !== existing.email) {
@@ -297,6 +321,14 @@ async function updateEmployee(id, payload, actor) {
 
   const updated = await repository.updateById(id, payload);
   if (!updated) throw createHttpError(404, 'Employee not found.');
+  if (existing.role === 'manager') {
+    if (String(existing.department || '').toLowerCase() !== String(updated.department || '').toLowerCase()) {
+      await repository.clearManagerReferences(id);
+    }
+    if (updated.department && updated.status === 'active') {
+      await repository.assignDepartmentManager(actor.companyId, updated.department, updated._id);
+    }
+  }
   return sanitize(updated);
 }
 
@@ -318,6 +350,7 @@ async function deleteEmployee(id, actor) {
 }
 
 async function getEmployeeHierarchy(companyId) {
+  await repository.syncDepartmentManagers(companyId);
   return repository.getHierarchy(companyId);
 }
 
@@ -336,7 +369,19 @@ async function changeStatus(id, { status, reason }, actor) {
     update.exitReason = reason || '';
   }
 
+  if (employee.role === 'manager' && status === 'active' && employee.department) {
+    const duplicate = await repository.findActiveDepartmentManager(employee.companyId, employee.department, employee._id);
+    if (duplicate) throw createHttpError(409, `${employee.department} already has an active Manager: ${duplicate.fullName}.`);
+  }
+
   const updated = await repository.updateById(id, update);
+  if (employee.role === 'manager') {
+    if (status === 'active' && employee.department) {
+      await repository.assignDepartmentManager(employee.companyId, employee.department, employee._id);
+    } else {
+      await repository.clearManagerReferences(employee._id);
+    }
+  }
   return sanitize(updated);
 }
 
@@ -349,6 +394,10 @@ async function promoteEmployee(id, promotionData, actor) {
   if (!employee) throw createHttpError(404, 'Employee not found.');
   assertCanManageEmployee(actor, employee, { action: 'promote' });
   if (promotionData.role) assertCanAssignRole(actor, promotionData.role);
+  const nextRole = promotionData.role || employee.role;
+  const nextDepartment = promotionData.department || employee.department;
+  const automaticAssignment = { department: nextDepartment };
+  await applyDepartmentManager(automaticAssignment, employee.companyId, nextRole, employee._id);
 
   const historyEntry = {
     designation: employee.designation,
@@ -370,6 +419,12 @@ async function promoteEmployee(id, promotionData, actor) {
   if (promotionData.designation) update.$set.designation = promotionData.designation;
   if (promotionData.department) update.$set.department = promotionData.department;
   if (promotionData.role) update.$set.role = promotionData.role;
+  if (nextRole === 'manager') {
+    update.$set.managerId = null;
+    update.$set.teamLeadId = null;
+  } else if (automaticAssignment.managerId) {
+    update.$set.managerId = automaticAssignment.managerId;
+  }
   if (promotionData.currentSalary) {
     update.$set.currentSalary = promotionData.currentSalary;
     update.$set.lastIncrementAmount = promotionData.incrementAmount || 0;
@@ -386,6 +441,12 @@ async function promoteEmployee(id, promotionData, actor) {
 
   const updated = await repository.updateRaw(id, update);
   if (!updated) throw createHttpError(404, 'Employee not found.');
+  if (employee.role === 'manager' && (nextRole !== 'manager' || String(employee.department || '').toLowerCase() !== String(nextDepartment || '').toLowerCase())) {
+    await repository.clearManagerReferences(employee._id);
+  }
+  if (nextRole === 'manager' && nextDepartment) {
+    await repository.assignDepartmentManager(employee.companyId, nextDepartment, employee._id);
+  }
   return sanitize(updated);
 }
 
