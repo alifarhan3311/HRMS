@@ -12,7 +12,7 @@ import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
   Clock, CheckCircle2, XCircle, AlertCircle, Calendar,
-  Filter, ChevronLeft, ChevronRight, Edit, RefreshCw,
+  Filter, ChevronLeft, ChevronRight, Edit, RefreshCw, Search, X,
 } from 'lucide-react';
 import {
   useGetTodayAttendanceQuery,
@@ -25,6 +25,7 @@ import {
   useReviewRegularizationMutation,
   useGetPendingRegularizationsQuery,
 } from '../api/attendance.api';
+import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import { toast } from '../../../utils/toast';
 import StatCard from '../../../components/ui/StatCard';
 import Button from '../../../components/ui/Button';
@@ -331,16 +332,37 @@ export default function AttendanceListPage() {
 
   const [ym, setYm] = useState(nowYM());
   const [filters, setFilters] = useState({ status: '', employeeId: '' });
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [correctionRecord, setCorrectionRecord] = useState(null);
   const [regularizeRecord, setRegularizeRecord] = useState(null);
   const [reviewRecord, setReviewRecord] = useState(null);
 
-  const monthParams = { year: ym.year, month: ym.month };
+  const { data: employeesData, isLoading: employeesLoading } = useListEmployeesQuery(
+    { page: 1, limit: 100, sort: '-createdAt' },
+    { skip: !isAdminHR }
+  );
+  const employees = employeesData?.items || [];
+  const selectedEmployee = employees.find((employee) => employee._id === filters.employeeId);
+  const matchingEmployees = employees.filter((employee) => {
+    const needle = employeeSearch.trim().toLowerCase();
+    if (!needle) return true;
+    return [employee.fullName, employee.employeeCode, employee.email]
+      .filter(Boolean)
+      .some((value) => value.toLowerCase().includes(needle));
+  });
+
+  const selectedEmployeeId = isAdminHR ? (filters.employeeId || user?.id) : user?.id;
+  const monthParams = {
+    year: ym.year,
+    month: ym.month,
+    ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
+  };
   const { data: summaryData, isLoading: summaryLoading } = useGetMonthlySummaryQuery(monthParams);
   const { data: listData, isLoading: listLoading, isFetching, refetch } = useListAttendanceQuery({
     ...monthParams, page, limit: 20, ...filters,
-    ...(isAdminHR ? {} : { employeeId: user?.id }),
+    ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
   });
   const { data: pendingData } = useGetPendingRegularizationsQuery(undefined, { skip: !isManagerUp });
   const [manualCorrection, { isLoading: correcting }] = useManualCorrectionMutation();
@@ -410,6 +432,84 @@ export default function AttendanceListPage() {
 
       {/* Sign In/Out widget (own attendance) */}
       <SignInWidget user={user} />
+
+      {isAdminHR && (
+        <div className="glass-card relative z-20 p-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Employee attendance</p>
+              <p className="text-xs text-muted-foreground">Search by employee name, code or email</p>
+            </div>
+            {filters.employeeId && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => {
+                  setFilters((previous) => ({ ...previous, employeeId: '' }));
+                  setEmployeeSearch('');
+                  setPage(1);
+                }}
+              >
+                <X className="h-3.5 w-3.5" /> My attendance
+              </Button>
+            )}
+          </div>
+          <div className="relative max-w-xl">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={employeePickerOpen ? employeeSearch : (selectedEmployee?.fullName || employeeSearch)}
+              onFocus={() => {
+                setEmployeeSearch(selectedEmployee ? '' : employeeSearch);
+                setEmployeePickerOpen(true);
+              }}
+              onChange={(event) => {
+                setEmployeeSearch(event.target.value);
+                setEmployeePickerOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setEmployeePickerOpen(false);
+              }}
+              placeholder={employeesLoading ? 'Loading employees...' : 'Search employee...'}
+              disabled={employeesLoading}
+              className="h-11 w-full rounded-xl border border-border bg-background pl-10 pr-4 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+            />
+            {employeePickerOpen && (
+              <div className="absolute left-0 right-0 top-full mt-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-xl">
+                {matchingEmployees.length ? matchingEmployees.map((employee) => (
+                  <button
+                    key={employee._id}
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setFilters((previous) => ({ ...previous, employeeId: employee._id }));
+                      setEmployeeSearch(employee.fullName);
+                      setEmployeePickerOpen(false);
+                      setPage(1);
+                    }}
+                    className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent ${filters.employeeId === employee._id ? 'bg-primary/10' : ''}`}
+                  >
+                    <Avatar name={employee.fullName} size="sm" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{employee.fullName}</span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {[employee.employeeCode, employee.designation, employee.email].filter(Boolean).join(' · ')}
+                      </span>
+                    </span>
+                  </button>
+                )) : (
+                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">No employee found.</p>
+                )}
+              </div>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Showing: <span className="font-medium text-foreground">{selectedEmployee?.fullName || `${user?.fullName || 'My'} attendance`}</span>
+          </p>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

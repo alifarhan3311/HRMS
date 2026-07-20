@@ -1,0 +1,75 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [master]
+
+env:
+  BACKEND_IMAGE: alifarhan3311/hr-management-backend
+  FRONTEND_IMAGE: alifarhan3311/hr-management-frontend
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set Image Tag
+        run: echo "TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Docker Login
+        run: echo "${{ secrets.DOCKER_PASS }}" | docker login -u "${{ secrets.DOCKER_USER }}" --password-stdin
+
+      - name: Build & Push
+        run: |
+          docker build -t $BACKEND_IMAGE:$TAG ./backend
+          docker push $BACKEND_IMAGE:$TAG
+          docker build -t $FRONTEND_IMAGE:$TAG ./frontend
+          docker push $FRONTEND_IMAGE:$TAG
+
+      - name: Checkout GitOps Repo
+        uses: actions/checkout@v4
+        with:
+          repository: alifarhan3311/hr-management-deployment
+          token: ${{ secrets.GIT_TOKEN }}
+          path: hr-management-deployment
+
+      - name: Update Manifests & Commit
+        run: |
+          BACKEND_FILE="hr-management-deployment/k8s/backend-deployment.yaml"
+          FRONTEND_FILE="hr-management-deployment/k8s/frontend-deployment.yaml"
+          
+          # Check karein files exist karti hain ya nahi
+          if [ ! -f "$BACKEND_FILE" ] || [ ! -f "$FRONTEND_FILE" ]; then
+            echo "Error: Deployment files not found!"
+            exit 1
+          fi
+
+          echo "Updating images in manifests..."
+          
+          # [FIXED REGEX] Yeh spaces aur purane tags dono ko sahi se match karega
+          sed -i "s|image:[[:space:]]*$BACKEND_IMAGE.*|image: $BACKEND_IMAGE:$TAG|g" "$BACKEND_FILE"
+          sed -i "s|image:[[:space:]]*$FRONTEND_IMAGE.*|image: $FRONTEND_IMAGE:$TAG|g" "$FRONTEND_FILE"
+          
+          # Git Config
+          cd hr-management-deployment
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          
+          # Commit aur Push
+          git add k8s/backend-deployment.yaml k8s/frontend-deployment.yaml
+          
+          # Agar koi change nahi hai to exit
+          if git diff --cached --quiet; then
+            echo "No changes detected in manifests. Exiting safely."
+            exit 0
+          fi
+          
+          git commit -m "🚀 deploy: update images to $TAG"
+          git push origin main
+
+      - name: Cleanup
+        if: always()
+        run: rm -rf hr-management-deployment
