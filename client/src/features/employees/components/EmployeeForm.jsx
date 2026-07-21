@@ -30,6 +30,18 @@ const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
 const DEFAULT_ROLES = ['employee', 'team_lead', 'manager'];
 const DEPARTMENTS = ['Digital Media', 'Call Center'];
+
+function formatCnic(value) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 13);
+  if (!digits) return '';
+
+  let formatted = digits.slice(0, 5);
+  if (digits.length >= 5) formatted += '-';
+  if (digits.length > 5) formatted += digits.slice(5, 12);
+  if (digits.length >= 12) formatted += '-';
+  if (digits.length > 12) formatted += digits.slice(12, 13);
+  return formatted;
+}
 const TAB_FIELDS = {
   personal: ['fullName', 'fatherName', 'cnic', 'dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'],
   contact: ['email', 'contactNumber', 'address', 'emergencyContact'],
@@ -159,6 +171,20 @@ export default function EmployeeForm({
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }));
+  }
+
+  function handleCnicChange(event) {
+    let value = event.target.value;
+    // When backspace removes an auto-inserted dash, remove the preceding
+    // digit too; otherwise formatting would immediately put the dash back.
+    if (
+      event.nativeEvent?.inputType === 'deleteContentBackward'
+      && form.cnic.endsWith('-')
+      && !value.endsWith('-')
+    ) {
+      value = value.replace(/\D/g, '').slice(0, -1);
+    }
+    set('cnic', formatCnic(value));
   }
 
   function addSkill() {
@@ -313,9 +339,12 @@ export default function EmployeeForm({
                 />
                 <Input
                   label="CNIC" required
-                  placeholder="42101-1234567-1"
+                  placeholder="11111-1111111-1"
                   value={form.cnic}
-                  onChange={(e) => set('cnic', e.target.value)}
+                  onChange={handleCnicChange}
+                  inputMode="numeric"
+                  maxLength={15}
+                  autoComplete="off"
                   error={errors.cnic}
                 />
                 <Input
