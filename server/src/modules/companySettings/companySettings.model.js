@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { encryptField, decryptField } = require('../../utils/crypto');
+const { encryptField, decryptFieldSafe } = require('../../utils/crypto');
 
 const companySettingsSchema = new mongoose.Schema(
   {
@@ -62,7 +62,7 @@ const companySettingsSchema = new mongoose.Schema(
       port: { type: Number, default: 587 },
       secure: { type: Boolean, default: false },
       user: String,
-      password: { type: String, set: encryptField, get: decryptField },
+      password: { type: String, set: encryptField, get: decryptFieldSafe },
       from: String,
     },
     security: {

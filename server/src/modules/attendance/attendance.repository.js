@@ -47,6 +47,22 @@ async function updateById(id, data) {
   return Attendance.findByIdAndUpdate(id, data, { new: true, runValidators: true });
 }
 
+async function upsertByEmployeeShiftDate(employeeId, shiftDate, update) {
+  return Attendance.findOneAndUpdate(
+    { employeeId, shiftDate },
+    update,
+    { new: true, upsert: true, setDefaultsOnInsert: true, runValidators: true }
+  );
+}
+
+async function findByClosure(closureId) {
+  return Attendance.find({ closureId });
+}
+
+async function deleteById(id) {
+  return Attendance.findByIdAndDelete(id);
+}
+
 async function getMonthlySummary(employeeId, year, month) {
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59, 999);
@@ -93,6 +109,9 @@ module.exports = {
   findOpenByEmployee,
   findAll,
   updateById,
+  upsertByEmployeeShiftDate,
+  findByClosure,
+  deleteById,
   getMonthlySummary,
   getMonthlyAggregation,
   getLateCountForMonth,

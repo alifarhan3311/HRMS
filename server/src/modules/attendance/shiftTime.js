@@ -58,4 +58,13 @@ function earlyLeaveMinutes(signOutTime, schedule) {
   return signOutTime >= schedule.scheduledEnd ? 0 : Math.round((schedule.scheduledEnd - signOutTime) / 60000);
 }
 
-module.exports = { buildShiftSchedule, lateMinutes, earlyLeaveMinutes };
+function boundaryForShiftDate(shiftDate, time, shift, schedule) {
+  const [year, month, day] = shiftDate.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  const overnight = timeMinutes(shift.endTime) <= timeMinutes(shift.startTime);
+  const boundaryIsNextDay = overnight && timeMinutes(time) < timeMinutes(shift.startTime);
+  const date = boundaryIsNextDay ? addCalendarDays({ year, month, day }, 1) : { year, month, day };
+  return zonedDateTimeToUtc({ ...date, hour, minute }, schedule.timeZone);
+}
+
+module.exports = { buildShiftSchedule, lateMinutes, earlyLeaveMinutes, boundaryForShiftDate };

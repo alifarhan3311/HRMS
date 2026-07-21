@@ -1,25 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import { CalendarCheck, Check, Mail, MapPin, Plus, RefreshCw, X } from 'lucide-react';
 import Button from '../../../components/ui/Button';
-import { Input, Textarea } from '../../../components/ui/Input';
+import { Input, Select, Textarea } from '../../../components/ui/Input';
 import { toast } from '../../../utils/toast';
 import { useAddManualCompanyOffMutation, useDecideHolidayMutation, useListHolidaysQuery, useSyncCanadaHolidaysMutation } from '../api/holidays.api';
+import { useGetEmployeeDepartmentsQuery } from '../../employees/api/employees.api';
+import { useListShiftsQuery } from '../../shifts/api/shifts.api';
 
 const STATUS = {
   pending_hr: { label: 'HR decision required', className: 'bg-amber-100 text-amber-700' },
-  confirmed: { label: 'Company off', className: 'bg-emerald-100 text-emerald-700' },
+  confirmed: { label: 'Schedule confirmed', className: 'bg-emerald-100 text-emerald-700' },
   rejected: { label: 'Working day', className: 'bg-slate-100 text-slate-600' },
 };
 
 export default function HolidaySettings({ province = 'ON', onProvinceChange }) {
   const [year, setYear] = useState(new Date().getFullYear());
-  const [manual, setManual] = useState({ title: '', date: '', description: '' });
+  const [manual, setManual] = useState({ title: '', date: '', description: '', eventType: 'full_day', effectiveTime: '', requiredMinutesOverride: '', affectedScope: 'all', affectedDepartment: '', affectedShiftId: '', isPaid: true });
   const synced = useRef(new Set());
   const { data, isLoading, isFetching } = useListHolidaysQuery({ year });
   const [syncCalendar, { isLoading: isSyncing }] = useSyncCanadaHolidaysMutation();
   const [addManualOff, { isLoading: isAddingManual }] = useAddManualCompanyOffMutation();
   const [decide, { isLoading: isDeciding }] = useDecideHolidayMutation();
   const holidays = data?.data || [];
+  const { data: departmentsData } = useGetEmployeeDepartmentsQuery();
+  const { data: shiftsData } = useListShiftsQuery({ active: true });
+  const departments = departmentsData?.data || [];
+  const shifts = shiftsData?.data || [];
 
   async function sync(silent = false) {
     try {
@@ -39,7 +45,7 @@ export default function HolidaySettings({ province = 'ON', onProvinceChange }) {
   }, [year]);
 
   async function makeDecision(holiday, isCompanyOff) {
-    const verb = isCompanyOff ? 'confirm this as a company off day and email all active employees' : 'mark this as a working day';
+    const verb = isCompanyOff ? 'confirm this schedule and email affected employees' : 'mark this as a normal working day';
     if (!window.confirm(`Do you want to ${verb}?`)) return;
     try {
       const response = await decide({ id: holiday._id, isCompanyOff }).unwrap();
@@ -57,11 +63,16 @@ export default function HolidaySettings({ province = 'ON', onProvinceChange }) {
   async function addManualHoliday(event) {
     event.preventDefault();
     try {
-      const response = await addManualOff(manual).unwrap();
+      const payload = { ...manual };
+      if (payload.requiredMinutesOverride === '') delete payload.requiredMinutesOverride;
+      if (payload.affectedScope !== 'department') delete payload.affectedDepartment;
+      if (payload.affectedScope !== 'shift') delete payload.affectedShiftId;
+      if (!['early_closure', 'late_opening'].includes(payload.eventType)) delete payload.effectiveTime;
+      const response = await addManualOff(payload).unwrap();
       const result = response.data;
       setYear(new Date(manual.date).getUTCFullYear());
-      setManual({ title: '', date: '', description: '' });
-      toast.success(`Company off added. ${result.emailed} email(s) sent${result.emailFailed ? `, ${result.emailFailed} failed` : ''}.`);
+      setManual({ title: '', date: '', description: '', eventType: 'full_day', effectiveTime: '', requiredMinutesOverride: '', affectedScope: 'all', affectedDepartment: '', affectedShiftId: '', isPaid: true });
+      toast.success(`Schedule updated. ${result.emailed} email(s) sent and ${result.attendanceAdjusted || 0} attendance record(s) adjusted.`);
     } catch (error) {
       toast.error(error?.data?.error?.message || 'Unable to add the manual company off.');
     }
@@ -101,14 +112,40 @@ export default function HolidaySettings({ province = 'ON', onProvinceChange }) {
 
       <form onSubmit={addManualHoliday} className="space-y-4 rounded-xl border border-border bg-card p-4">
         <div>
-          <h4 className="font-semibold">Manual Company Off</h4>
-          <p className="mt-1 text-sm text-muted-foreground">For Eid, emergency closure, company event, or any HR-declared off day. Saving immediately notifies and emails all active employees.</p>
+          <h4 className="font-semibold">Emergency Office Schedule</h4>
+          <p className="mt-1 text-sm text-muted-foreground">Create a full off, half day, early closure, or late opening. Saving immediately adjusts attendance and notifies affected employees.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Holiday / Off Title" required value={manual.title}
             onChange={event => setManual(previous => ({ ...previous, title: event.target.value }))} placeholder="Eid-ul-Fitr Holiday" />
           <Input label="Off Date" type="date" required value={manual.date}
             onChange={event => setManual(previous => ({ ...previous, date: event.target.value }))} />
+          <Select label="Schedule Type" value={manual.eventType} onChange={event => setManual(previous => ({ ...previous, eventType: event.target.value }))}>
+            <option value="full_day">Full-day closure</option><option value="half_day">Half-day schedule</option>
+            <option value="early_closure">Early closure</option><option value="late_opening">Late opening</option>
+          </Select>
+          {['early_closure', 'late_opening'].includes(manual.eventType) && (
+            <Input label={manual.eventType === 'early_closure' ? 'Closing Time' : 'Opening Time'} type="time" required value={manual.effectiveTime}
+              onChange={event => setManual(previous => ({ ...previous, effectiveTime: event.target.value }))} />
+          )}
+          <Input label="Required Minutes Override (optional)" type="number" min="0" max="1440" value={manual.requiredMinutesOverride}
+            onChange={event => setManual(previous => ({ ...previous, requiredMinutesOverride: event.target.value === '' ? '' : Number(event.target.value) }))} />
+          <Select label="Affected Employees" value={manual.affectedScope} onChange={event => setManual(previous => ({ ...previous, affectedScope: event.target.value, affectedDepartment: '', affectedShiftId: '' }))}>
+            <option value="all">All employees</option><option value="department">One department</option><option value="shift">One shift</option>
+          </Select>
+          {manual.affectedScope === 'department' && (
+            <Select label="Department" required value={manual.affectedDepartment} onChange={event => setManual(previous => ({ ...previous, affectedDepartment: event.target.value }))}>
+              <option value="">Select department</option>{departments.map(department => <option key={department} value={department}>{department}</option>)}
+            </Select>
+          )}
+          {manual.affectedScope === 'shift' && (
+            <Select label="Shift" required value={manual.affectedShiftId} onChange={event => setManual(previous => ({ ...previous, affectedShiftId: event.target.value }))}>
+              <option value="">Select shift</option>{shifts.map(shift => <option key={shift._id} value={shift._id}>{shift.name} ({shift.startTime}–{shift.endTime})</option>)}
+            </Select>
+          )}
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" checked={manual.isPaid} onChange={event => setManual(previous => ({ ...previous, isPaid: event.target.checked }))} /> Paid schedule adjustment
+          </label>
           <div className="sm:col-span-2">
             <Textarea label="Message / Description" value={manual.description}
               onChange={event => setManual(previous => ({ ...previous, description: event.target.value }))}
@@ -117,7 +154,7 @@ export default function HolidaySettings({ province = 'ON', onProvinceChange }) {
         </div>
         <div className="flex justify-end">
           <Button type="submit" size="sm" disabled={isAddingManual} className="gap-1.5">
-            <Plus className="h-4 w-4" /> {isAddingManual ? 'Sending...' : 'Add Off & Email Employees'}
+            <Plus className="h-4 w-4" /> {isAddingManual ? 'Applying...' : 'Apply Schedule & Notify'}
           </Button>
         </div>
       </form>
@@ -140,6 +177,7 @@ export default function HolidaySettings({ province = 'ON', onProvinceChange }) {
                   <p className="mt-1 text-sm text-muted-foreground">
                     {new Date(holiday.date).toLocaleDateString('en-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}
                     {' · '}{holiday.jurisdiction === 'federal' ? 'Federal' : holiday.jurisdiction === 'provincial' ? `${province} calendar` : 'Company custom'}
+                    {' · '}{(holiday.eventType || 'full_day').replaceAll('_', ' ')}{holiday.effectiveTime ? ` at ${holiday.effectiveTime}` : ''}
                   </p>
                   {holiday.status === 'confirmed' && holiday.employeeEmailSentAt && (
                     <p className="mt-1 flex items-center gap-1 text-xs text-emerald-600"><Mail className="h-3 w-3" /> Employee email broadcast completed</p>

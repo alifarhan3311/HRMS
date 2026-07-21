@@ -123,9 +123,28 @@ function decryptField(encoded) {
 }
 
 /**
+ * Mongoose getter variant used when serializing application responses.
+ * A deployment with a stale key must never turn an entire employee/payroll
+ * list into a 500 response. Legacy plaintext is returned unchanged; invalid
+ * or differently-keyed ciphertext is redacted. Security-sensitive callers
+ * can continue using decryptField(), which remains strict and throws.
+ */
+function decryptFieldSafe(encoded) {
+  if (encoded === null || encoded === undefined || encoded === '') return encoded;
+  if (typeof encoded !== 'string') return null;
+  if (encoded.split(SEGMENT_DELIMITER).length !== 3) return encoded;
+  try {
+    return decryptField(encoded);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Convenience helper for Mongoose schema setters/getters, e.g.:
- *   cnic: { type: String, set: encryptField, get: decryptField }
- * Note: getters on encrypted fields require { toJSON: { getters: true } }
+ *   cnic: { type: String, set: encryptField, get: decryptFieldSafe }
+ * Note: response getters should use the safe variant so one unreadable legacy
+ * value is redacted instead of failing the complete API response.
  * and { toObject: { getters: true } } schema options to apply on reads.
  */
 
@@ -166,6 +185,7 @@ function safeCompare(a, b) {
 module.exports = {
   encryptField,
   decryptField,
+  decryptFieldSafe,
   hashForLookup,
   generateSecureToken,
   safeCompare,

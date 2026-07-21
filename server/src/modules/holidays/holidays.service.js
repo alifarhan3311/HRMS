@@ -5,6 +5,7 @@ const CompanySettings = require('../companySettings/companySettings.model');
 const notificationService = require('../notifications/notifications.service');
 const { sendCompanyMail } = require('../../config/mailer');
 const { canadaHolidays } = require('./canadaHolidays');
+const attendanceService = require('../attendance/attendance.service');
 
 const HR_ROLES = ['hr', 'super_admin'];
 const dateKey = date => new Date(date).toISOString().slice(0, 10);
@@ -15,6 +16,24 @@ const normalizeHolidayDate = value => {
 const escapeHtml = value => String(value || '').replace(/[&<>'"]/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
 })[char]);
+
+function affectedEmployeeFilter(holiday) {
+  const filter = { companyId: holiday.companyId, status: 'active' };
+  if (holiday.affectedScope === 'department') filter.department = holiday.affectedDepartment;
+  if (holiday.affectedScope === 'shift') filter.shiftId = holiday.affectedShiftId;
+  return filter;
+}
+
+function eventDescription(holiday) {
+  const time = holiday.effectiveTime ? ` at ${holiday.effectiveTime}` : '';
+  const labels = {
+    full_day: 'a full-day company closure',
+    half_day: 'a half-day schedule',
+    early_closure: `an early office closure${time}`,
+    late_opening: `a late office opening${time}`,
+  };
+  return labels[holiday.eventType || 'full_day'];
+}
 
 async function listHolidays(query, actor) {
   const filter = { companyId: actor.companyId };
@@ -106,17 +125,21 @@ async function decideHoliday(id, payload, actor) {
     { $set: { status, decidedBy: actor.id, decidedAt: new Date(), decisionNote: payload.note || '' } },
     { new: true }
   );
-  if (!payload.isCompanyOff) return { holiday, notified: 0, emailed: 0, emailFailed: 0 };
+  if (!payload.isCompanyOff) {
+    const attendanceAdjusted = await attendanceService.removeClosureFromAttendance(existing);
+    return { holiday, notified: 0, emailed: 0, emailFailed: 0, attendanceAdjusted };
+  }
 
-  const employees = await Employee.find({ companyId: actor.companyId, status: 'active' }).select('_id fullName email');
-  const subject = `Company Holiday: ${holiday.title} - ${dateKey(holiday.date)}`;
+  const employees = await Employee.find(affectedEmployeeFilter(holiday)).select('_id fullName email');
+  const eventLabel = eventDescription(holiday);
+  const subject = `Office Schedule Update: ${holiday.title} - ${dateKey(holiday.date)}`;
   const detail = holiday.description || payload.note || '';
   const notificationResults = await Promise.allSettled(employees.map(employee => notificationService.createNotification({
     recipientId: employee._id,
     companyId: actor.companyId,
     type: 'holiday',
-    title: `Company off: ${holiday.title}`,
-    message: `${holiday.title} on ${dateKey(holiday.date)} has been confirmed as a company holiday by HR.${detail ? ` ${detail}` : ''}`,
+    title: `Office schedule: ${holiday.title}`,
+    message: `${holiday.title} on ${dateKey(holiday.date)} has been confirmed as ${eventLabel} by HR.${detail ? ` ${detail}` : ''}`,
     link: '/dashboard',
     metadata: { holidayId: holiday._id, status: 'confirmed' },
     dedupeKey: `holiday-confirmed:${holiday._id}:${employee._id}`,
@@ -126,7 +149,7 @@ async function decideHoliday(id, payload, actor) {
   const emailResults = await Promise.allSettled(emailTargets.map(employee => sendCompanyMail(actor.companyId, {
     to: employee.email,
     subject,
-    html: `<p>Hello ${escapeHtml(employee.fullName)},</p><p>HR has confirmed <strong>${escapeHtml(holiday.title)}</strong> on <strong>${dateKey(holiday.date)}</strong> as a company holiday.</p>${detail ? `<p>${escapeHtml(detail)}</p>` : ''}<p>The company will be closed on this date.</p><p>Regards,<br>HR Team</p>`,
+    html: `<p>Hello ${escapeHtml(employee.fullName)},</p><p>HR has confirmed <strong>${escapeHtml(holiday.title)}</strong> on <strong>${dateKey(holiday.date)}</strong> as ${escapeHtml(eventLabel)}.</p>${detail ? `<p>${escapeHtml(detail)}</p>` : ''}<p>This is a ${holiday.isPaid === false ? 'non-paid' : 'paid'} schedule adjustment. Your attendance requirement will be adjusted automatically.</p><p>Regards,<br>HR Team</p>`,
   })));
   const emailed = emailResults.filter(result => result.status === 'fulfilled').length;
   emailResults.forEach((result, index) => {
@@ -136,16 +159,22 @@ async function decideHoliday(id, payload, actor) {
   holiday.employeeEmailFailedCount = emailResults.length - emailed;
   const emailRecipientCount = employees.filter(employee => employee.email).length;
   holiday.employeeEmailSentAt = deliveredIds.size >= emailRecipientCount ? new Date() : undefined;
+  holiday.attendanceAdjustedCount = await attendanceService.applyClosureToAttendance(holiday);
+  holiday.attendanceAdjustedAt = new Date();
   await holiday.save();
   return {
     holiday,
     notified: notificationResults.filter(result => result.status === 'fulfilled').length,
     emailed,
     emailFailed: holiday.employeeEmailFailedCount,
+    attendanceAdjusted: holiday.attendanceAdjustedCount,
   };
 }
 
 async function deleteHoliday(id, actor) {
+  const existing = await Holiday.findOne({ _id: id, companyId: actor.companyId });
+  if (!existing) throw createHttpError(404, 'Holiday not found.');
+  if (existing.status === 'confirmed') await attendanceService.removeClosureFromAttendance(existing);
   const deleted = await Holiday.findOneAndDelete({ _id: id, companyId: actor.companyId });
   if (!deleted) throw createHttpError(404, 'Holiday not found.');
   return { message: 'Holiday deleted.' };

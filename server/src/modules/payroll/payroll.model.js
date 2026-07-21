@@ -3,7 +3,7 @@
  * Payslip with full salary breakdown, approval workflow, and encryption.
  */
 const mongoose = require('mongoose');
-const { encryptField, decryptField } = require('../../utils/crypto');
+const { encryptField, decryptFieldSafe } = require('../../utils/crypto');
 
 const allowanceItemSchema = new mongoose.Schema({
   label: { type: String }, amount: { type: Number, default: 0 },
@@ -19,9 +19,9 @@ const payrollSchema = new mongoose.Schema(
     month: { type: Number, required: true, min: 1, max: 12 },
     year: { type: Number, required: true },
     // Core salary (encrypted)
-    basicSalary:  { type: String, required: true, set: encryptField, get: decryptField },
-    netSalary:    { type: String, required: true, set: encryptField, get: decryptField },
-    grossSalary:  { type: String, set: encryptField, get: decryptField },
+    basicSalary:  { type: String, required: true, set: encryptField, get: decryptFieldSafe },
+    netSalary:    { type: String, required: true, set: encryptField, get: decryptFieldSafe },
+    grossSalary:  { type: String, set: encryptField, get: decryptFieldSafe },
     // Breakdown (plain numbers, not individually sensitive when isolated)
     allowanceItems:  { type: [allowanceItemSchema], default: [] },
     deductionItems:  { type: [deductionItemSchema], default: [] },

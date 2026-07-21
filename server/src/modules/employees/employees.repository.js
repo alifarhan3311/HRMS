@@ -15,7 +15,7 @@ async function findById(id) {
   return Employee.findById(id)
     .populate('managerId', 'fullName employeeCode designation')
     .populate('teamLeadId', 'fullName employeeCode designation')
-    .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive');
+    .populate('shiftId', 'name code startTime endTime graceMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive');
 }
 
 async function findByEmail(email, companyId) {
@@ -38,7 +38,7 @@ async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' 
       .select('-passwordHash -__v')
       .populate('managerId', 'fullName employeeCode')
       .populate('teamLeadId', 'fullName employeeCode')
-      .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive')
+      .populate('shiftId', 'name code startTime endTime graceMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive')
       .sort(sort)
       .skip(skip)
       .limit(limit),

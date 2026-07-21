@@ -5,6 +5,7 @@ const Holiday = require('../modules/holidays/holidays.model');
 const notificationService = require('../modules/notifications/notifications.service');
 const settingsService = require('../modules/companySettings/companySettings.service');
 const logger = require('../utils/logger');
+const { appliesToEmployee } = require('../modules/attendance/closurePolicy');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const AUTOMATION_INTERVAL_MS = Number(process.env.HR_AUTOMATION_INTERVAL_MS)
@@ -103,7 +104,7 @@ const processLeaveAnniversaries = processCalendarYearLeaveCycles;
 
 async function reconcileAttendance(now = new Date()) {
   const employees = await Employee.find({ status: 'active' })
-    .select('_id companyId branchId joiningDate');
+    .select('_id companyId branchId joiningDate department shiftId');
   if (!employees.length) return 0;
 
   const policyCache = new Map();
@@ -119,19 +120,23 @@ async function reconcileAttendance(now = new Date()) {
     const date = startOfDay(new Date(now.getTime() - daysAgo * DAY_MS));
     const dayEnd = endOfDay(date);
     const [holidays, approvedLeaves] = await Promise.all([
-      Holiday.find({ date: { $gte: date, $lte: dayEnd }, status: 'confirmed' }).select('companyId'),
+      Holiday.find({ date: { $gte: date, $lte: dayEnd }, status: 'confirmed' })
+        .select('companyId eventType affectedScope affectedDepartment affectedShiftId'),
       LeaveRequest.find({
         status: 'approved',
         startDate: { $lte: dayEnd },
         endDate: { $gte: date },
       }).select('employeeId'),
     ]);
-    const holidayCompanies = new Set(holidays.map((item) => String(item.companyId)));
     const employeesOnLeave = new Set(approvedLeaves.map((item) => String(item.employeeId)));
 
     const operations = employees
       .filter((employee) => new Date(employee.joiningDate) <= dayEnd)
-      .filter((employee) => !holidayCompanies.has(String(employee.companyId)))
+      .filter((employee) => !holidays.some((holiday) => (
+        String(holiday.companyId) === String(employee.companyId)
+        && (!holiday.eventType || holiday.eventType === 'full_day')
+        && appliesToEmployee(holiday, employee)
+      )))
       .filter((employee) => {
         const settings = policyCache.get(String(employee.companyId));
         return !settings.timing.weekendDays.includes(date.getDay());

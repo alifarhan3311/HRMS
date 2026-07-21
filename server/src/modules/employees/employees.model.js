@@ -6,35 +6,35 @@
  * NOTE: reading encrypted getters requires { toJSON:{getters:true}, toObject:{getters:true} }.
  */
 const mongoose = require('mongoose');
-const { encryptField, decryptField } = require('../../utils/crypto');
+const { encryptField, decryptFieldSafe } = require('../../utils/crypto');
 
 const employeesSchema = new mongoose.Schema(
   {
   employeeCode: { type: String, required: true, unique: true, immutable: true },
   fullName: { type: String, required: true },
   fatherName: { type: String },
-  cnic: { type: String, required: true, set: encryptField, get: decryptField },
+  cnic: { type: String, required: true, set: encryptField, get: decryptFieldSafe },
   dateOfBirth: { type: Date },
   gender: { type: String },
   maritalStatus: { type: String },
   bloodGroup: { type: String },
   email: { type: String, required: true, unique: true },
-  contactNumber: { type: String, set: encryptField, get: decryptField },
-  address: { type: String, set: encryptField, get: decryptField },
+  contactNumber: { type: String, set: encryptField, get: decryptFieldSafe },
+  address: { type: String, set: encryptField, get: decryptFieldSafe },
   joiningDate: { type: Date, required: true },
   department: { type: String },
   designation: { type: String },
   managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   teamLeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   shiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift' },
-  currentSalary: { type: String, set: encryptField, get: decryptField },
+  currentSalary: { type: String, set: encryptField, get: decryptFieldSafe },
   status: {
     type: String,
     enum: ['active', 'inactive', 'on_leave', 'resigned'],
     default: 'active',
   },
   profilePicture: { type: String },
-  emergencyContact: { type: String, set: encryptField, get: decryptField },
+  emergencyContact: { type: String, set: encryptField, get: decryptFieldSafe },
   skills: { type: [String], default: [] },
   qualification: { type: String },
   experience: { type: String },

@@ -31,7 +31,7 @@ function signAccessToken(employee) {
 async function login({ email, password, userAgent, ipAddress }) {
   const employee = await Employee.findOne({ email })
     .select('+passwordHash')
-    .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive');
+    .populate('shiftId', 'name code startTime endTime graceMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive');
   if (!employee || employee.status !== 'active') {
     throw createHttpError(401, 'Invalid email or password.');
   }
@@ -136,7 +136,7 @@ async function getCurrentUser(employeeId) {
     .select('-passwordHash -__v')
     .populate('managerId', 'fullName employeeCode designation')
     .populate('teamLeadId', 'fullName employeeCode designation')
-    .populate('shiftId', 'name code startTime endTime graceMinutes workingDays isActive')
+    .populate('shiftId', 'name code startTime endTime graceMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive')
     // Read the stored values without schema getters first. Older production
     // records may contain plaintext fields, while records encrypted with a
     // previous master key must not make the entire /auth/me request fail.

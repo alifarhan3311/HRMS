@@ -14,6 +14,7 @@ const Employee = require('../employees/employees.model');
 const settingsService = require('../companySettings/companySettings.service');
 const notificationService = require('../notifications/notifications.service');
 const { buildShiftSchedule, lateMinutes: calculateShiftLate, earlyLeaveMinutes: calculateShiftEarlyLeave } = require('./shiftTime');
+const { findClosure, effectivePolicy } = require('./closurePolicy');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -63,7 +64,11 @@ function calcTotalHours(signIn, signOut) {
 // -------------------------------------------------------------------------
 async function signIn({ employeeId, method = 'manual', notes }, actor) {
   const now = new Date();
-  const { shift, schedule } = await resolveShiftContext(employeeId, actor.companyId, now);
+  const { employee, shift, schedule } = await resolveShiftContext(employeeId, actor.companyId, now);
+  const closure = await findClosure(employee, actor.companyId, schedule.shiftDate);
+  if (closure?.eventType === 'full_day' || (closure && !closure.eventType)) {
+    throw createHttpError(422, `${closure.title} is a confirmed company off day. Sign-in is not required.`);
+  }
   if (!shift.workingDays.includes(schedule.dayOfWeek)) {
     throw createHttpError(422, `${shift.name} is not scheduled on this day. Contact HR if you need an exception.`);
   }
@@ -80,8 +85,9 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
     throw createHttpError(409, `You have already signed in for the ${schedule.shiftDate} shift.`);
   }
 
+  const policy = effectivePolicy(closure, shift, schedule);
   const lateMinutes = calcLateMinutes(now, {
-    scheduledStart: schedule.scheduledStart,
+    scheduledStart: policy.effectiveStart,
     graceMinutes: shift.graceMinutes,
   });
   const status = lateMinutes > 0 ? 'late' : 'present';
@@ -95,6 +101,11 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
         shiftStartTime: shift.startTime,
         shiftEndTime: shift.endTime,
         shiftGraceMinutes: shift.graceMinutes,
+        shiftRequiredMinutes: policy.requiredMinutes,
+        shiftBreakMinutes: policy.breakMinutes,
+        shiftHalfDayMinutes: policy.halfDayMinutes,
+        shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
+        effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
         scheduledStart: schedule.scheduledStart,
         scheduledEnd: schedule.scheduledEnd,
         shiftTimezone: schedule.timeZone,
@@ -108,9 +119,15 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
         shiftStartTime: shift.startTime,
         shiftEndTime: shift.endTime,
         shiftGraceMinutes: shift.graceMinutes,
+        shiftRequiredMinutes: policy.requiredMinutes,
+        shiftBreakMinutes: policy.breakMinutes,
+        shiftHalfDayMinutes: policy.halfDayMinutes,
+        shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
+        effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
         scheduledStart: schedule.scheduledStart,
         scheduledEnd: schedule.scheduledEnd,
         shiftTimezone: schedule.timeZone,
+        ...(closure && { closureId: closure._id, closureType: closure.eventType, attendanceAdjustmentReason: closure.title }),
         signInTime: now,
         status,
         lateMinutes,
@@ -146,14 +163,47 @@ async function signOut({ employeeId, notes }, actor) {
   if (record.signOutTime) throw createHttpError(409, 'You have already signed out today.');
 
   const now = new Date();
-  const settings = await settingsService.getPolicy(actor.companyId);
-  const earlyLeaveMinutes = calcEarlyLeaveMinutes(now, recordTiming(record, settings.timing));
+  const [settings, employee] = await Promise.all([
+    settingsService.getPolicy(actor.companyId),
+    Employee.findOne({ _id: employeeId, companyId: actor.companyId }).populate('shiftId'),
+  ]);
+  const shift = employee?.shiftId || {
+    startTime: record.shiftStartTime,
+    endTime: record.shiftEndTime,
+    requiredMinutes: record.shiftRequiredMinutes || 480,
+    breakMinutes: record.shiftBreakMinutes || 0,
+    halfDayMinutes: record.shiftHalfDayMinutes,
+    overtimeAfterMinutes: record.shiftOvertimeAfterMinutes,
+  };
+  const schedule = {
+    shiftDate: record.shiftDate,
+    scheduledStart: record.scheduledStart,
+    scheduledEnd: record.scheduledEnd,
+    timeZone: record.shiftTimezone || settings.company?.timezone || 'Asia/Karachi',
+  };
+  const closure = employee && record.shiftDate ? await findClosure(employee, actor.companyId, record.shiftDate) : null;
+  const policy = effectivePolicy(closure, shift, schedule);
+  const earlyLeaveMinutes = calcEarlyLeaveMinutes(now, { scheduledEnd: policy.effectiveEnd });
   const totalHours = calcTotalHours(record.signInTime, now);
+  const clockMinutes = Math.max(0, Math.round((now - new Date(record.signInTime)) / 60000));
+  const workedMinutes = Math.max(0, clockMinutes - policy.breakMinutes);
+  const overtimeMinutes = Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
+  const fullDayClosure = closure?.eventType === 'full_day' || (closure && !closure.eventType);
+  const status = attendanceStatus(record.status, workedMinutes, policy.effectiveRequiredMinutes, policy.effectiveHalfDayMinutes, fullDayClosure);
 
   const updated = await repository.updateById(record._id, {
     signOutTime: now,
     earlyLeaveMinutes,
     totalHours,
+    workedMinutes,
+    overtimeMinutes,
+    status,
+    effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
+    ...(closure && {
+      closureId: closure._id,
+      closureType: closure.eventType || 'full_day',
+      attendanceAdjustmentReason: `${closure.title}${closure.isPaid === false ? ' (unpaid)' : ' (paid)'}`,
+    }),
     ...(notes && { notes }),
   });
 
@@ -178,6 +228,13 @@ async function getTodayAttendance(employeeId, actor) {
     scheduledEnd: schedule.scheduledEnd,
     shiftTimezone: schedule.timeZone,
   };
+}
+
+function attendanceStatus(currentStatus, workedMinutes, requiredMinutes, halfDayMinutes, isFullDayClosure = false) {
+  if (isFullDayClosure) return 'holiday';
+  if (workedMinutes >= requiredMinutes) return currentStatus === 'late' ? 'late' : 'present';
+  if (workedMinutes >= halfDayMinutes) return 'half_day';
+  return 'absent';
 }
 
 async function resolveShiftContext(employeeId, companyId, now = new Date()) {
@@ -448,6 +505,124 @@ async function getPendingRegularizations(actor) {
   return repository.getPendingRegularizations(actor.companyId);
 }
 
+async function applyClosureToAttendance(closure) {
+  const employeeFilter = { companyId: closure.companyId, status: 'active' };
+  if (closure.affectedScope === 'department') employeeFilter.department = closure.affectedDepartment;
+  if (closure.affectedScope === 'shift') employeeFilter.shiftId = closure.affectedShiftId;
+  const [employees, settings] = await Promise.all([
+    Employee.find(employeeFilter).populate('shiftId'),
+    settingsService.getPolicy(closure.companyId),
+  ]);
+  const date = new Date(closure.date);
+  const shiftDate = date.toISOString().slice(0, 10);
+  let adjusted = 0;
+
+  for (const employee of employees) {
+    if (!appliesToEmployee(closure, employee)) continue;
+    const shift = employee.shiftId || {
+      name: 'General Shift', code: 'GENERAL',
+      startTime: settings.timing.officeStart, endTime: settings.timing.officeEnd,
+      graceMinutes: settings.timing.graceMinutes, requiredMinutes: 480,
+      breakMinutes: 0, halfDayMinutes: 240, overtimeAfterMinutes: 480,
+      workingDays: [0, 1, 2, 3, 4, 5, 6].filter(day => !settings.timing.weekendDays.includes(day)),
+    };
+    const schedule = buildShiftSchedule(new Date(`${shiftDate}T12:00:00.000Z`), shift, settings.company?.timezone || 'Asia/Karachi');
+    if (!shift.workingDays.includes(schedule.dayOfWeek)) continue;
+    const policy = effectivePolicy(closure, shift, schedule);
+    const attendanceDate = new Date(`${schedule.shiftDate}T12:00:00.000Z`);
+    const record = await repository.findByEmployeeAndShiftDate(employee._id, schedule.shiftDate)
+      || await repository.findByEmployeeAndDate(employee._id, attendanceDate);
+    const common = {
+      closureId: closure._id,
+      closureType: closure.eventType || 'full_day',
+      attendanceAdjustmentReason: `${closure.title}${closure.isPaid === false ? ' (unpaid)' : ' (paid)'}`,
+      effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
+      earlyLeaveMinutes: 0,
+    };
+
+    if (closure.eventType === 'full_day' || !closure.eventType) {
+      if (record) {
+        await repository.updateById(record._id, { ...common, shiftDate: schedule.shiftDate, status: 'holiday' });
+        adjusted += 1;
+        continue;
+      }
+      await repository.upsertByEmployeeShiftDate(employee._id, schedule.shiftDate, {
+        $set: { ...common, status: 'holiday' },
+        $setOnInsert: {
+          employeeId: employee._id, companyId: employee.companyId, branchId: employee.branchId,
+          date: attendanceDate, shiftDate: schedule.shiftDate, shiftId: shift._id,
+          shiftName: shift.name, shiftStartTime: shift.startTime, shiftEndTime: shift.endTime,
+          shiftGraceMinutes: shift.graceMinutes, shiftRequiredMinutes: policy.requiredMinutes,
+          shiftBreakMinutes: policy.breakMinutes, shiftHalfDayMinutes: policy.halfDayMinutes,
+          shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
+          scheduledStart: schedule.scheduledStart, scheduledEnd: schedule.scheduledEnd,
+          shiftTimezone: schedule.timeZone, method: 'manual',
+        },
+      });
+      adjusted += 1;
+      continue;
+    }
+
+    if (!record) continue;
+    const update = { ...common };
+    if (record.signInTime && record.signOutTime) {
+      const clockMinutes = Math.max(0, Math.round((new Date(record.signOutTime) - new Date(record.signInTime)) / 60000));
+      const workedMinutes = Math.max(0, clockMinutes - policy.breakMinutes);
+      update.workedMinutes = workedMinutes;
+      update.overtimeMinutes = Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
+      update.status = attendanceStatus(record.status, workedMinutes, policy.effectiveRequiredMinutes, policy.effectiveHalfDayMinutes);
+      update.earlyLeaveMinutes = calcEarlyLeaveMinutes(record.signOutTime, { scheduledEnd: policy.effectiveEnd });
+    }
+    await repository.updateById(record._id, update);
+    adjusted += 1;
+  }
+  return adjusted;
+}
+
+async function removeClosureFromAttendance(closure) {
+  const records = await repository.findByClosure(closure._id);
+  let adjusted = 0;
+  for (const record of records) {
+    if (!record.signInTime) {
+      await repository.deleteById(record._id);
+      adjusted += 1;
+      continue;
+    }
+    const shift = {
+      startTime: record.shiftStartTime,
+      endTime: record.shiftEndTime,
+      requiredMinutes: record.shiftRequiredMinutes || 480,
+      breakMinutes: record.shiftBreakMinutes || 0,
+      halfDayMinutes: record.shiftHalfDayMinutes,
+      overtimeAfterMinutes: record.shiftOvertimeAfterMinutes,
+    };
+    const schedule = {
+      shiftDate: record.shiftDate,
+      scheduledStart: record.scheduledStart,
+      scheduledEnd: record.scheduledEnd,
+      timeZone: record.shiftTimezone || 'Asia/Karachi',
+    };
+    const policy = effectivePolicy(null, shift, schedule);
+    const update = {
+      $unset: { closureId: '', closureType: '', attendanceAdjustmentReason: '' },
+      $set: { effectiveRequiredMinutes: policy.effectiveRequiredMinutes },
+    };
+    if (record.signOutTime) {
+      const clockMinutes = Math.max(0, Math.round((new Date(record.signOutTime) - new Date(record.signInTime)) / 60000));
+      const workedMinutes = Math.max(0, clockMinutes - policy.breakMinutes);
+      update.$set.workedMinutes = workedMinutes;
+      update.$set.overtimeMinutes = Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
+      update.$set.earlyLeaveMinutes = calcEarlyLeaveMinutes(record.signOutTime, { scheduledEnd: policy.effectiveEnd });
+      const lateMinutes = calcLateMinutes(record.signInTime, { scheduledStart: policy.effectiveStart, graceMinutes: record.shiftGraceMinutes || 0 });
+      update.$set.lateMinutes = lateMinutes;
+      update.$set.status = attendanceStatus(lateMinutes > 0 ? 'late' : 'present', workedMinutes, policy.effectiveRequiredMinutes, policy.effectiveHalfDayMinutes);
+    }
+    await repository.updateById(record._id, update);
+    adjusted += 1;
+  }
+  return adjusted;
+}
+
 module.exports = {
   signIn,
   signOut,
@@ -459,4 +634,6 @@ module.exports = {
   requestRegularization,
   reviewRegularization,
   getPendingRegularizations,
+  applyClosureToAttendance,
+  removeClosureFromAttendance,
 };

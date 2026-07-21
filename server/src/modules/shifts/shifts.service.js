@@ -2,14 +2,34 @@ const createHttpError = require('http-errors');
 const Shift = require('./shifts.model');
 const Employee = require('../employees/employees.model');
 
-function assertEightHourShift(startTime, endTime) {
+function shiftWindowMinutes(startTime, endTime) {
   const toMinutes = value => {
     const [hours, minutes] = value.split(':').map(Number);
     return hours * 60 + minutes;
   };
   let duration = toMinutes(endTime) - toMinutes(startTime);
   if (duration <= 0) duration += 1440;
-  if (duration !== 480) throw createHttpError(422, 'A shift must be exactly 8 hours long.');
+  return duration;
+}
+
+function normalizeDurationPolicy(payload, existing = {}) {
+  const startTime = payload.startTime || existing.startTime;
+  const endTime = payload.endTime || existing.endTime;
+  const windowMinutes = shiftWindowMinutes(startTime, endTime);
+  const breakMinutes = Number(payload.breakMinutes ?? existing.breakMinutes ?? 0);
+  const requiredMinutes = Number(payload.requiredMinutes ?? existing.requiredMinutes ?? (windowMinutes - breakMinutes));
+  const halfDayMinutes = Number(payload.halfDayMinutes ?? existing.halfDayMinutes ?? Math.ceil(requiredMinutes / 2));
+  const overtimeAfterMinutes = Number(payload.overtimeAfterMinutes ?? existing.overtimeAfterMinutes ?? requiredMinutes);
+  if (requiredMinutes + breakMinutes > windowMinutes) {
+    throw createHttpError(422, 'Required duty plus break time cannot exceed the shift window.');
+  }
+  if (halfDayMinutes > requiredMinutes) {
+    throw createHttpError(422, 'Half-day threshold cannot exceed required duty minutes.');
+  }
+  if (overtimeAfterMinutes < requiredMinutes) {
+    throw createHttpError(422, 'Overtime threshold cannot be less than required duty minutes.');
+  }
+  return { ...payload, requiredMinutes, breakMinutes, halfDayMinutes, overtimeAfterMinutes };
 }
 
 async function listShifts(actor, { active } = {}) {
@@ -31,7 +51,7 @@ async function listShifts(actor, { active } = {}) {
 }
 
 async function createShift(payload, actor) {
-  assertEightHourShift(payload.startTime, payload.endTime);
+  payload = normalizeDurationPolicy(payload);
   try {
     return await Shift.create({ ...payload, companyId: actor.companyId, createdBy: actor.id });
   } catch (error) {
@@ -43,7 +63,7 @@ async function createShift(payload, actor) {
 async function updateShift(id, payload, actor) {
   const existing = await Shift.findOne({ _id: id, companyId: actor.companyId });
   if (!existing) throw createHttpError(404, 'Shift not found.');
-  assertEightHourShift(payload.startTime || existing.startTime, payload.endTime || existing.endTime);
+  payload = normalizeDurationPolicy(payload, existing);
   const shift = await Shift.findOneAndUpdate(
     { _id: id, companyId: actor.companyId },
     { $set: payload },
