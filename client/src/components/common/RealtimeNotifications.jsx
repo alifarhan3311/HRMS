@@ -4,7 +4,6 @@ import { api } from '../../services/apiSlice';
 import axiosInstance from '../../utils/axios';
 import { getSocket, disconnectSocket, isRealtimeEnabled } from '../../services/socket';
 import { playNotificationSound, unlockNotificationSound } from '../../services/notificationSound';
-import { toast } from '../../utils/toast';
 import { useListNotificationsQuery } from '../../features/notifications/api/notifications.api';
 
 const SYNC_EVENTS = [
@@ -56,7 +55,6 @@ export default function RealtimeNotifications() {
     newItems.forEach(item => seenNotificationIds.current.add(String(item._id)));
     if (newItems.length) {
       playNotificationSound().catch(() => {});
-      toast.info(newItems[0].title || 'New notification', { duration: 5000 });
     }
   }, [pollingData]);
 
@@ -87,7 +85,6 @@ export default function RealtimeNotifications() {
       seenNotificationIds.current.add(String(notification._id));
       refreshNotifications();
       playNotificationSound().catch(() => {});
-      toast.info(notification.title || 'New notification', { duration: 5000 });
 
       if (document.hidden && window.Notification?.permission === 'granted') {
         const browserNotification = new window.Notification(notification.title || 'HRMS notification', {
