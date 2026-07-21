@@ -13,6 +13,17 @@ const Employee = require('../employees/employees.model');
 const notificationService = require('../notifications/notifications.service');
 const settingsService = require('../companySettings/companySettings.service');
 const logger = require('../../utils/logger');
+const { emitToCompany } = require('../../config/socket');
+
+function emitLeaveUpdate(companyId, action, leave) {
+  emitToCompany(companyId, 'leave:updated', {
+    id: String(leave._id),
+    action,
+    status: leave.status,
+    currentStage: leave.currentStage,
+    updatedAt: leave.updatedAt || new Date(),
+  });
+}
 
 // Map leave types to Employee.leaveBalance field keys
 const LEAVE_BALANCE_KEYS = {
@@ -221,6 +232,8 @@ async function applyLeave(payload, actor) {
 
   await notifyStageApprovers(leave, 1);
 
+  emitLeaveUpdate(actor.companyId, 'applied', leave);
+
   return leave;
 }
 
@@ -275,6 +288,7 @@ async function approveLeave(id, { remarks }, actor) {
   } else {
     await notifyStageApprovers(updated, nextStage);
   }
+  emitLeaveUpdate(actor.companyId, 'approved', updated);
   return updated;
 }
 
@@ -307,6 +321,7 @@ async function rejectLeave(id, { remarks }, actor) {
     metadata: { leaveId: leave._id, remarks: remarks || '' },
     dedupeKey: `leave-rejected:${leave._id}`,
   });
+  emitLeaveUpdate(actor.companyId, 'rejected', updated);
   return updated;
 }
 
@@ -332,6 +347,7 @@ async function cancelLeave(id, { reason }, actor) {
   if (!updated) {
     throw createHttpError(409, 'This leave is no longer pending and cannot be cancelled.');
   }
+  emitLeaveUpdate(actor.companyId, 'cancelled', updated);
   return updated;
 }
 

@@ -40,10 +40,23 @@ async function syncEmployeeEntitlements(companyId, entitlements) {
 
 function publicSettings(document) {
   const settings = document.toObject({ getters: true });
-  if (settings.smtp) {
-    settings.smtp.passwordConfigured = Boolean(settings.smtp.password);
-    delete settings.smtp.password;
-  }
+  const companyPasswordConfigured = Boolean(settings.smtp?.password);
+  const environmentPasswordConfigured = Boolean(process.env.SMTP_PASS);
+  const useCompanySmtp = companyPasswordConfigured;
+  const environmentSmtp = {
+    host: process.env.SMTP_HOST || '',
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true',
+    user: process.env.SMTP_USER || '',
+    from: process.env.SMTP_FROM || '',
+  };
+
+  settings.smtp = {
+    ...(useCompanySmtp ? settings.smtp : environmentSmtp),
+    passwordConfigured: companyPasswordConfigured || environmentPasswordConfigured,
+    source: useCompanySmtp ? 'company' : environmentPasswordConfigured ? 'environment' : 'none',
+  };
+  delete settings.smtp.password;
   delete settings.__v;
   return settings;
 }

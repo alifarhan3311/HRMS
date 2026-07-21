@@ -216,8 +216,8 @@ export default function LeavesListPage() {
   const enabledLeaveTypes = empData?.data?.enabledLeaveTypes || DEFAULT_LEAVE_TYPES;
 
   const { data, isLoading, isFetching, refetch } = useListLeavesQuery({ page, limit: 15, ...filters });
-  const { data: analyticsData } = useListLeavesQuery({ limit: 100, sort: '-createdAt' });
-  const { data: pendingData } = useGetPendingApprovalsQuery(undefined, { skip: !isApprover });
+  const { data: analyticsData, refetch: refetchAnalytics } = useListLeavesQuery({ limit: 100, sort: '-createdAt' });
+  const { data: pendingData, refetch: refetchPending } = useGetPendingApprovalsQuery(undefined, { skip: !isApprover });
   const [applyLeave, { isLoading: applying }] = useApplyLeaveMutation();
   const [approveLeave, { isLoading: approving }] = useApproveLeaveMutation();
   const [rejectLeave, { isLoading: rejecting }] = useRejectLeaveMutation();
@@ -252,12 +252,16 @@ export default function LeavesListPage() {
   }
   async function handleApprove() {
     try { await approveLeave({ id: reviewTarget._id, remarks: remarkText }).unwrap();
-      toast.success('Leave approved'); setReviewTarget(null); setRemarkText(''); }
+      setReviewTarget(null); setRemarkText('');
+      await Promise.allSettled([refetch(), refetchAnalytics(), refetchPending()]);
+      toast.success('Leave approved'); }
     catch (err) { toast.error(err?.data?.error?.message || 'Failed to approve'); }
   }
   async function handleReject() {
     try { await rejectLeave({ id: reviewTarget._id, remarks: remarkText }).unwrap();
-      toast.success('Leave rejected'); setReviewTarget(null); setRemarkText(''); }
+      setReviewTarget(null); setRemarkText('');
+      await Promise.allSettled([refetch(), refetchAnalytics(), refetchPending()]);
+      toast.success('Leave rejected'); }
     catch (err) { toast.error(err?.data?.error?.message || 'Failed to reject'); }
   }
   async function handleCancel() {

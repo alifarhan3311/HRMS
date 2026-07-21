@@ -16,13 +16,4 @@ const createSchema = Joi.object({
   remarks: Joi.string().trim().max(1000).allow('').default(''),
 });
 
-const updateSchema = createSchema.fork(
-  Object.keys(createSchema.describe().keys),
-  (schema) => schema.optional()
-);
-
-const reviewSchema = Joi.object({
-  remarks: Joi.string().trim().max(1000).allow('').default(''),
-});
-
-module.exports = { createSchema, updateSchema, reviewSchema };
+module.exports = { createSchema };

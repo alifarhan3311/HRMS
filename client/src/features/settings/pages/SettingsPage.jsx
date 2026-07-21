@@ -61,7 +61,8 @@ export default function SettingsPage() {
   });
   const [emailForm, setEmailForm] = useState({
     smtpHost: '', smtpPort: '587', smtpUser: '', smtpPassword: '', smtpFrom: '',
-    smtpSecure: false, enableNotifications: false, enableInApp: true, enableWhatsapp: false,
+    smtpSecure: false, smtpPasswordConfigured: false, smtpSource: 'none',
+    enableNotifications: false, enableInApp: true, enableWhatsapp: false,
   });
   const [leaveForm, setLeaveForm] = useState({
     enabledTypes: ['paid', 'casual', 'sick', 'annual'],
@@ -99,6 +100,8 @@ export default function SettingsPage() {
       smtpPassword: '',
       smtpFrom: settings.smtp?.from || '',
       smtpSecure: Boolean(settings.smtp?.secure),
+      smtpPasswordConfigured: Boolean(settings.smtp?.passwordConfigured),
+      smtpSource: settings.smtp?.source || 'none',
       enableNotifications: Boolean(settings.notifications?.emailEnabled),
       enableInApp: settings.notifications?.inAppEnabled !== false,
       enableWhatsapp: Boolean(settings.notifications?.whatsappEnabled),
@@ -372,9 +375,17 @@ export default function SettingsPage() {
                     onChange={e => setEmailForm(p => ({ ...p, smtpUser: e.target.value }))} />
                   <Input label="From Address" placeholder="HR System <hr@company.com>" value={emailForm.smtpFrom}
                     onChange={e => setEmailForm(p => ({ ...p, smtpFrom: e.target.value }))} />
-                  <Input label="SMTP Password" type="password" placeholder="Leave blank to keep current password"
+                  <Input label="SMTP Password" type="password"
+                    placeholder={emailForm.smtpPasswordConfigured ? 'Configured securely — leave blank to keep it' : 'Enter SMTP password'}
                     value={emailForm.smtpPassword}
                     onChange={e => setEmailForm(p => ({ ...p, smtpPassword: e.target.value }))} />
+                </div>
+                <div className={`rounded-lg border px-3 py-2 text-sm ${emailForm.smtpPasswordConfigured
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300'}`}>
+                  {emailForm.smtpPasswordConfigured
+                    ? `SMTP password is securely configured${emailForm.smtpSource === 'environment' ? ' from the server environment' : ' for this company'}. It is never sent to the browser.`
+                    : 'SMTP password is not configured. Add SMTP_PASS to the server environment or enter a company SMTP password here.'}
                 </div>
                 <label className="flex items-center gap-3 cursor-pointer">
                   <div className={`relative h-5 w-9 rounded-full transition-colors ${emailForm.enableNotifications ? 'bg-primary' : 'bg-muted'}`}

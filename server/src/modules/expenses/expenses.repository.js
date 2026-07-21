@@ -21,9 +21,4 @@ async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' 
   return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-async function updateById(id, data) {
-  return Expense.findByIdAndUpdate(id, data, { new: true, runValidators: true })
-    .populate('submittedBy', 'fullName employeeCode department');
-}
-
-module.exports = { create, findById, findAll, updateById };
+module.exports = { create, findById, findAll };

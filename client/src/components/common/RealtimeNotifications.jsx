@@ -14,6 +14,10 @@ const SYNC_EVENTS = [
   'notification:cleared',
 ];
 
+const DATA_SYNC_EVENTS = {
+  'leave:updated': ['Leaves', 'Employees', 'Dashboard'],
+};
+
 export default function RealtimeNotifications() {
   const user = useSelector(state => state.auth.user);
   const dispatch = useDispatch();
@@ -94,11 +98,18 @@ export default function RealtimeNotifications() {
         };
       }
     };
+    const dataSyncHandlers = Object.fromEntries(
+      Object.entries(DATA_SYNC_EVENTS).map(([event, tags]) => [
+        event,
+        () => dispatch(api.util.invalidateTags(tags)),
+      ]),
+    );
 
     socket.on('notification:new', onNewNotification);
     socket.on('socket:ready', onSocketReady);
     socket.on('connect_error', onConnectError);
     SYNC_EVENTS.forEach(event => socket.on(event, refreshNotifications));
+    Object.entries(dataSyncHandlers).forEach(([event, handler]) => socket.on(event, handler));
 
     let cancelled = false;
     let tokenRefreshTimer;
@@ -122,6 +133,7 @@ export default function RealtimeNotifications() {
       socket.off('socket:ready', onSocketReady);
       socket.off('connect_error', onConnectError);
       SYNC_EVENTS.forEach(event => socket.off(event, refreshNotifications));
+      Object.entries(dataSyncHandlers).forEach(([event, handler]) => socket.off(event, handler));
       disconnectSocket();
     };
   }, [dispatch, user?.id]);

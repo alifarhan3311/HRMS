@@ -33,18 +33,6 @@ export const expensesApi = api.injectEndpoints({
       query: (body) => ({ url: '/expenses', method: 'POST', body }),
       invalidatesTags: ['Expenses', 'Dashboard'],
     }),
-    approveExpense: builder.mutation({
-      query: ({ id, ...body }) => ({ url: `/expenses/${id}/approve`, method: 'PATCH', body }),
-      invalidatesTags: ['Expenses', 'Dashboard'],
-    }),
-    rejectExpense: builder.mutation({
-      query: ({ id, ...body }) => ({ url: `/expenses/${id}/reject`, method: 'PATCH', body }),
-      invalidatesTags: ['Expenses', 'Dashboard'],
-    }),
-    markExpensePaid: builder.mutation({
-      query: (id) => ({ url: `/expenses/${id}/paid`, method: 'PATCH' }),
-      invalidatesTags: ['Expenses', 'Dashboard'],
-    }),
   }),
   overrideExisting: false,
 });
@@ -57,7 +45,4 @@ export const {
   useDeleteExpenseCategoryMutation,
   useGetExpenseByIdQuery,
   useSubmitExpenseMutation,
-  useApproveExpenseMutation,
-  useRejectExpenseMutation,
-  useMarkExpensePaidMutation,
 } = expensesApi;

@@ -25,7 +25,7 @@ async function ensureDefaults(companyId) {
 async function listCategories(actor) {
   await ensureDefaults(actor.companyId);
   const filter = { companyId: actor.companyId };
-  if (!['admin', 'super_admin'].includes(actor.role)) filter.active = true;
+  if (!['hr', 'super_admin'].includes(actor.role)) filter.active = true;
   return ExpenseCategory.find(filter).sort({ active: -1, name: 1 });
 }
 

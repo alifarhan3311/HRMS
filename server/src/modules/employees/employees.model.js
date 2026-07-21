@@ -22,7 +22,7 @@ const employeesSchema = new mongoose.Schema(
   contactNumber: { type: String, set: encryptField, get: decryptFieldSafe },
   address: { type: String, set: encryptField, get: decryptFieldSafe },
   joiningDate: { type: Date, required: true },
-  department: { type: String },
+  department: { type: String, required: true, trim: true },
   designation: { type: String },
   managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   teamLeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },

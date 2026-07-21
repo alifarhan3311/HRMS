@@ -2,7 +2,7 @@
  * features/dashboard/components/AdminDashboard.jsx
  */
 import { motion } from 'framer-motion';
-import { Wallet, Receipt, Users, Building2, CreditCard } from 'lucide-react';
+import { Wallet, Receipt, Users, Building2 } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -52,8 +52,8 @@ export default function AdminDashboard({ data }) {
         {data.expenseAccess && (
           <StatCard
             delay={0.12}
-            title="Pending Expenses"
-            value={data.pendingExpenseApprovals?.length ?? 0}
+            title="Expense Entries"
+            value={(data.expensesSummary || []).reduce((sum, item) => sum + item.count, 0)}
             icon={Receipt}
           />
         )}
@@ -67,7 +67,7 @@ export default function AdminDashboard({ data }) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {data.expenseAccess && <motion.div className="glass-card p-5">
-          <h3 className="mb-4 font-semibold">Monthly Expenses by Status</h3>
+          <h3 className="mb-4 font-semibold">Monthly Recorded Expenses</h3>
           {expenseChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={expenseChartData}>
@@ -101,14 +101,14 @@ export default function AdminDashboard({ data }) {
         </motion.div>
       </div>
 
-      {data.expenseAccess && (data.pendingExpenseApprovals || []).length > 0 && (
+      {data.expenseAccess && (data.recentExpenses || []).length > 0 && (
         <motion.div className="glass-card p-5">
           <h3 className="mb-4 font-semibold flex items-center gap-2">
-            <CreditCard className="h-4 w-4" />
-            Pending Expense Approvals
+            <Receipt className="h-4 w-4" />
+            Recent Expense Entries
           </h3>
           <ul className="space-y-2">
-            {data.pendingExpenseApprovals.slice(0, 8).map((exp) => (
+            {data.recentExpenses.slice(0, 8).map((exp) => (
               <li
                 key={exp._id}
                 className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"

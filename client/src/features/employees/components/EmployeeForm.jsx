@@ -45,7 +45,7 @@ function formatCnic(value) {
 const TAB_FIELDS = {
   personal: ['fullName', 'fatherName', 'cnic', 'dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'],
   contact: ['email', 'contactNumber', 'address', 'emergencyContact'],
-  employment: ['joiningDate', 'department', 'designation', 'role', 'shiftId', 'currentSalary'],
+  employment: ['joiningDate', 'department', 'designation', 'role', 'managerId', 'teamLeadId', 'shiftId', 'currentSalary'],
   professional: ['qualification', 'experience'],
   account: ['password', 'confirmPassword'],
 };
@@ -56,7 +56,9 @@ const FIELD_LABELS = {
   email: 'Email Address',
   contactNumber: 'Contact Number',
   joiningDate: 'Joining Date',
+  department: 'Department',
   role: 'Role',
+  teamLeadId: 'Team Lead',
   shiftId: 'Assigned Shift',
   currentSalary: 'Current Salary',
   password: 'Initial Password',
@@ -117,29 +119,35 @@ export default function EmployeeForm({
     refetch: refetchShifts,
   } = useListShiftsQuery({ active: true });
   const shifts = shiftsData?.data || [];
-  const availableTeamLeads = form.managerId
-    ? teamLeads.filter((lead) => String(lead.managerId?._id || lead.managerId || '') === String(form.managerId))
-    : teamLeads;
-  const departmentManager = managers.find((manager) => (
-    String(manager.department || '').trim().toLowerCase() === String(form.department || '').trim().toLowerCase()
+  const normalizedDepartment = String(form.department || '').trim().toLowerCase();
+  const availableManagers = managers.filter((manager) => (
+    Boolean(normalizedDepartment)
+    && String(manager.department || '').trim().toLowerCase() === normalizedDepartment
   ));
-  const departmentTeamLead = teamLeads.find((lead) => (
-    String(lead.department || '').trim().toLowerCase() === String(form.department || '').trim().toLowerCase()
+  const availableTeamLeads = teamLeads.filter((lead) => (
+    Boolean(normalizedDepartment)
+    && String(lead.department || '').trim().toLowerCase() === normalizedDepartment
   ));
+  const departmentManager = availableManagers[0];
 
   useEffect(() => {
-    if (!['employee', 'team_lead'].includes(form.role) || !departmentManager) return;
-    if (String(form.managerId || '') !== String(departmentManager._id)) {
+    if (!['employee', 'team_lead'].includes(form.role)) return;
+    if (departmentManager && String(form.managerId || '') !== String(departmentManager._id)) {
       setForm((previous) => ({ ...previous, managerId: departmentManager._id }));
+    } else if (!departmentManager && form.managerId) {
+      setForm((previous) => ({ ...previous, managerId: '', teamLeadId: '' }));
     }
   }, [departmentManager, form.managerId, form.role]);
 
   useEffect(() => {
-    if (form.role !== 'employee' || !departmentTeamLead) return;
-    if (String(form.teamLeadId || '') !== String(departmentTeamLead._id)) {
-      setForm((previous) => ({ ...previous, teamLeadId: departmentTeamLead._id }));
+    if (form.role !== 'employee') {
+      if (form.teamLeadId) setForm((previous) => ({ ...previous, teamLeadId: '' }));
+      return;
     }
-  }, [departmentTeamLead, form.role, form.teamLeadId]);
+    if (form.teamLeadId && !availableTeamLeads.some((lead) => String(lead._id) === String(form.teamLeadId))) {
+      setForm((previous) => ({ ...previous, teamLeadId: '' }));
+    }
+  }, [availableTeamLeads, form.role, form.teamLeadId]);
 
   // New employees must always have a concrete shift. Select the first active
   // company shift as soon as the async list becomes available.
@@ -221,7 +229,11 @@ export default function EmployeeForm({
       validationErrors.contactNumber = 'Enter a valid contact number';
     }
     if (!form.joiningDate) validationErrors.joiningDate = 'Joining date is required';
+    if (!form.department.trim()) validationErrors.department = 'Department is required';
     if (!form.role || !allowedRoles.includes(form.role)) validationErrors.role = 'Select an allowed employee role';
+    if (form.role === 'employee' && availableTeamLeads.length > 0 && !form.teamLeadId) {
+      validationErrors.teamLeadId = 'Select the Team Lead this employee will report to';
+    }
     if (!form.shiftId) validationErrors.shiftId = 'Shift assignment is required';
     if (form.currentSalary !== '' && (!Number.isFinite(Number(form.currentSalary)) || Number(form.currentSalary) < 0)) {
       validationErrors.currentSalary = 'Salary must be zero or a positive number';
@@ -439,9 +451,10 @@ export default function EmployeeForm({
                   error={errors.joiningDate}
                 />
                 <Select
-                  label="Department"
+                  label="Department" required
                   value={form.department}
                   onChange={(e) => set('department', e.target.value)}
+                  error={errors.department}
                 >
                   <option value="">Select department</option>
                   {form.department && !DEPARTMENTS.includes(form.department) && (
@@ -504,11 +517,11 @@ export default function EmployeeForm({
                   onChange={(e) => set('currentSalary', e.target.value)}
                   error={errors.currentSalary}
                 />
-                {managers.length > 0 && ['employee', 'team_lead'].includes(form.role) && (
+                {['employee', 'team_lead'].includes(form.role) && (
                   <Select
                     label={departmentManager ? 'Reporting Manager (Auto-assigned)' : 'Reporting Manager'}
                     value={form.managerId}
-                    disabled={Boolean(departmentManager)}
+                    disabled={!form.department || availableManagers.length === 0 || Boolean(departmentManager)}
                     onChange={(e) => {
                       const managerId = e.target.value;
                       set('managerId', managerId);
@@ -516,8 +529,14 @@ export default function EmployeeForm({
                       if (selectedLead && managerId && String(selectedLead.managerId?._id || selectedLead.managerId || '') !== managerId) set('teamLeadId', '');
                     }}
                   >
-                    <option value="">No Manager</option>
-                    {managers.map((m) => (
+                    <option value="">
+                      {!form.department
+                        ? 'Select department first'
+                        : availableManagers.length
+                          ? 'Select Reporting Manager'
+                          : 'No active Manager in this department'}
+                    </option>
+                    {availableManagers.map((m) => (
                       <option key={m._id} value={m._id}>{m.fullName} ({m.designation})</option>
                     ))}
                   </Select>
@@ -527,23 +546,26 @@ export default function EmployeeForm({
                     {departmentManager.fullName} is automatically assigned because they manage the {form.department} department.
                   </p>
                 )}
-                {availableTeamLeads.length > 0 && form.role === 'employee' && (
+                {form.role === 'employee' && (
                   <Select
-                    label={departmentTeamLead ? 'Team Lead (Auto-assigned)' : 'Team Lead'}
+                    label="Team Lead"
+                    required={availableTeamLeads.length > 0}
                     value={form.teamLeadId}
-                    disabled={Boolean(departmentTeamLead)}
+                    disabled={!form.department || availableTeamLeads.length === 0}
                     onChange={(e) => set('teamLeadId', e.target.value)}
+                    error={errors.teamLeadId}
                   >
-                    <option value="">No Team Lead</option>
+                    <option value="">
+                      {!form.department
+                        ? 'Select department first'
+                        : availableTeamLeads.length
+                          ? 'Select Team Lead'
+                          : 'No active Team Lead in this department'}
+                    </option>
                     {availableTeamLeads.map((t) => (
-                      <option key={t._id} value={t._id}>{t.fullName}</option>
+                      <option key={t._id} value={t._id}>{t.fullName} ({t.designation || 'Team Lead'})</option>
                     ))}
                   </Select>
-                )}
-                {departmentTeamLead && form.role === 'employee' && (
-                  <p className="text-xs text-emerald-600">
-                    {departmentTeamLead.fullName} is automatically assigned because they lead the {form.department} department team.
-                  </p>
                 )}
                 <Input
                   label="Employee Card Number"

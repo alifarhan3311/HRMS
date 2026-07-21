@@ -51,7 +51,7 @@ function ReportCard({ report, active, onClick }) {
 
 export default function ReportsPage() {
   const role = useSelector(state => state.auth.user?.role);
-  const canViewExpenses = ['hr', 'super_admin'].includes(role);
+  const canViewExpenses = role === 'super_admin';
   const availableReportTypes = canViewExpenses
     ? REPORT_TYPES
     : REPORT_TYPES.filter(report => report.id !== 'expense');

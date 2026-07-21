@@ -63,7 +63,7 @@ async function validateAssignedShift(shiftId, companyId) {
   if (!exists) throw createHttpError(422, 'Selected shift is invalid or inactive.');
 }
 
-async function validateReportingLine({ managerId, teamLeadId }, companyId, employeeId = null) {
+async function validateReportingLine({ managerId, teamLeadId, department, role }, companyId, employeeId = null) {
   if (employeeId && [managerId, teamLeadId].filter(Boolean).some((id) => String(id) === String(employeeId))) {
     throw createHttpError(422, 'An employee cannot report to themselves.');
   }
@@ -74,11 +74,23 @@ async function validateReportingLine({ managerId, teamLeadId }, companyId, emplo
   if (managerId && (!manager || String(manager.companyId) !== String(companyId) || manager.role !== 'manager' || manager.status !== 'active')) {
     throw createHttpError(422, 'Selected Reporting Manager is invalid or inactive.');
   }
+  if (manager && String(manager.department || '').trim().toLowerCase() !== String(department || '').trim().toLowerCase()) {
+    throw createHttpError(422, 'Selected Reporting Manager belongs to a different department.');
+  }
   if (teamLeadId && (!teamLead || String(teamLead.companyId) !== String(companyId) || teamLead.role !== 'team_lead' || teamLead.status !== 'active')) {
     throw createHttpError(422, 'Selected Team Lead is invalid or inactive.');
   }
+  if (teamLead && String(teamLead.department || '').trim().toLowerCase() !== String(department || '').trim().toLowerCase()) {
+    throw createHttpError(422, 'Selected Team Lead belongs to a different department.');
+  }
   if (manager && teamLead?.managerId && String(teamLead.managerId?._id || teamLead.managerId) !== String(manager._id)) {
     throw createHttpError(422, 'Selected Team Lead belongs to a different Manager.');
+  }
+  if (role === 'employee' && department && !teamLeadId) {
+    const departmentTeamLeads = await repository.findActiveDepartmentTeamLeads(companyId, department);
+    if (departmentTeamLeads.length) {
+      throw createHttpError(422, 'Select the Team Lead this employee will report to.');
+    }
   }
 }
 
@@ -100,15 +112,8 @@ async function applyDepartmentReportingLine(payload, companyId, role, employeeId
 
   if (role === 'team_lead') {
     payload.teamLeadId = null;
-    const duplicate = await repository.findActiveDepartmentTeamLead(companyId, department, employeeId);
-    if (duplicate) {
-      throw createHttpError(409, `${department} already has an active Team Lead: ${duplicate.fullName}.`);
-    }
     return;
   }
-
-  const departmentTeamLead = await repository.findActiveDepartmentTeamLead(companyId, department);
-  if (departmentTeamLead) payload.teamLeadId = departmentTeamLead._id;
 }
 
 function assertCanManageEmployee(actor, target, { allowSelf = false, action = 'manage' } = {}) {
@@ -254,9 +259,6 @@ async function createEmployee(payload, actor) {
   if (employee.role === 'manager' && employee.department) {
     await repository.assignDepartmentManager(actor.companyId, employee.department, employee._id);
   }
-  if (employee.role === 'team_lead' && employee.department) {
-    await repository.assignDepartmentTeamLead(actor.companyId, employee.department, employee._id);
-  }
   return sanitize(employee);
 }
 
@@ -294,10 +296,7 @@ async function listEmployees(query, actor) {
   } = query;
 
   if (['manager', 'team_lead'].includes(actor.role)) {
-    await Promise.all([
-      repository.syncDepartmentManagers(actor.companyId),
-      repository.syncDepartmentTeamLeads(actor.companyId),
-    ]);
+    await repository.syncDepartmentManagers(actor.companyId);
   }
 
   const filter = { companyId: actor.companyId };
@@ -378,7 +377,7 @@ async function updateEmployee(id, payload, actor) {
   }
 
   await validateAssignedShift(payload.shiftId, actor.companyId);
-  await validateReportingLine(payload, actor.companyId, id);
+  await validateReportingLine({ ...payload, role: existing.role }, actor.companyId, id);
 
   // Never allow these fields via general update
   const forbidden = ['passwordHash', 'password', 'companyId', 'role', 'employeeCode', 'employeeCardNumber'];
@@ -397,9 +396,6 @@ async function updateEmployee(id, payload, actor) {
   if (existing.role === 'team_lead') {
     if (String(existing.department || '').toLowerCase() !== String(updated.department || '').toLowerCase()) {
       await repository.clearTeamLeadReferences(id);
-    }
-    if (updated.department && updated.status === 'active') {
-      await repository.assignDepartmentTeamLead(actor.companyId, updated.department, updated._id);
     }
   }
   return sanitize(updated);
@@ -423,10 +419,7 @@ async function deleteEmployee(id, actor) {
 }
 
 async function getEmployeeHierarchy(actor) {
-  await Promise.all([
-    repository.syncDepartmentManagers(actor.companyId),
-    repository.syncDepartmentTeamLeads(actor.companyId),
-  ]);
+  await repository.syncDepartmentManagers(actor.companyId);
   const filter = { companyId: actor.companyId };
   if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   if (actor.role === 'manager') {
@@ -456,11 +449,6 @@ async function changeStatus(id, { status, reason }, actor) {
     const duplicate = await repository.findActiveDepartmentManager(employee.companyId, employee.department, employee._id);
     if (duplicate) throw createHttpError(409, `${employee.department} already has an active Manager: ${duplicate.fullName}.`);
   }
-  if (employee.role === 'team_lead' && status === 'active' && employee.department) {
-    const duplicate = await repository.findActiveDepartmentTeamLead(employee.companyId, employee.department, employee._id);
-    if (duplicate) throw createHttpError(409, `${employee.department} already has an active Team Lead: ${duplicate.fullName}.`);
-  }
-
   const updated = await repository.updateById(id, update);
   if (employee.role === 'manager') {
     if (status === 'active' && employee.department) {
@@ -470,9 +458,7 @@ async function changeStatus(id, { status, reason }, actor) {
     }
   }
   if (employee.role === 'team_lead') {
-    if (status === 'active' && employee.department) {
-      await repository.assignDepartmentTeamLead(employee.companyId, employee.department, employee._id);
-    } else {
+    if (status !== 'active') {
       await repository.clearTeamLeadReferences(employee._id);
     }
   }
@@ -549,9 +535,6 @@ async function promoteEmployee(id, promotionData, actor) {
   if (nextRole === 'manager' && nextDepartment) {
     await repository.assignDepartmentManager(employee.companyId, nextDepartment, employee._id);
   }
-  if (nextRole === 'team_lead' && nextDepartment) {
-    await repository.assignDepartmentTeamLead(employee.companyId, nextDepartment, employee._id);
-  }
   return sanitize(updated);
 }
 
@@ -565,10 +548,7 @@ async function getDepartmentList(companyId) {
 
 async function getEmployeeStats(actor) {
   if (['manager', 'team_lead'].includes(actor.role)) {
-    await Promise.all([
-      repository.syncDepartmentManagers(actor.companyId),
-      repository.syncDepartmentTeamLeads(actor.companyId),
-    ]);
+    await repository.syncDepartmentManagers(actor.companyId);
   }
   const filter = { companyId: actor.companyId };
   if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };

@@ -1,23 +1,20 @@
-/**
- * features/expenses/pages/ExpensesListPage.jsx
- * Full expense management with submit form, approval workflow, filters, charts.
- */
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
-  Receipt, Plus, RefreshCw, ChevronLeft, ChevronRight,
-  CheckCircle2, XCircle, CreditCard, Eye,
-  BarChart3, TrendingDown, Settings2, Pencil, Trash2,
+  Receipt, Plus, RefreshCw, ChevronLeft, ChevronRight, Eye,
+  BarChart3, Settings2, Pencil, Trash2, ListChecks, Tags,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import {
-  useListExpensesQuery, useSubmitExpenseMutation,
-  useApproveExpenseMutation, useRejectExpenseMutation, useMarkExpensePaidMutation,
-  useListExpenseCategoriesQuery, useCreateExpenseCategoryMutation,
-  useUpdateExpenseCategoryMutation, useDeleteExpenseCategoryMutation,
+  useListExpensesQuery,
+  useSubmitExpenseMutation,
+  useListExpenseCategoriesQuery,
+  useCreateExpenseCategoryMutation,
+  useUpdateExpenseCategoryMutation,
+  useDeleteExpenseCategoryMutation,
 } from '../api/expenses.api';
 import { toast } from '../../../utils/toast';
 import StatCard from '../../../components/ui/StatCard';
@@ -29,76 +26,97 @@ import { Avatar } from '../../../components/ui/Avatar';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const PAYMENT_METHODS = ['Cash','Bank Transfer','Credit Card','Cheque','Online'];
+const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Credit Card', 'Cheque', 'Online'];
 const STATUS_STYLES = {
-  pending:    { label: 'Pending',    variant: 'yellow' },
-  processing: { label: 'Processing', variant: 'blue'   },
-  approved:   { label: 'Approved',   variant: 'green'  },
-  rejected:   { label: 'Rejected',   variant: 'red'    },
-  paid:       { label: 'Paid',       variant: 'purple' },
-  cancelled:  { label: 'Cancelled',  variant: 'gray'   },
+  recorded: { label: 'Recorded', variant: 'blue' },
+  pending: { label: 'Historical: Pending', variant: 'yellow' },
+  processing: { label: 'Historical: Processing', variant: 'blue' },
+  approved: { label: 'Historical: Approved', variant: 'green' },
+  rejected: { label: 'Historical: Rejected', variant: 'red' },
+  paid: { label: 'Historical: Paid', variant: 'purple' },
+  cancelled: { label: 'Historical: Cancelled', variant: 'gray' },
 };
 
-function fmtPKR(v) { return `PKR ${Number(v||0).toLocaleString()}`; }
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-PK', { day:'numeric', month:'short', year:'numeric' });
+function fmtPKR(value) {
+  return `PKR ${Number(value || 0).toLocaleString()}`;
 }
 
-// ─── Submit Expense Form ──────────────────────────────────────────────────────
+function fmtDate(value) {
+  if (!value) return '-';
+  return new Date(value).toLocaleDateString('en-PK', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
+}
+
 function SubmitExpenseForm({ onSubmit, onClose, isLoading, categories, draftKey }) {
   const today = new Date().toISOString().substring(0, 10);
   const [form, setForm, clearDraft] = useFormDraft(draftKey, {
-    category: categories[0] || '', vendorName: '', amount: '',
-    expenseDate: today, paymentMethod: 'Cash', remarks: '',
+    category: categories[0] || '',
+    vendorName: '',
+    amount: '',
+    expenseDate: today,
+    paymentMethod: 'Cash',
+    remarks: '',
   });
-  useEffect(() => {
-    if (!form.category && categories[0]) setForm(current => ({ ...current, category: categories[0] }));
-  }, [categories, form.category]);
   const [errors, setErrors] = useState({});
-  function set(k, v) { setForm(p => ({ ...p, [k]: v })); if (errors[k]) setErrors(p => ({ ...p, [k]: '' })); }
 
-  function validate() {
-    const e = {};
-    if (!form.amount || Number(form.amount) <= 0) e.amount = 'Enter a valid amount';
-    if (!form.vendorName.trim()) e.vendorName = 'Vendor name is required';
-    setErrors(e);
-    return !Object.keys(e).length;
+  useEffect(() => {
+    if (!form.category && categories[0]) {
+      setForm((current) => ({ ...current, category: categories[0] }));
+    }
+  }, [categories, form.category, setForm]);
+
+  function updateField(key, value) {
+    setForm((current) => ({ ...current, [key]: value }));
+    if (errors[key]) setErrors((current) => ({ ...current, [key]: '' }));
   }
-  async function handleSubmit(e) {
-    e.preventDefault();
-    if (!validate()) return;
+
+  async function submit(event) {
+    event.preventDefault();
+    const nextErrors = {};
+    if (!form.category) nextErrors.category = 'Create or select an expense category';
+    if (!form.vendorName.trim()) nextErrors.vendorName = 'Vendor name is required';
+    if (!form.amount || Number(form.amount) <= 0) nextErrors.amount = 'Enter a valid amount';
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length) return;
+
     const saved = await onSubmit({ ...form, amount: Number(form.amount) });
-    if (saved !== false) clearDraft();
+    if (saved) clearDraft();
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <div className="px-6 py-5 space-y-4">
-        <Select label="Category" required value={form.category} onChange={e => set('category', e.target.value)}>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+    <form onSubmit={submit}>
+      <div className="space-y-4 px-6 py-5">
+        <Select label="Category" required value={form.category}
+          onChange={(event) => updateField('category', event.target.value)} error={errors.category}>
+          {!categories.length && <option value="">Create a category first</option>}
+          {categories.map((category) => <option key={category} value={category}>{category}</option>)}
         </Select>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input label="Vendor / Supplier" required placeholder="Company name"
-            value={form.vendorName} onChange={e => set('vendorName', e.target.value)} error={errors.vendorName} />
-          <Input label="Amount (PKR)" required type="number" placeholder="5000"
-            value={form.amount} onChange={e => set('amount', e.target.value)} error={errors.amount} />
-          <Input label="Expense Date" type="date" value={form.expenseDate} onChange={e => set('expenseDate', e.target.value)} />
-          <Select label="Payment Method" value={form.paymentMethod} onChange={e => set('paymentMethod', e.target.value)}>
-            {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+          <Input label="Vendor / Supplier" required placeholder="Company or person name"
+            value={form.vendorName} onChange={(event) => updateField('vendorName', event.target.value)}
+            error={errors.vendorName} />
+          <Input label="Amount (PKR)" required type="number" min="0" step="0.01" placeholder="5000"
+            value={form.amount} onChange={(event) => updateField('amount', event.target.value)}
+            error={errors.amount} />
+          <Input label="Expense Date" required type="date" max={today} value={form.expenseDate}
+            onChange={(event) => updateField('expenseDate', event.target.value)} />
+          <Select label="Payment Method" value={form.paymentMethod}
+            onChange={(event) => updateField('paymentMethod', event.target.value)}>
+            {PAYMENT_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
           </Select>
         </div>
         <Textarea label="Remarks / Description" value={form.remarks}
-          onChange={e => set('remarks', e.target.value)} placeholder="What was this expense for?" />
-        <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-          Approval: <span className="text-foreground font-medium">Manager → Admin → Payment</span>
-        </div>
+          onChange={(event) => updateField('remarks', event.target.value)}
+          placeholder="What was this expense for?" />
+        <p className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          This entry will be recorded immediately and shown to Super Admin. No approval is required.
+        </p>
       </div>
       <ModalFooter>
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-        <Button type="submit" variant="primary" size="sm" disabled={isLoading} className="gap-1.5">
-          <Receipt className="h-4 w-4" /> {isLoading ? 'Submitting...' : 'Submit Expense'}
+        <Button type="submit" variant="primary" size="sm" disabled={isLoading || !categories.length} className="gap-1.5">
+          <Receipt className="h-4 w-4" /> {isLoading ? 'Recording...' : 'Record Expense'}
         </Button>
       </ModalFooter>
     </form>
@@ -118,8 +136,8 @@ function CategoryManagerModal({ isOpen, onClose, categories }) {
     setForm({ name: '', description: '', active: true });
   }
 
-  async function save(e) {
-    e.preventDefault();
+  async function save(event) {
+    event.preventDefault();
     try {
       if (editingId) await updateCategory({ id: editingId, ...form }).unwrap();
       else await createCategory(form).unwrap();
@@ -142,16 +160,15 @@ function CategoryManagerModal({ isOpen, onClose, categories }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Manage Expense Categories" size="md">
-      <form onSubmit={save} className="border-b border-border px-6 py-4 space-y-3">
+      <form onSubmit={save} className="space-y-3 border-b border-border px-6 py-4">
         <Input label="Category Name" required value={form.name}
-          onChange={e => setForm(current => ({ ...current, name: e.target.value }))}
-          placeholder="e.g. Software Subscriptions" />
-        <Textarea label="Description" value={form.description}
-          onChange={e => setForm(current => ({ ...current, description: e.target.value }))}
-          placeholder="Optional category description" rows={2} />
+          onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
+          placeholder="e.g. Utility Bills" />
+        <Textarea label="Description" rows={2} value={form.description}
+          onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.active}
-            onChange={e => setForm(current => ({ ...current, active: e.target.checked }))} />
+            onChange={(event) => setForm((current) => ({ ...current, active: event.target.checked }))} />
           Active category
         </label>
         <div className="flex justify-end gap-2">
@@ -162,7 +179,8 @@ function CategoryManagerModal({ isOpen, onClose, categories }) {
         </div>
       </form>
       <div className="max-h-80 divide-y divide-border overflow-y-auto px-6 py-2">
-        {categories.map(category => (
+        {!categories.length && <p className="py-8 text-center text-sm text-muted-foreground">No categories yet</p>}
+        {categories.map((category) => (
           <div key={category._id} className="flex items-center gap-3 py-3">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium">{category.name}</p>
@@ -171,10 +189,14 @@ function CategoryManagerModal({ isOpen, onClose, categories }) {
               </p>
             </div>
             <button type="button" title="Edit category" className="rounded p-1.5 hover:bg-accent"
-              onClick={() => { setEditingId(category._id); setForm({ name: category.name, description: category.description || '', active: category.active }); }}>
+              onClick={() => {
+                setEditingId(category._id);
+                setForm({ name: category.name, description: category.description || '', active: category.active });
+              }}>
               <Pencil className="h-4 w-4" />
             </button>
-            <button type="button" title="Delete category" className="rounded p-1.5 text-destructive hover:bg-destructive/10"
+            <button type="button" title="Delete category"
+              className="rounded p-1.5 text-destructive hover:bg-destructive/10"
               onClick={() => remove(category)} disabled={busy}>
               <Trash2 className="h-4 w-4" />
             </button>
@@ -185,244 +207,196 @@ function CategoryManagerModal({ isOpen, onClose, categories }) {
   );
 }
 
-// ─── Expense Detail Modal ─────────────────────────────────────────────────────
-function ExpenseDetailModal({ expense, isOpen, onClose, onApprove, onReject, onMarkPaid, canApprove, isActioning }) {
-  const [remarks, setRemarks] = useState('');
+function ExpenseDetailModal({ expense, isOpen, onClose }) {
   if (!expense) return null;
-  const st = STATUS_STYLES[expense.status] || STATUS_STYLES.pending;
-  const STAGE_LABELS = { 1: 'Manager', 2: 'Admin' };
+  const status = STATUS_STYLES[expense.status] || STATUS_STYLES.recorded;
+  const details = [
+    ['Category', expense.category],
+    ['Vendor', expense.vendorName || '-'],
+    ['Amount', fmtPKR(expense.amount)],
+    ['Payment Method', expense.paymentMethod || '-'],
+    ['Expense Date', fmtDate(expense.expenseDate)],
+    ['Recorded On', fmtDate(expense.createdAt)],
+  ];
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Expense Details" size="md">
-      <div className="px-6 py-5 space-y-5">
-        {/* Submitter */}
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/40">
+      <div className="space-y-5 px-6 py-5">
+        <div className="flex items-center gap-3 rounded-xl bg-muted/40 p-3">
           <Avatar name={expense.submittedBy?.fullName} size="md" />
           <div>
-            <p className="font-medium">{expense.submittedBy?.fullName}</p>
-            <p className="text-xs text-muted-foreground">{expense.submittedBy?.department}</p>
+            <p className="font-medium">{expense.submittedBy?.fullName || 'HR'}</p>
+            <p className="text-xs text-muted-foreground">Recorded by HR</p>
           </div>
-          <Badge variant={st.variant} className="ml-auto">{st.label}</Badge>
+          <Badge variant={status.variant} className="ml-auto">{status.label}</Badge>
         </div>
-
-        {/* Details grid */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-3">
-          {[
-            { label: 'Category',       value: expense.category },
-            { label: 'Vendor',         value: expense.vendorName || '—' },
-            { label: 'Amount',         value: fmtPKR(expense.amount), highlight: true },
-            { label: 'Payment Method', value: expense.paymentMethod || '—' },
-            { label: 'Date',           value: fmtDate(expense.expenseDate) },
-            { label: 'Submitted',      value: fmtDate(expense.createdAt) },
-          ].map(({ label, value, highlight }) => (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {details.map(([label, value]) => (
             <div key={label} className="glass-card px-3 py-2">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{label}</p>
-              <p className={`text-sm font-medium mt-0.5 ${highlight ? 'text-primary text-base' : ''}`}>{value}</p>
+              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
+              <p className="mt-0.5 text-sm font-medium">{value}</p>
             </div>
           ))}
         </div>
-
-        {expense.remarks && (
-          <div className="text-sm border border-border rounded-lg p-3">{expense.remarks}</div>
-        )}
-
-        {/* Approval Chain */}
-        {expense.approvalChain?.length > 0 && (
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Approval Progress</p>
-            <div className="space-y-2">
-              {expense.approvalChain.map(step => (
-                <div key={step.stage} className={`flex items-center gap-3 p-2.5 rounded-lg border
-                  ${step.status === 'approved' ? 'border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20' :
-                    step.status === 'rejected'  ? 'border-red-200 bg-red-50 dark:bg-red-900/20' :
-                    step.stage === expense.currentStage ? 'border-primary/30 bg-primary/5' : 'border-border bg-muted/20'}`}>
-                  <div className={`h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold
-                    ${step.status === 'approved' ? 'bg-emerald-500 text-white' :
-                      step.status === 'rejected'  ? 'bg-red-500 text-white' :
-                      step.stage === expense.currentStage ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}>
-                    {step.status === 'approved' ? '✓' : step.status === 'rejected' ? '✗' : step.stage}
-                  </div>
-                  <span className="text-sm">{STAGE_LABELS[step.stage]}</span>
-                  {step.status !== 'pending' && (
-                    <Badge variant={step.status === 'approved' ? 'green' : 'red'} className="ml-auto">
-                      {step.status}
-                    </Badge>
-                  )}
-                  {step.remarks && <span className="text-xs text-muted-foreground ml-2 truncate">{step.remarks}</span>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Approve / Reject actions */}
-        {canApprove && ['pending','processing'].includes(expense.status) && (
-          <div className="space-y-3">
-            <Textarea label="Remarks (optional)" value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Add review remarks..." rows={2} />
-            <div className="flex gap-2">
-              <Button variant="primary" size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700 gap-1.5"
-                onClick={() => onApprove(expense._id, remarks)} disabled={isActioning}>
-                <CheckCircle2 className="h-4 w-4" /> {isActioning ? '...' : 'Approve'}
-              </Button>
-              <Button variant="danger" size="sm" className="flex-1 gap-1.5"
-                onClick={() => onReject(expense._id, remarks)} disabled={isActioning}>
-                <XCircle className="h-4 w-4" /> {isActioning ? '...' : 'Reject'}
-              </Button>
-            </div>
-          </div>
-        )}
-        {canApprove && expense.status === 'approved' && (
-          <Button variant="primary" size="sm" className="w-full gap-1.5"
-            onClick={() => onMarkPaid(expense._id)} disabled={isActioning}>
-            <CreditCard className="h-4 w-4" /> {isActioning ? 'Processing...' : 'Mark as Paid'}
-          </Button>
-        )}
+        {expense.remarks && <div className="rounded-lg border border-border p-3 text-sm">{expense.remarks}</div>}
       </div>
     </Modal>
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ExpensesListPage() {
-  const { user } = useSelector(s => s.auth);
-  const canManageCategories = ['hr', 'super_admin'].includes(user?.role);
-
-  const [submitOpen, setSubmitOpen]     = useState(false);
+  const { user } = useSelector((state) => state.auth);
+  const isHR = user?.role === 'hr';
+  const isSuperAdmin = user?.role === 'super_admin';
+  const [submitOpen, setSubmitOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [detailExpense, setDetailExpense] = useState(null);
-  const [page, setPage]                 = useState(1);
-  const [filters, setFilters]           = useState({ status: '', category: '' });
+  const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({ status: '', category: '' });
 
-  const { data, isLoading, isFetching, refetch } = useListExpensesQuery({ page, limit: 15, ...filters });
-  const { data: categoriesData } = useListExpenseCategoriesQuery();
-  const [submitExpense,  { isLoading: submitting }]  = useSubmitExpenseMutation();
-  const [approveExpense, { isLoading: approving }]   = useApproveExpenseMutation();
-  const [rejectExpense,  { isLoading: rejecting }]   = useRejectExpenseMutation();
-  const [markPaid,       { isLoading: paying }]      = useMarkExpensePaidMutation();
-
-  const isActioning = approving || rejecting || paying;
-  const expenses    = data?.items || [];
-  const categoryRecords = categoriesData?.data || [];
-  const categories = categoryRecords.filter(category => category.active).map(category => category.name);
-  const total       = data?.total || 0;
-  const totalPages  = data?.totalPages || 1;
-
-  // Stats from current page data
-  const totalAmt   = expenses.reduce((s, e) => s + (e.amount||0), 0);
-  const pendingAmt = expenses.filter(e => ['pending','processing'].includes(e.status)).reduce((s,e) => s+(e.amount||0), 0);
-  const paidAmt    = expenses.filter(e => e.status === 'paid').reduce((s,e) => s+(e.amount||0), 0);
-  const canApprove = Boolean(detailExpense) && (
-    (user?.role === 'hr' && detailExpense.currentStage === 1)
-    || (user?.role === 'super_admin' && detailExpense.currentStage === 2)
+  const { data, isLoading, isFetching, refetch } = useListExpensesQuery(
+    { page, limit: 15, ...filters },
+    { skip: !isSuperAdmin },
   );
+  const { data: categoriesData } = useListExpenseCategoriesQuery(undefined, {
+    skip: !isHR && !isSuperAdmin,
+  });
+  const [submitExpense, { isLoading: submitting }] = useSubmitExpenseMutation();
 
-  // Chart data by category
-  const catData = categories.map(cat => ({
-    name: cat.replace(' Expenses','').replace(' Bills',''),
-    amount: expenses.filter(e => e.category === cat).reduce((s,e) => s+(e.amount||0), 0),
-  })).filter(d => d.amount > 0);
+  const expenses = data?.items || [];
+  const categoryRecords = categoriesData?.data || [];
+  const categories = categoryRecords.filter((category) => category.active).map((category) => category.name);
+  const total = data?.total || 0;
+  const totalPages = data?.totalPages || 1;
+  const totalAmount = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+  const categoryTotals = expenses.reduce((totals, expense) => {
+    totals[expense.category] = (totals[expense.category] || 0) + (expense.amount || 0);
+    return totals;
+  }, {});
+  const catData = Object.entries(categoryTotals).map(([category, amount]) => ({
+    name: category.replace(' Expenses', '').replace(' Bills', ''),
+    amount,
+  }));
 
   async function handleSubmit(payload) {
-    try { await submitExpense(payload).unwrap(); toast.success('Expense submitted'); setSubmitOpen(false); return true; }
-    catch (err) { toast.error(err?.data?.error?.message || 'Submission failed'); return false; }
+    try {
+      await submitExpense(payload).unwrap();
+      toast.success('Expense recorded and shared with Super Admin');
+      setSubmitOpen(false);
+      return true;
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Unable to record expense');
+      return false;
+    }
   }
-  async function handleApprove(id, remarks) {
-    try { await approveExpense({ id, remarks }).unwrap(); toast.success('Expense approved'); setDetailExpense(null); }
-    catch (err) { toast.error(err?.data?.error?.message || 'Approval failed'); }
-  }
-  async function handleReject(id, remarks) {
-    try { await rejectExpense({ id, remarks }).unwrap(); toast.success('Expense rejected'); setDetailExpense(null); }
-    catch (err) { toast.error('Rejection failed'); }
-  }
-  async function handleMarkPaid(id) {
-    try { await markPaid(id).unwrap(); toast.success('Marked as paid'); setDetailExpense(null); }
-    catch (err) { toast.error('Failed to update payment status'); }
+
+  if (isHR) {
+    return (
+      <div className="space-y-6">
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Record Expenses</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">Add company expenses for Super Admin to view</p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setCategoriesOpen(true)}>
+              <Settings2 className="h-4 w-4" /> Categories
+            </Button>
+            <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setSubmitOpen(true)}>
+              <Plus className="h-4 w-4" /> Record Expense
+            </Button>
+          </div>
+        </motion.div>
+
+        <div className="glass-card p-6">
+          <div className="flex items-start gap-4">
+            <div className="rounded-xl bg-primary/10 p-3 text-primary"><Receipt className="h-6 w-6" /></div>
+            <div>
+              <h2 className="font-semibold">Simple expense entry</h2>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                Record the category, vendor, amount, date and payment method. The entry is saved immediately
+                and becomes visible to Super Admin; there is no approval or payment-status workflow.
+              </p>
+              <p className="mt-3 text-sm"><span className="font-medium">Active categories:</span> {categories.length}</p>
+            </div>
+          </div>
+        </div>
+
+        <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Record New Expense" size="md">
+          <SubmitExpenseForm onSubmit={handleSubmit} onClose={() => setSubmitOpen(false)}
+            isLoading={submitting} categories={categories}
+            draftKey={`hrms:draft:expense:create:${user?.id || 'user'}`} />
+        </Modal>
+        <CategoryManagerModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)}
+          categories={categoryRecords} />
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Expenses</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Submit and manage company expenses</p>
+          <h1 className="text-2xl font-bold tracking-tight">Company Expenses</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">Read-only expense records submitted by HR</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
-          </Button>
-          {canManageCategories && (
-            <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setCategoriesOpen(true)}>
-              <Settings2 className="h-4 w-4" /> Categories
-            </Button>
-          )}
-          <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setSubmitOpen(true)}>
-            <Plus className="h-4 w-4" /> Submit Expense
-          </Button>
-        </div>
+        <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => refetch()} disabled={isFetching}>
+          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+        </Button>
       </motion.div>
 
-      {/* Stats */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard title="Total Expenses"   value={fmtPKR(totalAmt)}   icon={Receipt} />
-        <StatCard title="Pending Payment"  value={fmtPKR(pendingAmt)} icon={TrendingDown} trend={{ label: 'Awaiting approval', positive: false }} />
-        <StatCard title="Paid"             value={fmtPKR(paidAmt)}    icon={CreditCard} trend={{ label: 'Disbursed', positive: true }} />
+        <StatCard title="Page Total" value={fmtPKR(totalAmount)} icon={Receipt} />
+        <StatCard title="Expense Entries" value={total} icon={ListChecks} />
+        <StatCard title="Categories" value={categoryRecords.length} icon={Tags} />
       </div>
 
-      {/* Chart + Table layout */}
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        {/* Table */}
         <div className="glass-card overflow-hidden">
-          {/* Toolbar */}
-          <div className="flex flex-wrap gap-3 items-center px-5 py-3 border-b border-border">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
             <select className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
-              value={filters.status} onChange={e => { setFilters(p => ({ ...p, status: e.target.value })); setPage(1); }}>
-              <option value="">All Status</option>
-              {Object.entries(STATUS_STYLES).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
+              value={filters.status} onChange={(event) => { setFilters((current) => ({ ...current, status: event.target.value })); setPage(1); }}>
+              <option value="">All Statuses</option>
+              {Object.entries(STATUS_STYLES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
             </select>
             <select className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
-              value={filters.category} onChange={e => { setFilters(p => ({ ...p, category: e.target.value })); setPage(1); }}>
+              value={filters.category} onChange={(event) => { setFilters((current) => ({ ...current, category: event.target.value })); setPage(1); }}>
               <option value="">All Categories</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              {categories.map((category) => <option key={category} value={category}>{category}</option>)}
             </select>
-            <span className="text-xs text-muted-foreground ml-auto">{total} expenses</span>
+            <span className="ml-auto text-xs text-muted-foreground">{total} expenses</span>
           </div>
 
           {isLoading ? (
-            <div className="p-4 space-y-2">
-              {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
-            </div>
-          ) : expenses.length === 0 ? (
+            <div className="space-y-2 p-4">{[...Array(6)].map((_, index) => <Skeleton key={index} className="h-16 rounded-xl" />)}</div>
+          ) : !expenses.length ? (
             <div className="py-16 text-center">
-              <Receipt className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <p className="font-medium">No expenses found</p>
-              <p className="text-sm text-muted-foreground mt-1">Submit an expense using the button above.</p>
+              <Receipt className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+              <p className="font-medium">No expenses recorded</p>
+              <p className="mt-1 text-sm text-muted-foreground">New entries recorded by HR will appear here.</p>
             </div>
           ) : (
             <div className="divide-y divide-border">
-              {expenses.map((exp, i) => {
-                const st = STATUS_STYLES[exp.status] || STATUS_STYLES.pending;
+              {expenses.map((expense, index) => {
+                const status = STATUS_STYLES[expense.status] || STATUS_STYLES.recorded;
                 return (
-                  <motion.div key={exp._id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.025 }}
-                    className="flex items-center gap-4 px-5 py-3.5 hover:bg-accent/30 transition-colors cursor-pointer group"
-                    onClick={() => setDetailExpense(exp)}>
-                    <Avatar name={exp.submittedBy?.fullName} size="sm" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium">{exp.category}</span>
-                        <Badge variant={st.variant}>{st.label}</Badge>
+                  <motion.div key={expense._id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.025 }} onClick={() => setDetailExpense(expense)}
+                    className="group flex cursor-pointer items-center gap-4 px-5 py-3.5 transition-colors hover:bg-accent/30">
+                    <Avatar name={expense.submittedBy?.fullName} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium">{expense.category}</span>
+                        <Badge variant={status.variant}>{status.label}</Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {exp.vendorName} · {fmtDate(exp.expenseDate)} · {exp.submittedBy?.fullName}
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {expense.vendorName} · {fmtDate(expense.expenseDate)} · {expense.submittedBy?.fullName || 'HR'}
                       </p>
                     </div>
-                    <span className="text-sm font-bold text-primary shrink-0">{fmtPKR(exp.amount)}</span>
-                    <button className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={e => { e.stopPropagation(); setDetailExpense(exp); }}>
-                      <Eye className="h-4 w-4" />
-                    </button>
+                    <span className="shrink-0 text-sm font-bold text-primary">{fmtPKR(expense.amount)}</span>
+                    <Eye className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
                   </motion.div>
                 );
               })}
@@ -430,15 +404,13 @@ export default function ExpensesListPage() {
           )}
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-3 border-t border-border">
+            <div className="flex items-center justify-between border-t border-border px-5 py-3">
               <span className="text-xs text-muted-foreground">Page {page}/{totalPages}</span>
               <div className="flex gap-1">
-                <Button variant="secondary" size="sm" className="px-2"
-                  onClick={() => setPage(p => Math.max(1,p-1))} disabled={page===1}>
+                <Button variant="secondary" size="sm" className="px-2" onClick={() => setPage((value) => Math.max(1, value - 1))} disabled={page === 1}>
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="secondary" size="sm" className="px-2"
-                  onClick={() => setPage(p => Math.min(totalPages,p+1))} disabled={page===totalPages}>
+                <Button variant="secondary" size="sm" className="px-2" onClick={() => setPage((value) => Math.min(totalPages, value + 1))} disabled={page === totalPages}>
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -446,43 +418,25 @@ export default function ExpensesListPage() {
           )}
         </div>
 
-        {/* Category chart */}
         <div className="glass-card p-5">
-          <h3 className="font-semibold mb-4 flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" /> By Category
-          </h3>
-          {catData.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">No data yet</div>
+          <h3 className="mb-4 flex items-center gap-2 font-semibold"><BarChart3 className="h-4 w-4" /> By Category</h3>
+          {!catData.length ? (
+            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">No data yet</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={catData} layout="vertical" margin={{ left: 0, right: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={v => `${v/1000}k`} />
+                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(value) => `${value / 1000}k`} />
                 <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 10 }} />
-                <Tooltip formatter={v => fmtPKR(v)} />
-                <Bar dataKey="amount" fill="#6366f1" radius={[0,6,6,0]} />
+                <Tooltip formatter={(value) => fmtPKR(value)} />
+                <Bar dataKey="amount" fill="#6366f1" radius={[0, 6, 6, 0]} />
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
       </div>
 
-      {/* Submit Modal */}
-      <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Submit New Expense" size="md">
-        <SubmitExpenseForm onSubmit={handleSubmit} onClose={() => setSubmitOpen(false)}
-          isLoading={submitting} categories={categories}
-          draftKey={`hrms:draft:expense:create:${user?.id || 'user'}`} />
-      </Modal>
-
-      <CategoryManagerModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)}
-        categories={categoryRecords} />
-
-      {/* Detail Modal */}
-      <ExpenseDetailModal
-        expense={detailExpense} isOpen={!!detailExpense} onClose={() => setDetailExpense(null)}
-        onApprove={handleApprove} onReject={handleReject} onMarkPaid={handleMarkPaid}
-        canApprove={canApprove} isActioning={isActioning}
-      />
+      <ExpenseDetailModal expense={detailExpense} isOpen={Boolean(detailExpense)} onClose={() => setDetailExpense(null)} />
     </div>
   );
 }

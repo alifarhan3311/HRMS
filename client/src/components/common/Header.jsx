@@ -74,9 +74,11 @@ export default function Header({ onMenuClick = () => {} }) {
   }, []);
 
   useEffect(() => {
-    const closeOnScroll = () => {
-      setProfileOpen(false);
-      setNotifOpen(false);
+    const closeOnScroll = (event) => {
+      // Keep a menu open while its own scrollable content is being scrolled.
+      // Only page/outside scrolling should dismiss it.
+      if (!profileRef.current?.contains(event.target)) setProfileOpen(false);
+      if (!notifRef.current?.contains(event.target)) setNotifOpen(false);
     };
     window.addEventListener('scroll', closeOnScroll, true);
     return () => window.removeEventListener('scroll', closeOnScroll, true);

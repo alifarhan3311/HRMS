@@ -98,26 +98,14 @@ async function clearManagerReferences(managerId) {
   return Employee.updateMany({ managerId }, { $unset: { managerId: '' } });
 }
 
-async function findActiveDepartmentTeamLead(companyId, department, excludeId = null) {
-  if (!String(department || '').trim()) return null;
-  const filter = {
+async function findActiveDepartmentTeamLeads(companyId, department) {
+  if (!String(department || '').trim()) return [];
+  return Employee.find({
     companyId,
     department: departmentPattern(department),
     role: 'team_lead',
     status: 'active',
-  };
-  if (excludeId) filter._id = { $ne: excludeId };
-  return Employee.findOne(filter).sort({ createdAt: 1 });
-}
-
-async function assignDepartmentTeamLead(companyId, department, teamLeadId) {
-  if (!String(department || '').trim()) return { modifiedCount: 0 };
-  return Employee.updateMany({
-    companyId,
-    department: departmentPattern(department),
-    role: 'employee',
-    status: { $ne: 'resigned' },
-  }, { $set: { teamLeadId } });
+  }).sort({ fullName: 1 });
 }
 
 async function clearTeamLeadReferences(teamLeadId) {
@@ -135,20 +123,6 @@ async function syncDepartmentManagers(companyId) {
     if (String(canonical?._id) !== String(manager._id)) continue;
     // eslint-disable-next-line no-await-in-loop
     await assignDepartmentManager(companyId, manager.department, manager._id);
-  }
-}
-
-async function syncDepartmentTeamLeads(companyId) {
-  const teamLeads = await Employee.find({ companyId, role: 'team_lead', status: 'active', department: { $nin: [null, ''] } })
-    .sort({ createdAt: 1 });
-  for (const teamLead of teamLeads) {
-    // Legacy duplicate leads are handled deterministically: the oldest active
-    // Team Lead is canonical until HR resolves the duplicate.
-    // eslint-disable-next-line no-await-in-loop
-    const canonical = await findActiveDepartmentTeamLead(companyId, teamLead.department);
-    if (String(canonical?._id) !== String(teamLead._id)) continue;
-    // eslint-disable-next-line no-await-in-loop
-    await assignDepartmentTeamLead(companyId, teamLead.department, teamLead._id);
   }
 }
 
@@ -227,10 +201,8 @@ module.exports = {
   assignDepartmentManager,
   clearManagerReferences,
   syncDepartmentManagers,
-  findActiveDepartmentTeamLead,
-  assignDepartmentTeamLead,
+  findActiveDepartmentTeamLeads,
   clearTeamLeadReferences,
-  syncDepartmentTeamLeads,
   countByCompany,
   nextSequence,
   getDistinctDepartments,

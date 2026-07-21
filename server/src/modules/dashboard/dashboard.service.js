@@ -298,7 +298,7 @@ async function getAdminDashboard(user) {
     attendanceSummary,
     payrollSummary,
     expenseSummary,
-    pendingExpenseApprovals,
+    recentExpenses,
     employeeStats,
     departmentReports,
   ] = await Promise.all([
@@ -341,7 +341,7 @@ async function getAdminDashboard(user) {
         },
       },
     ]) : Promise.resolve([]),
-    expenseAccess ? Expense.find({ companyId: user.companyId, status: 'processing', currentStage: 2 })
+    expenseAccess ? Expense.find({ companyId: user.companyId })
       .populate('submittedBy', 'fullName employeeCode')
       .sort({ createdAt: -1 })
       .limit(10)
@@ -384,7 +384,7 @@ async function getAdminDashboard(user) {
       count: row.count,
       totalAmount: row.totalAmount,
     })),
-    pendingExpenseApprovals,
+    recentExpenses,
     paymentStatus,
     employeeStatistics: employeeStats[0] || { total: 0, active: 0 },
     departmentReports,
