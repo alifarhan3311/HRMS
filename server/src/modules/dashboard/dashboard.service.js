@@ -292,6 +292,7 @@ async function getHRDashboard(user) {
 async function getAdminDashboard(user) {
   const monthStart = startOfMonth();
   const monthEnd = endOfMonth();
+  const expenseAccess = user.role === 'super_admin';
 
   const [
     attendanceSummary,
@@ -325,7 +326,7 @@ async function getAdminDashboard(user) {
         },
       },
     ]),
-    Expense.aggregate([
+    expenseAccess ? Expense.aggregate([
       {
         $match: {
           companyId: user.companyId,
@@ -339,12 +340,12 @@ async function getAdminDashboard(user) {
           totalAmount: { $sum: '$amount' },
         },
       },
-    ]),
-    Expense.find({ companyId: user.companyId, status: 'processing', currentStage: 2 })
+    ]) : Promise.resolve([]),
+    expenseAccess ? Expense.find({ companyId: user.companyId, status: 'processing', currentStage: 2 })
       .populate('submittedBy', 'fullName employeeCode')
       .sort({ createdAt: -1 })
       .limit(10)
-      .lean(),
+      .lean() : Promise.resolve([]),
     Employee.aggregate([
       { $match: { companyId: user.companyId } },
       {
@@ -369,6 +370,7 @@ async function getAdminDashboard(user) {
 
   return {
     role: 'admin',
+    expenseAccess,
     companyAttendanceSummary: attendanceSummary.reduce((acc, row) => {
       acc[row._id] = row.count;
       return acc;

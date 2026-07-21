@@ -1,7 +1,7 @@
 /**
  * modules/expenses/expenses.service.js
  * Expense management with multi-stage approval workflow:
- * HR verification -> Admin approval -> Payment
+ * HR verification -> Super Admin approval -> Payment
  */
 const createHttpError = require('http-errors');
 const repository = require('./expenses.repository');
@@ -31,8 +31,8 @@ async function assertExpenseVisible(expense, actor) {
     throw createHttpError(404, 'Expense not found.');
   }
   if (submitter.role === 'super_admin') throw createHttpError(403, 'Super Admin expenses are protected.');
-  if (!['admin', 'hr'].includes(actor.role)) {
-    throw createHttpError(403, 'Only HR and Admin can access company expenses.');
+  if (actor.role !== 'hr') {
+    throw createHttpError(403, 'Only HR and Super Admin can access company expenses.');
   }
 }
 
@@ -50,7 +50,7 @@ async function submitExpense(payload, actor) {
     status: 'pending',
     approvalChain: [
       { stage: 1, role: 'hr', status: 'pending' },
-      { stage: 2, role: 'admin', status: 'pending' },
+      { stage: 2, role: 'super_admin', status: 'pending' },
     ],
     currentStage: 1,
     companyId: actor.companyId,
@@ -80,7 +80,7 @@ async function approveExpense(id, { remarks }, actor) {
     throw createHttpError(400, 'This expense cannot be approved.');
   }
 
-  const ROLE_STAGE = { hr: 1, admin: 2, super_admin: 2 };
+  const ROLE_STAGE = { hr: 1, super_admin: 2 };
   const actorStage = ROLE_STAGE[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot approve expenses.');
   if (actorStage !== expense.currentStage) {
@@ -110,12 +110,12 @@ async function approveExpense(id, { remarks }, actor) {
       dedupeKey: `expense-approved:${expense._id}`,
     });
   } else {
-    const adminIds = await activeRoleIds(expense.companyId, ['admin', 'super_admin']);
-    await notifyMany(adminIds, {
+    const superAdminIds = await activeRoleIds(expense.companyId, ['super_admin']);
+    await notifyMany(superAdminIds, {
       companyId: expense.companyId,
       type: 'expense_admin_verification_required',
-      title: 'Expense verification required',
-      message: `${expense.submittedBy?.fullName || 'An employee'}'s expense was verified by HR and needs Admin approval.`,
+      title: 'Expense approval required',
+      message: `${expense.submittedBy?.fullName || 'An employee'}'s expense was verified by HR and needs Super Admin approval.`,
       link: '/expenses',
       metadata: { expenseId: expense._id, stage: 2 },
       dedupeKey: `expense-hr-verified:${expense._id}`,
@@ -133,7 +133,7 @@ async function rejectExpense(id, { remarks }, actor) {
     throw createHttpError(400, 'This expense cannot be rejected.');
   }
 
-  const ROLE_STAGE = { hr: 1, admin: 2, super_admin: 2 };
+  const ROLE_STAGE = { hr: 1, super_admin: 2 };
   const actorStage = ROLE_STAGE[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot reject expenses.');
   if (actorStage !== expense.currentStage) {
@@ -181,7 +181,7 @@ async function listExpenses(query, actor) {
   const { page=1, limit=20, status, category, dateFrom, dateTo, sort='-createdAt' } = query;
   const filter = { companyId: actor.companyId };
 
-  if (['admin', 'hr'].includes(actor.role)) {
+  if (actor.role === 'hr') {
     filter.submittedBy = { $in: await Employee.find({ companyId: actor.companyId, role: { $ne: 'super_admin' } }).distinct('_id') };
   }
   if (status) filter.status = status;

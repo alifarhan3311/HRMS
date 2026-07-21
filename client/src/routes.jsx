@@ -41,7 +41,7 @@ const router = createBrowserRouter([
       ...attendanceRoutes,
       ...leavesRoutes,
       ...payrollRoutes,
-      ...withRoles(expensesRoutes, ['hr', 'admin', 'super_admin']),
+      ...withRoles(expensesRoutes, ['hr', 'super_admin']),
       ...withRoles(projectsRoutes, ['employee', 'team_lead', 'manager', 'admin', 'super_admin']),
       ...withRoles(settingsRoutes, ['hr', 'super_admin']),
       ...withRoles(reportsRoutes, ['hr', 'admin', 'super_admin']),

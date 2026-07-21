@@ -15,16 +15,16 @@ const {
 } = require('./expenseCategories.validation');
 
 const router = express.Router();
-const EXPENSE_ROLES = ['super_admin', 'admin', 'hr'];
-const APPROVERS = ['super_admin', 'admin', 'hr'];
+const EXPENSE_ROLES = ['super_admin', 'hr'];
+const APPROVERS = ['super_admin', 'hr'];
 
 router.use(authenticate);
 
 router.get('/categories', authorize(...EXPENSE_ROLES), categoryController.list);
-router.post('/categories', authorize('super_admin', 'admin'), validate(createCategorySchema), categoryController.create);
-router.put('/categories/:categoryId', authorize('super_admin', 'admin'),
+router.post('/categories', authorize(...EXPENSE_ROLES), validate(createCategorySchema), categoryController.create);
+router.put('/categories/:categoryId', authorize(...EXPENSE_ROLES),
   validate(categoryIdSchema, 'params'), validate(updateCategorySchema), categoryController.update);
-router.delete('/categories/:categoryId', authorize('super_admin', 'admin'),
+router.delete('/categories/:categoryId', authorize(...EXPENSE_ROLES),
   validate(categoryIdSchema, 'params'), categoryController.remove);
 
 router.post('/', authorize(...EXPENSE_ROLES), validate(createSchema), controller.submit);
@@ -44,7 +44,7 @@ router.patch('/:id/reject', authorize(...APPROVERS),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.reject);
 
-router.patch('/:id/paid', authorize('super_admin','admin'),
+router.patch('/:id/paid', authorize('super_admin'),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.markPaid);
 

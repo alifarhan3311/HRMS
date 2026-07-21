@@ -3,6 +3,7 @@
  * Reports hub — generates and displays attendance, leave, payroll, expense reports.
  */
 import { useState } from 'react';
+import { useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
 import {
   BarChart3, Download, Calendar, Users, Wallet,
@@ -49,6 +50,11 @@ function ReportCard({ report, active, onClick }) {
 }
 
 export default function ReportsPage() {
+  const role = useSelector(state => state.auth.user?.role);
+  const canViewExpenses = ['hr', 'super_admin'].includes(role);
+  const availableReportTypes = canViewExpenses
+    ? REPORT_TYPES
+    : REPORT_TYPES.filter(report => report.id !== 'expense');
   const now = new Date();
   const [activeReport, setActiveReport] = useState('attendance');
   const [filters, setFilters] = useState({
@@ -60,7 +66,10 @@ export default function ReportsPage() {
   const { data: leavesData }     = useListLeavesQuery({ limit: 200, ...filters });
   const { data: leavesYearData } = useListLeavesQuery({ limit: 100, year: filters.year });
   const { data: payrollData }    = useListPayrollQuery({ limit: 200, year: filters.year });
-  const { data: expensesData }   = useListExpensesQuery({ limit: 200 });
+  const { data: expensesData } = useListExpensesQuery(
+    { limit: 200 },
+    { skip: !canViewExpenses },
+  );
 
   // ── Attendance chart data ──
   const attRecords = attendanceData?.items || [];
@@ -147,12 +156,14 @@ export default function ReportsPage() {
         <StatCard title="Attendance Records" value={attRecords.length} icon={Clock} />
         <StatCard title="Leave Days Taken"   value={totalLeaves}        icon={Calendar} />
         <StatCard title="Total Payroll"      value={`PKR ${(totalPayroll/1000).toFixed(0)}k`} icon={Wallet} />
-        <StatCard title="Total Expenses"     value={`PKR ${(totalExpenses/1000).toFixed(0)}k`} icon={Receipt} />
+        {canViewExpenses && (
+          <StatCard title="Total Expenses" value={`PKR ${(totalExpenses/1000).toFixed(0)}k`} icon={Receipt} />
+        )}
       </div>
 
       {/* Report type selector */}
       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {REPORT_TYPES.map(r => (
+        {availableReportTypes.map(r => (
           <ReportCard key={r.id} report={r} active={activeReport === r.id} onClick={() => setActiveReport(r.id)} />
         ))}
       </div>
@@ -255,7 +266,7 @@ export default function ReportsPage() {
         )}
 
         {/* Expenses by category */}
-        {(activeReport === 'expense' || activeReport === 'payroll') && (
+        {canViewExpenses && (activeReport === 'expense' || activeReport === 'payroll') && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5">
             <h3 className="font-semibold mb-4 flex items-center gap-2"><Receipt className="h-4 w-4" /> Expenses by Category</h3>
             {expChartData.length === 0 ? (

@@ -49,12 +49,14 @@ export default function AdminDashboard({ data }) {
           subtitle="This month"
           icon={Wallet}
         />
-        <StatCard
-          delay={0.12}
-          title="Pending Expenses"
-          value={data.pendingExpenseApprovals?.length ?? 0}
-          icon={Receipt}
-        />
+        {data.expenseAccess && (
+          <StatCard
+            delay={0.12}
+            title="Pending Expenses"
+            value={data.pendingExpenseApprovals?.length ?? 0}
+            icon={Receipt}
+          />
+        )}
         <StatCard
           delay={0.18}
           title="Departments"
@@ -64,7 +66,7 @@ export default function AdminDashboard({ data }) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <motion.div className="glass-card p-5">
+        {data.expenseAccess && <motion.div className="glass-card p-5">
           <h3 className="mb-4 font-semibold">Monthly Expenses by Status</h3>
           {expenseChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={240}>
@@ -79,7 +81,7 @@ export default function AdminDashboard({ data }) {
           ) : (
             <p className="text-sm text-muted-foreground py-12 text-center">No expense data</p>
           )}
-        </motion.div>
+        </motion.div>}
 
         <motion.div className="glass-card p-5">
           <h3 className="mb-4 font-semibold">Department Distribution</h3>
@@ -99,7 +101,7 @@ export default function AdminDashboard({ data }) {
         </motion.div>
       </div>
 
-      {(data.pendingExpenseApprovals || []).length > 0 && (
+      {data.expenseAccess && (data.pendingExpenseApprovals || []).length > 0 && (
         <motion.div className="glass-card p-5">
           <h3 className="mb-4 font-semibold flex items-center gap-2">
             <CreditCard className="h-4 w-4" />

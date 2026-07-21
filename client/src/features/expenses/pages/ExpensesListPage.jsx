@@ -285,7 +285,7 @@ function ExpenseDetailModal({ expense, isOpen, onClose, onApprove, onReject, onM
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ExpensesListPage() {
   const { user } = useSelector(s => s.auth);
-  const isAdmin = ['admin','super_admin'].includes(user?.role);
+  const canManageCategories = ['hr', 'super_admin'].includes(user?.role);
 
   const [submitOpen, setSubmitOpen]     = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
@@ -313,7 +313,7 @@ export default function ExpensesListPage() {
   const paidAmt    = expenses.filter(e => e.status === 'paid').reduce((s,e) => s+(e.amount||0), 0);
   const canApprove = Boolean(detailExpense) && (
     (user?.role === 'hr' && detailExpense.currentStage === 1)
-    || (['admin', 'super_admin'].includes(user?.role) && detailExpense.currentStage === 2)
+    || (user?.role === 'super_admin' && detailExpense.currentStage === 2)
   );
 
   // Chart data by category
@@ -352,7 +352,7 @@ export default function ExpensesListPage() {
           <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
           </Button>
-          {isAdmin && (
+          {canManageCategories && (
             <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setCategoriesOpen(true)}>
               <Settings2 className="h-4 w-4" /> Categories
             </Button>
