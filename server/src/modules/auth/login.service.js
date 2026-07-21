@@ -11,8 +11,16 @@ const Session = require('./auth.model');
 const { decryptField, generateSecureToken } = require('../../utils/crypto');
 const logger = require('../../utils/logger');
 
-const ACCESS_TOKEN_TTL = '15m';
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Access tokens remain short-lived and are silently renewed by the client.
+// The refresh session is deliberately longer so normal staff do not have to
+// sign in again during (or between) working days. Both values can be adjusted
+// per deployment without changing code.
+const ACCESS_TOKEN_TTL = process.env.JWT_ACCESS_EXPIRES_IN || '1h';
+const REFRESH_TOKEN_TTL_DAYS = Math.max(
+  1,
+  Number.parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '30', 10) || 30
+);
+const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
 
 function signAccessToken(employee) {
   return jwt.sign(

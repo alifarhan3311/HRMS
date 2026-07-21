@@ -17,7 +17,9 @@ import {
 import { getNavForRole, getRoleLabel } from '../../config/navigation';
 import {
   isNotificationSoundEnabled,
+  playNotificationSound,
   setNotificationSoundEnabled,
+  unlockNotificationSound,
 } from '../../services/notificationSound';
 import { Avatar } from '../ui/Avatar';
 
@@ -124,6 +126,15 @@ export default function Header({ onMenuClick = () => {} }) {
     if (notification.link) navigate(notification.link);
   }
 
+  async function toggleNotificationSound() {
+    const next = !soundEnabled;
+    setNotificationSoundEnabled(next);
+    if (next) {
+      const unlocked = await unlockNotificationSound().catch(() => false);
+      if (unlocked) await playNotificationSound().catch(() => {});
+    }
+  }
+
   return (
     <header className="relative z-[100] flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-card/60 px-3 backdrop-blur-md sm:px-5">
       <button
@@ -216,7 +227,7 @@ export default function Header({ onMenuClick = () => {} }) {
                 <div className="flex items-center justify-between border-b border-border px-4 py-3">
                   <span className="text-sm font-semibold">Live Notifications</span>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setNotificationSoundEnabled(!soundEnabled)}
+                    <button type="button" onClick={toggleNotificationSound}
                       title={soundEnabled ? 'Mute notification sound' : 'Enable notification sound'}
                       className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
                       {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}

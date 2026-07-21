@@ -61,7 +61,11 @@ function authenticate(req, res, next) {
     const token = req.cookies?.accessToken;
 
     if (!token) {
-      throw createHttpError(401, 'Authentication required. No access token provided.');
+      // Browsers remove expired cookies before the next request. Tell the
+      // client to try its longer-lived refresh session before logging out.
+      throw createHttpError(401, 'Authentication required. No access token provided.', {
+        code: 'ACCESS_TOKEN_MISSING',
+      });
     }
 
     let decoded;

@@ -22,23 +22,27 @@ export async function unlockNotificationSound() {
   return unlocked;
 }
 
-export function playNotificationSound() {
-  if (!isNotificationSoundEnabled() || !unlocked || !audioContext) return false;
+export async function playNotificationSound() {
+  if (!isNotificationSoundEnabled()) return false;
+  if (!unlocked || !audioContext || audioContext.state !== 'running') {
+    try { await unlockNotificationSound(); } catch { return false; }
+  }
+  if (!unlocked || !audioContext || audioContext.state !== 'running') return false;
 
   const start = audioContext.currentTime;
   const gain = audioContext.createGain();
   gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(0.16, start + 0.015);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.42);
+  gain.gain.exponentialRampToValueAtTime(0.28, start + 0.015);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.62);
   gain.connect(audioContext.destination);
 
   [784, 1046.5].forEach((frequency, index) => {
     const oscillator = audioContext.createOscillator();
-    oscillator.type = 'sine';
+    oscillator.type = 'triangle';
     oscillator.frequency.setValueAtTime(frequency, start + index * 0.08);
     oscillator.connect(gain);
     oscillator.start(start + index * 0.08);
-    oscillator.stop(start + 0.34 + index * 0.08);
+    oscillator.stop(start + 0.5 + index * 0.08);
   });
   return true;
 }

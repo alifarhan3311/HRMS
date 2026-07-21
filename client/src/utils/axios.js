@@ -96,11 +96,20 @@ axiosInstance.interceptors.response.use(
     const status = error.response?.status;
     const code = error.response?.data?.error?.code;
 
-    const isExpiredAccessToken = status === 401 && code === 'ACCESS_TOKEN_EXPIRED';
+    const isRefreshableAuthFailure = status === 401 && (
+      code === 'ACCESS_TOKEN_EXPIRED'
+      || code === 'ACCESS_TOKEN_MISSING'
+      // Compatibility with an older backend that returned no error code
+      // after the browser removed an expired access-token cookie.
+      || error.response?.data?.error?.message === 'Authentication required. No access token provided.'
+    );
     const isRefreshCallItself = originalRequest?.url?.includes('/auth/refresh');
+    const isPublicAuthCall = ['/auth/login', '/auth/logout'].some((path) =>
+      originalRequest?.url?.includes(path)
+    );
     const alreadyRetried = originalRequest?._retry;
 
-    if (isExpiredAccessToken && !isRefreshCallItself && !alreadyRetried) {
+    if (isRefreshableAuthFailure && !isRefreshCallItself && !isPublicAuthCall && !alreadyRetried) {
       originalRequest._retry = true;
 
       if (isRefreshing) {

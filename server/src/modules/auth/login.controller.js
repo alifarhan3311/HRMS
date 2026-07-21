@@ -10,6 +10,16 @@ function asyncHandler(fn) {
 
 const isProduction = process.env.NODE_ENV === 'production';
 const cookieSameSite = process.env.COOKIE_SAME_SITE || (isProduction ? 'none' : 'strict');
+const accessTokenCookieMinutes = Math.max(
+  5,
+  Number.parseInt(process.env.ACCESS_TOKEN_COOKIE_MINUTES || '60', 10) || 60
+);
+const refreshTokenCookieDays = Math.max(
+  1,
+  Number.parseInt(process.env.REFRESH_TOKEN_EXPIRES_DAYS || '30', 10) || 30
+);
+const ACCESS_TOKEN_COOKIE_MS = accessTokenCookieMinutes * 60 * 1000;
+const REFRESH_TOKEN_COOKIE_MS = refreshTokenCookieDays * 24 * 60 * 60 * 1000;
 
 const COOKIE_OPTS = {
   httpOnly: true,
@@ -33,11 +43,13 @@ const login = asyncHandler(async (req, res) => {
     resourceId: String(user.id),
   };
 
-  res.cookie('accessToken', accessToken, { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 });
+  // Remove the old path-scoped cookie before issuing the new proxy-safe one.
+  res.clearCookie('refreshToken', { ...COOKIE_OPTS, path: '/api/v1/auth/refresh' });
+  res.cookie('accessToken', accessToken, { ...COOKIE_OPTS, maxAge: ACCESS_TOKEN_COOKIE_MS });
   res.cookie('refreshToken', refreshToken, {
     ...COOKIE_OPTS,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: '/api/v1/auth/refresh',
+    maxAge: REFRESH_TOKEN_COOKIE_MS,
+    path: '/',
   });
 
   res.status(200).json({ success: true, data: { user } });
@@ -47,13 +59,14 @@ const refresh = asyncHandler(async (req, res) => {
   const { accessToken } = await loginService.refresh({
     rawRefreshToken: req.cookies?.refreshToken,
   });
-  res.cookie('accessToken', accessToken, { ...COOKIE_OPTS, maxAge: 15 * 60 * 1000 });
+  res.cookie('accessToken', accessToken, { ...COOKIE_OPTS, maxAge: ACCESS_TOKEN_COOKIE_MS });
   res.status(200).json({ success: true });
 });
 
 const logout = asyncHandler(async (req, res) => {
   await loginService.logout({ rawRefreshToken: req.cookies?.refreshToken });
   res.clearCookie('accessToken', COOKIE_OPTS);
+  res.clearCookie('refreshToken', { ...COOKIE_OPTS, path: '/' });
   res.clearCookie('refreshToken', { ...COOKIE_OPTS, path: '/api/v1/auth/refresh' });
   res.status(200).json({ success: true });
 });
@@ -71,6 +84,7 @@ const updateProfile = asyncHandler(async (req, res) => {
 const changePassword = asyncHandler(async (req, res) => {
   await loginService.changePassword(req.user.id, req.body);
   res.clearCookie('accessToken', COOKIE_OPTS);
+  res.clearCookie('refreshToken', { ...COOKIE_OPTS, path: '/' });
   res.clearCookie('refreshToken', { ...COOKIE_OPTS, path: '/api/v1/auth/refresh' });
   res.status(200).json({ success: true, message: 'Password changed. Please sign in again.' });
 });
