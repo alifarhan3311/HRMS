@@ -85,6 +85,90 @@ async function notifyEmployee(leave, notification) {
   }
 }
 
+function approvalNotificationPayload(leave, stage, recipientId, employee) {
+  const employeeId = leave.employeeId?._id || leave.employeeId;
+  const employeeName = employee?.fullName || leave.employeeId?.fullName || 'An employee';
+  return {
+    recipientId,
+    companyId: leave.companyId,
+    type: 'leave_approval_required',
+    title: 'Leave approval required',
+    message: `${employeeName} submitted a ${leave.leaveType} leave request awaiting your approval.`,
+    link: '/leaves',
+    metadata: { leaveId: leave._id, employeeId, stage },
+    dedupeKey: `leave-approval:${leave._id}:stage:${stage}:recipient:${recipientId}`,
+  };
+}
+
+async function stageApproverIds(leave, stage) {
+  const employeeId = leave.employeeId?._id || leave.employeeId;
+  const employee = await Employee.findById(employeeId)
+    .select('fullName role managerId teamLeadId companyId status')
+    .lean();
+  if (!employee) return { employee: null, recipientIds: [] };
+
+  let recipientIds = [];
+  if (stage === 1) {
+    // Employees go to their Team Lead first when one exists. A Team Lead's
+    // own request goes to their Manager, never back to themselves.
+    const directApprover = employee.role === 'team_lead'
+      ? employee.managerId
+      : employee.teamLeadId || employee.managerId;
+    if (directApprover) recipientIds = [directApprover];
+  } else if (stage === 2) {
+    recipientIds = await Employee.find({
+      companyId: leave.companyId,
+      role: 'hr',
+      status: 'active',
+      _id: { $ne: employeeId },
+    }).distinct('_id');
+  } else if (stage === 3) {
+    recipientIds = await Employee.find({
+      companyId: leave.companyId,
+      role: { $in: ['admin', 'super_admin'] },
+      status: 'active',
+      _id: { $ne: employeeId },
+    }).distinct('_id');
+  }
+
+  return {
+    employee,
+    recipientIds: [...new Map(recipientIds.map(id => [String(id), id])).values()]
+      .filter(id => String(id) !== String(employeeId)),
+  };
+}
+
+async function notifyStageApprovers(leave, stage, onlyRecipientId = null) {
+  try {
+    const { employee, recipientIds: resolvedIds } = await stageApproverIds(leave, stage);
+    const recipientIds = onlyRecipientId
+      ? resolvedIds.filter(id => String(id) === String(onlyRecipientId))
+      : resolvedIds;
+    const results = await Promise.allSettled(recipientIds.map(recipientId =>
+      notificationService.createNotification(
+        approvalNotificationPayload(leave, stage, recipientId, employee)
+      )
+    ));
+    results.forEach((result, index) => {
+      if (result.status === 'rejected') {
+        logger.error('[leaves] Approver notification creation failed', {
+          leaveId: String(leave._id),
+          stage,
+          recipientId: String(recipientIds[index]),
+          error: result.reason?.message,
+        });
+      }
+    });
+  } catch (error) {
+    // Notification delivery must never roll back a valid leave application.
+    logger.error('[leaves] Could not resolve leave approvers', {
+      leaveId: String(leave._id),
+      stage,
+      error: error.message,
+    });
+  }
+}
+
 // ─── Apply ───────────────────────────────────────────────────────────────────
 async function applyLeave(payload, actor) {
   const { leaveType, startDate, endDate, reason, emergencyContact } = payload;
@@ -134,6 +218,8 @@ async function applyLeave(payload, actor) {
     companyId: actor.companyId,
     branchId: actor.branchId,
   });
+
+  await notifyStageApprovers(leave, 1);
 
   return leave;
 }
@@ -186,6 +272,8 @@ async function approveLeave(id, { remarks }, actor) {
       metadata: { leaveId: leave._id },
       dedupeKey: `leave-approved:${leave._id}`,
     });
+  } else {
+    await notifyStageApprovers(updated, nextStage);
   }
   return updated;
 }
@@ -299,7 +387,13 @@ async function getPendingApprovals(actor) {
   const employeeIds = actor.role === 'super_admin'
     ? null
     : await visibleLeaveEmployeeIds(actor, false);
-  return repository.getPendingByStage(actor.companyId, stage, employeeIds);
+  const records = await repository.getPendingByStage(actor.companyId, stage, employeeIds);
+  // Backfill notifications for requests created before staged approver
+  // notifications were introduced. The dedupe key makes this idempotent.
+  await Promise.allSettled(records.map(record =>
+    notifyStageApprovers(record, stage, actor.id)
+  ));
+  return records;
 }
 
 module.exports = { applyLeave, approveLeave, rejectLeave, cancelLeave, listLeaves, getLeaveById, getPendingApprovals };
