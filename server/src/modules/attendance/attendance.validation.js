@@ -22,15 +22,15 @@ const signOutSchema = Joi.object({
 const monthlySummaryQuerySchema = Joi.object({
   year: Joi.number().integer().min(2000).max(2100).optional(),
   month: Joi.number().integer().min(1).max(12).optional(),
-  employeeId: objectId.optional(),
+  employeeId: objectId.empty('').optional(),
 });
 
 const listQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(30),
   sort: Joi.string().valid('date', '-date', 'createdAt', '-createdAt').default('-date'),
-  employeeId: objectId.optional(),
-  status: Joi.string().valid(...statuses).optional(),
+  employeeId: objectId.empty('').optional(),
+  status: Joi.string().valid(...statuses).empty('').optional(),
   dateFrom: Joi.date().iso().optional(),
   dateTo: Joi.date().iso().min(Joi.ref('dateFrom')).optional(),
   month: Joi.number().integer().min(1).max(12).optional(),
