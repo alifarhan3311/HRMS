@@ -10,7 +10,7 @@ import { Building2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { getNavGroupsForRole } from '../../config/navigation';
 
-const MotionNavLink = motion(NavLink);
+const MotionNavLink = motion.create(NavLink);
 
 export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }) {
   const { user }    = useSelector(s => s.auth);

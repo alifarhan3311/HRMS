@@ -37,7 +37,7 @@ export default function App() {
             </div>
           }
         >
-          <RouterProvider router={router} />
+          <RouterProvider router={router} future={{ v7_startTransition: true }} />
         </Suspense>
       </ThemeProvider>
     </Provider>

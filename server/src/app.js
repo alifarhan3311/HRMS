@@ -147,7 +147,11 @@ app.use(require('./middlewares/audit.middleware'));
 // authentication routes, both backed by Redis so limits hold across
 // multiple app instances behind a load balancer.
 // -------------------------------------------------------------------------
-app.use('/api/v1/auth', authRateLimiter);
+// The strict limiter protects credential/session issuance only. Applying it
+// to /auth/me and /auth/socket-token caused an already authenticated user to
+// be locked out simply by navigating around the application.
+app.use('/api/v1/auth/login', authRateLimiter);
+app.use('/api/v1/auth/refresh', authRateLimiter);
 app.use('/api/v1', apiRateLimiter);
 
 // -------------------------------------------------------------------------

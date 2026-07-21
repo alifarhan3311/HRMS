@@ -67,6 +67,15 @@ export default function RealtimeNotifications() {
     const refreshNotifications = () => {
       dispatch(api.util.invalidateTags(['Notifications', 'Dashboard']));
     };
+    const onSocketReady = () => {
+      // Pull anything created during a temporary disconnect immediately.
+      refreshNotifications();
+    };
+    const onConnectError = (error) => {
+      if (import.meta.env.DEV) {
+        console.warn('[realtime] Socket connection failed; polling fallback remains active.', error.message);
+      }
+    };
     const onNewNotification = notification => {
       seenNotificationIds.current.add(String(notification._id));
       refreshNotifications();
@@ -87,6 +96,8 @@ export default function RealtimeNotifications() {
     };
 
     socket.on('notification:new', onNewNotification);
+    socket.on('socket:ready', onSocketReady);
+    socket.on('connect_error', onConnectError);
     SYNC_EVENTS.forEach(event => socket.on(event, refreshNotifications));
 
     let cancelled = false;
@@ -108,6 +119,8 @@ export default function RealtimeNotifications() {
       cancelled = true;
       window.clearTimeout(tokenRefreshTimer);
       socket.off('notification:new', onNewNotification);
+      socket.off('socket:ready', onSocketReady);
+      socket.off('connect_error', onConnectError);
       SYNC_EVENTS.forEach(event => socket.off(event, refreshNotifications));
       disconnectSocket();
     };

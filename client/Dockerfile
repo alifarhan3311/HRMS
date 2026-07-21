@@ -29,3 +29,6 @@ COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
 
 CMD ["nginx","-g","daemon off;"]
+ENV VITE_SOCKET_URL=https://www.mhcirclesolutions.com
+ENV VITE_SOCKET_PATH=/socket.io
+ENV VITE_REALTIME_ENABLED=true

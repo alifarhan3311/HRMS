@@ -54,16 +54,18 @@ function buildLimiter({ windowMs, max, message, prefix }) {
 }
 
 const authRateLimiter = buildLimiter({
-  prefix: 'hrms:rate-limit:auth:',
+  prefix: 'hrms:rate-limit:auth:v2:',
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: Math.max(10, Number.parseInt(process.env.AUTH_RATE_LIMIT_MAX || '50', 10) || 50),
   message: 'Too many authentication attempts. Please try again later.',
 });
 
 const apiRateLimiter = buildLimiter({
-  prefix: 'hrms:rate-limit:api:',
+  prefix: 'hrms:rate-limit:api:v2:',
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  // Dashboard widgets, notification polling and normal route navigation can
+  // legitimately create several hundred calls in a working session.
+  max: Math.max(300, Number.parseInt(process.env.API_RATE_LIMIT_MAX || '1200', 10) || 1200),
   message: 'Too many requests. Please slow down.',
 });
 

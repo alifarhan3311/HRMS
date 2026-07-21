@@ -44,8 +44,8 @@ function subscribeToRefresh(callback) {
   refreshSubscribers.push(callback);
 }
 
-function notifyRefreshSubscribers() {
-  refreshSubscribers.forEach((callback) => callback());
+function notifyRefreshSubscribers(refreshError = null) {
+  refreshSubscribers.forEach((callback) => callback(refreshError));
   refreshSubscribers = [];
 }
 
@@ -54,6 +54,11 @@ function notifyRefreshSubscribers() {
  * UI code never has to branch on axios's own error structure.
  */
 function parseApiError(error) {
+  // Preserve errors already normalized by this interceptor. A failed silent
+  // refresh otherwise gets parsed twice and its real 401 becomes status -1.
+  if (error && !error.isAxiosError && error.status !== undefined && error.message) {
+    return error;
+  }
   if (error.response) {
     const { status, data } = error.response;
     return {
@@ -115,8 +120,11 @@ axiosInstance.interceptors.response.use(
       if (isRefreshing) {
         // Another request already triggered a refresh — wait for it, then
         // retry this request once the new cookie is set.
-        return new Promise((resolve) => {
-          subscribeToRefresh(() => resolve(axiosInstance(originalRequest)));
+        return new Promise((resolve, reject) => {
+          subscribeToRefresh((refreshError) => {
+            if (refreshError) return reject(refreshError);
+            return resolve(axiosInstance(originalRequest));
+          });
         });
       }
 
@@ -129,10 +137,10 @@ axiosInstance.interceptors.response.use(
         return axiosInstance(originalRequest);
       } catch (refreshError) {
         isRefreshing = false;
-        refreshSubscribers = [];
+        notifyRefreshSubscribers(refreshError);
         // Refresh token itself is invalid/expired — force a full logout.
         window.dispatchEvent(new CustomEvent('auth:session-expired'));
-        return Promise.reject(parseApiError(refreshError));
+        return Promise.reject(refreshError);
       }
     }
 

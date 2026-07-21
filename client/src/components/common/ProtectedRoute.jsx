@@ -20,6 +20,8 @@ export default function ProtectedRoute({ children }) {
   });
 
   const isAuthenticationError = error?.status === 401 || error?.status === 403;
+  const serverMessage = error?.data?.error?.message;
+  const isRateLimited = error?.status === 429;
 
   useEffect(() => {
     if (data?.data?.user) dispatch(setCredentials(data.data.user));
@@ -53,8 +55,13 @@ export default function ProtectedRoute({ children }) {
         <div className="w-full max-w-md rounded-xl border border-border bg-card p-6 text-center shadow-sm">
           <h1 className="text-lg font-semibold text-foreground">Unable to load your session</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            The server returned a temporary error. Your login session has not been cleared.
+            {isRateLimited
+              ? 'Too many requests were received. Please wait briefly and try again.'
+              : serverMessage || 'The server returned a temporary error. Your login session has not been cleared.'}
           </p>
+          {error?.status && (
+            <p className="mt-2 text-xs text-muted-foreground">Error status: {error.status}</p>
+          )}
           <button
             type="button"
             onClick={refetch}

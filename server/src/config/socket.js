@@ -13,14 +13,27 @@ let socketServer = null;
 function initSocket(httpServer) {
   const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || 'https://mhcirclesolutions.com,https://www.mhcirclesolutions.com')
     .split(',')
-    .map(origin => origin.trim())
+    .map(origin => origin.trim().replace(/\/$/, ''))
     .filter(Boolean);
+  const socketPath = `/${(process.env.SOCKET_PATH || 'socket.io').replace(/^\/+|\/+$/g, '')}`;
 
   const io = new Server(httpServer, {
+    path: socketPath,
     cors: {
-      origin: allowedOrigins,
+      origin(origin, callback) {
+        const normalizedOrigin = origin?.replace(/\/$/, '');
+        if (!normalizedOrigin || allowedOrigins.includes(normalizedOrigin)) {
+          return callback(null, true);
+        }
+        logger.warn('[socket] Blocked connection from disallowed origin', { origin });
+        return callback(new Error('Not allowed by CORS'));
+      },
       credentials: true,
     },
+    transports: ['polling', 'websocket'],
+    allowUpgrades: true,
+    pingInterval: 25000,
+    pingTimeout: 20000,
   });
 
   // Auth handshake accepts the HttpOnly access cookie on same-site setups or
