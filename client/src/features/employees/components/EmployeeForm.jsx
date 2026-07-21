@@ -29,6 +29,7 @@ const GENDERS = ['male', 'female', 'other'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
 const DEFAULT_ROLES = ['employee', 'team_lead', 'manager'];
+const DEPARTMENTS = ['Digital Media', 'Call Center'];
 const TAB_FIELDS = {
   personal: ['fullName', 'fatherName', 'cnic', 'dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'],
   contact: ['email', 'contactNumber', 'address', 'emergencyContact'],
@@ -408,12 +409,19 @@ export default function EmployeeForm({
                   onChange={(e) => set('joiningDate', e.target.value)}
                   error={errors.joiningDate}
                 />
-                <Input
+                <Select
                   label="Department"
-                  placeholder="Engineering"
                   value={form.department}
                   onChange={(e) => set('department', e.target.value)}
-                />
+                >
+                  <option value="">Select department</option>
+                  {form.department && !DEPARTMENTS.includes(form.department) && (
+                    <option value={form.department}>{form.department}</option>
+                  )}
+                  {DEPARTMENTS.map((department) => (
+                    <option key={department} value={department}>{department}</option>
+                  ))}
+                </Select>
                 <Input
                   label="Designation"
                   placeholder="Software Engineer"

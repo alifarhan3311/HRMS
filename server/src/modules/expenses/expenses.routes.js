@@ -15,22 +15,22 @@ const {
 } = require('./expenseCategories.validation');
 
 const router = express.Router();
-const ALL       = ['super_admin','admin','hr','manager','team_lead','employee'];
-const APPROVERS = ['super_admin','admin','manager'];
+const EXPENSE_ROLES = ['super_admin', 'admin', 'hr'];
+const APPROVERS = ['super_admin', 'admin', 'hr'];
 
 router.use(authenticate);
 
-router.get('/categories', authorize(...ALL), categoryController.list);
+router.get('/categories', authorize(...EXPENSE_ROLES), categoryController.list);
 router.post('/categories', authorize('super_admin', 'admin'), validate(createCategorySchema), categoryController.create);
 router.put('/categories/:categoryId', authorize('super_admin', 'admin'),
   validate(categoryIdSchema, 'params'), validate(updateCategorySchema), categoryController.update);
 router.delete('/categories/:categoryId', authorize('super_admin', 'admin'),
   validate(categoryIdSchema, 'params'), categoryController.remove);
 
-router.post('/', authorize(...ALL), validate(createSchema), controller.submit);
-router.get('/',  authorize(...ALL),    controller.list);
+router.post('/', authorize(...EXPENSE_ROLES), validate(createSchema), controller.submit);
+router.get('/', authorize(...EXPENSE_ROLES), controller.list);
 
-router.get('/:id', authorize(...ALL),
+router.get('/:id', authorize(...EXPENSE_ROLES),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.getById);
 

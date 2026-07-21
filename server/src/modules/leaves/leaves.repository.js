@@ -29,6 +29,14 @@ async function updateById(id, data) {
     .populate('employeeId', 'fullName employeeCode department');
 }
 
+async function cancelPendingById(id, reason = '') {
+  return LeaveRequest.findOneAndUpdate(
+    { _id: id, status: 'pending' },
+    { $set: { status: 'cancelled', cancellationReason: reason } },
+    { new: true, runValidators: true }
+  ).populate('employeeId', 'fullName employeeCode department');
+}
+
 async function countActiveLeaves(employeeId, startDate, endDate) {
   return LeaveRequest.countDocuments({
     employeeId,
@@ -50,4 +58,12 @@ async function getPendingByStage(companyId, stage, employeeIds = null) {
     .sort('-createdAt').limit(50);
 }
 
-module.exports = { create, findById, findAll, updateById, countActiveLeaves, getPendingByStage };
+module.exports = {
+  create,
+  findById,
+  findAll,
+  updateById,
+  cancelPendingById,
+  countActiveLeaves,
+  getPendingByStage,
+};

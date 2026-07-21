@@ -340,7 +340,7 @@ async function getAdminDashboard(user) {
         },
       },
     ]),
-    Expense.find({ companyId: user.companyId, status: 'pending' })
+    Expense.find({ companyId: user.companyId, status: 'processing', currentStage: 2 })
       .populate('submittedBy', 'fullName employeeCode')
       .sort({ createdAt: -1 })
       .limit(10)

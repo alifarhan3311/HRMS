@@ -263,7 +263,7 @@ export default function LeavesListPage() {
   async function handleCancel() {
     try { await cancelLeave({ id: cancelTarget._id, reason: 'Cancelled by user' }).unwrap();
       toast.success('Leave cancelled'); setCancelTarget(null); }
-    catch (err) { toast.error('Failed to cancel'); }
+    catch (err) { toast.error(err?.data?.error?.message || 'Failed to cancel'); }
   }
 
   return (

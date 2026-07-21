@@ -62,7 +62,7 @@ export const NAV_GROUPS = [
       {
         id: 'expenses', label: 'Expenses', path: '/expenses',
         icon: Receipt,
-        roles: ['employee', 'manager', 'admin', 'super_admin'],
+        roles: ['hr', 'admin', 'super_admin'],
       },
     ],
   },

@@ -4,8 +4,8 @@
  *  Employee → Team Lead/Manager (Stage 1) → HR (Stage 2) → Admin (Stage 3/Final)
  *
  * Leave balance is deducted from Employee when fully approved.
- * Cancellation before approval restores nothing (no deduction yet).
- * Cancellation after approval restores the leave balance.
+ * Employees may cancel only while a request is pending. Once approved,
+ * the decision is final and the leave balance/attendance record is locked.
  */
 const createHttpError = require('http-errors');
 const repository = require('./leaves.repository');
@@ -319,20 +319,19 @@ async function cancelLeave(id, { reason }, actor) {
   if (!isOwner && !['admin', 'hr', 'super_admin'].includes(actor.role)) {
     throw createHttpError(403, 'You cannot cancel this leave request.');
   }
-  if (leave.status === 'cancelled') throw createHttpError(400, 'Already cancelled.');
-
-  // Restore balance if was approved
-  if (leave.status === 'approved' && LEAVE_BALANCE_KEYS[leave.leaveType]) {
-    const key = LEAVE_BALANCE_KEYS[leave.leaveType];
-    await Employee.findByIdAndUpdate(leave.employeeId, {
-      $inc: { [`leaveBalance.${key}.used`]: -leave.totalDays },
-    });
+  if (leave.status === 'approved') {
+    throw createHttpError(409, 'Approved leave cannot be cancelled. Contact HR for a formal attendance correction if required.');
+  }
+  if (leave.status !== 'pending') {
+    throw createHttpError(409, `A ${leave.status} leave request cannot be cancelled.`);
   }
 
-  const updated = await repository.updateById(id, {
-    status: 'cancelled',
-    cancellationReason: reason || '',
-  });
+  // Conditional update closes the race where an approver approves the leave
+  // between the status check above and this write.
+  const updated = await repository.cancelPendingById(id, reason || '');
+  if (!updated) {
+    throw createHttpError(409, 'This leave is no longer pending and cannot be cancelled.');
+  }
   return updated;
 }
 

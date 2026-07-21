@@ -285,7 +285,6 @@ function ExpenseDetailModal({ expense, isOpen, onClose, onApprove, onReject, onM
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ExpensesListPage() {
   const { user } = useSelector(s => s.auth);
-  const canApprove = ['admin','super_admin','manager'].includes(user?.role);
   const isAdmin = ['admin','super_admin'].includes(user?.role);
 
   const [submitOpen, setSubmitOpen]     = useState(false);
@@ -312,6 +311,10 @@ export default function ExpensesListPage() {
   const totalAmt   = expenses.reduce((s, e) => s + (e.amount||0), 0);
   const pendingAmt = expenses.filter(e => ['pending','processing'].includes(e.status)).reduce((s,e) => s+(e.amount||0), 0);
   const paidAmt    = expenses.filter(e => e.status === 'paid').reduce((s,e) => s+(e.amount||0), 0);
+  const canApprove = Boolean(detailExpense) && (
+    (user?.role === 'hr' && detailExpense.currentStage === 1)
+    || (['admin', 'super_admin'].includes(user?.role) && detailExpense.currentStage === 2)
+  );
 
   // Chart data by category
   const catData = categories.map(cat => ({
