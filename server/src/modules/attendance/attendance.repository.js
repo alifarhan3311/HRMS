@@ -69,6 +69,16 @@ async function getMonthlySummary(employeeId, year, month) {
   return Attendance.find({ employeeId, date: { $gte: start, $lte: end } }).sort('date');
 }
 
+async function getRangeSummary(employeeId, dateFrom, dateTo) {
+  const start = new Date(dateFrom);
+  const end = new Date(dateTo);
+  start.setUTCHours(0, 0, 0, 0);
+  end.setUTCHours(23, 59, 59, 999);
+  return Attendance.find({ employeeId, date: { $gte: start, $lte: end } })
+    .sort('date')
+    .lean();
+}
+
 async function getMonthlyAggregation(companyId, year, month) {
   const start = new Date(year, month - 1, 1);
   const end = new Date(year, month, 0, 23, 59, 59, 999);
@@ -93,8 +103,8 @@ async function getLateCountForMonth(employeeId, year, month) {
   });
 }
 
-async function getPendingRegularizations(companyId) {
-  return Attendance.find({ companyId, regularizationStatus: 'pending' })
+async function getPendingRegularizations(filter) {
+  return Attendance.find({ ...filter, regularizationStatus: 'pending' })
     .populate('employeeId', 'fullName employeeCode department')
     .populate('regularization.assignedApprover', 'fullName employeeCode designation role')
     .sort('-createdAt')
@@ -113,6 +123,7 @@ module.exports = {
   findByClosure,
   deleteById,
   getMonthlySummary,
+  getRangeSummary,
   getMonthlyAggregation,
   getLateCountForMonth,
   getPendingRegularizations,

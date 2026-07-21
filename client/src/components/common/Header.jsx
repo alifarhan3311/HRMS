@@ -67,8 +67,17 @@ export default function Header({ onMenuClick = () => {} }) {
       if (notifRef.current && !notifRef.current.contains(event.target)) setNotifOpen(false);
       if (profileRef.current && !profileRef.current.contains(event.target)) setProfileOpen(false);
     }
-    document.addEventListener('mousedown', closeMenus);
-    return () => document.removeEventListener('mousedown', closeMenus);
+    document.addEventListener('pointerdown', closeMenus, true);
+    return () => document.removeEventListener('pointerdown', closeMenus, true);
+  }, []);
+
+  useEffect(() => {
+    const closeOnScroll = () => {
+      setProfileOpen(false);
+      setNotifOpen(false);
+    };
+    window.addEventListener('scroll', closeOnScroll, true);
+    return () => window.removeEventListener('scroll', closeOnScroll, true);
   }, []);
 
   useEffect(() => {
@@ -116,7 +125,7 @@ export default function Header({ onMenuClick = () => {} }) {
   }
 
   return (
-    <header className="relative z-30 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-card/60 px-3 backdrop-blur-md sm:px-5">
+    <header className="relative z-[100] flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border bg-card/60 px-3 backdrop-blur-md sm:px-5">
       <button
         type="button"
         onClick={onMenuClick}
@@ -200,18 +209,10 @@ export default function Header({ onMenuClick = () => {} }) {
               </motion.span>
             )}
           </button>
-          {profileOpen && (
-            <button
-              type="button"
-              aria-label="Close profile menu"
-              className="fixed inset-0 z-40 cursor-default bg-transparent"
-              onMouseDown={() => setProfileOpen(false)}
-            />
-          )}
           <AnimatePresence>
             {notifOpen && (
               <motion.div initial={{ opacity: 0, y: -8, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: .96 }}
-                className="absolute right-0 top-full z-50 mt-2 w-96 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+                className="absolute right-0 top-full z-[110] mt-2 w-96 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
                 <div className="flex items-center justify-between border-b border-border px-4 py-3">
                   <span className="text-sm font-semibold">Live Notifications</span>
                   <div className="flex items-center gap-2">
@@ -259,7 +260,7 @@ export default function Header({ onMenuClick = () => {} }) {
           <AnimatePresence>
             {profileOpen && (
               <motion.div initial={{ opacity: 0, y: -8, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -8, scale: .96 }}
-                className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
+                className="absolute right-0 top-full z-[110] mt-2 w-52 overflow-hidden rounded-xl border border-border bg-card shadow-2xl">
                 <div className="border-b border-border px-4 py-3">
                   <p className="truncate text-sm font-semibold">{user?.fullName}</p>
                   <p className="truncate text-xs text-muted-foreground">{user?.email || getRoleLabel(user?.role)}</p>

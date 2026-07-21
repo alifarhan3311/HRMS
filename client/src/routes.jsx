@@ -5,6 +5,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 
 import AppLayout         from './components/common/AppLayout';
 import ProtectedRoute    from './components/common/ProtectedRoute';
+import RoleRoute         from './components/common/RoleRoute';
 
 import authRoutes          from './features/auth/routes/auth.routes';
 import dashboardRoutes     from './features/dashboard/routes/dashboard.routes';
@@ -19,6 +20,11 @@ import reportsRoutes       from './features/reports/routes/reports.routes';
 import notificationsRoutes from './features/notifications/routes/notifications.routes';
 import profileRoutes       from './features/profile/routes/profile.routes';
 
+const withRoles = (routes, roles) => routes.map((route) => ({
+  ...route,
+  element: <RoleRoute allowedRoles={roles}>{route.element}</RoleRoute>,
+}));
+
 const router = createBrowserRouter([
   ...authRoutes,
   {
@@ -31,14 +37,14 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       ...dashboardRoutes,
-      ...employeesRoutes,
+      ...withRoles(employeesRoutes, ['team_lead', 'manager', 'hr', 'super_admin']),
       ...attendanceRoutes,
       ...leavesRoutes,
       ...payrollRoutes,
-      ...expensesRoutes,
-      ...projectsRoutes,
-      ...settingsRoutes,
-      ...reportsRoutes,
+      ...withRoles(expensesRoutes, ['employee', 'manager', 'admin', 'super_admin']),
+      ...withRoles(projectsRoutes, ['employee', 'team_lead', 'manager', 'admin', 'super_admin']),
+      ...withRoles(settingsRoutes, ['hr', 'super_admin']),
+      ...withRoles(reportsRoutes, ['hr', 'admin', 'super_admin']),
       ...notificationsRoutes,
       ...profileRoutes,
     ],

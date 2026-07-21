@@ -25,6 +25,16 @@ const monthlySummaryQuerySchema = Joi.object({
   employeeId: objectId.empty('').optional(),
 });
 
+const rangeSummaryQuerySchema = Joi.object({
+  employeeId: objectId.empty('').optional(),
+  dateFrom: Joi.date().iso().required(),
+  dateTo: Joi.date().iso().min(Joi.ref('dateFrom')).required(),
+}).custom((value, helpers) => {
+  const days = (new Date(value.dateTo) - new Date(value.dateFrom)) / 86400000;
+  if (days > 366) return helpers.message({ custom: 'Attendance report range cannot exceed 366 days.' });
+  return value;
+});
+
 const listQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(30),
@@ -78,6 +88,7 @@ module.exports = {
   signInSchema,
   signOutSchema,
   monthlySummaryQuerySchema,
+  rangeSummaryQuerySchema,
   listQuerySchema,
   manualCorrectionSchema,
   regularizationRequestSchema,

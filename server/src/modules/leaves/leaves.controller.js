@@ -18,7 +18,7 @@ const list = asyncHandler(async (req, res) => {
 });
 
 const getById = asyncHandler(async (req, res) => {
-  const record = await service.getLeaveById(req.params.id);
+  const record = await service.getLeaveById(req.params.id, req.user);
   res.status(200).json({ success: true, data: record });
 });
 

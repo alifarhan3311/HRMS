@@ -7,16 +7,19 @@
  *  - Regularization request
  *  - HR/Admin: manual correction, approve/reject regularizations
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
   Clock, CheckCircle2, XCircle, AlertCircle, Calendar,
-  Filter, ChevronLeft, ChevronRight, Edit, RefreshCw, Search, X,
+  ChevronLeft, ChevronRight, Edit, RefreshCw, Search, X,
+  Download, CalendarRange, Timer, Gauge, BarChart3,
 } from 'lucide-react';
+import { BarChart, Bar, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
   useGetTodayAttendanceQuery,
   useGetMonthlySummaryQuery,
+  useGetAttendanceRangeSummaryQuery,
   useListAttendanceQuery,
   useSignInMutation,
   useSignOutMutation,
@@ -64,6 +67,26 @@ function toLocalDateTime(value) {
 function nowYM() {
   const n = new Date();
   return { year: n.getFullYear(), month: n.getMonth() + 1 };
+}
+
+function inputDate(date) {
+  const value = new Date(date);
+  const offset = value.getTimezoneOffset() * 60000;
+  return new Date(value.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function presetRange(preset) {
+  const to = new Date();
+  const from = new Date(to);
+  if (preset === 'month') from.setDate(1);
+  if (preset === '3months') from.setMonth(from.getMonth() - 3);
+  if (preset === '6months') from.setMonth(from.getMonth() - 6);
+  if (preset === 'year') from.setFullYear(from.getFullYear() - 1);
+  return { preset, dateFrom: inputDate(from), dateTo: inputDate(to) };
+}
+
+function csvCell(value) {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`;
 }
 
 // ─── Sign-In/Out Widget ──────────────────────────────────────────────────────
@@ -267,7 +290,7 @@ function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
   useEffect(() => {
     if (!record) return;
     setReason('');
-    setRequestType(record.lateMinutes > 0 ? 'late_waiver' : 'time_correction');
+    setRequestType(record.status === 'late' || record.lateMinutes > 0 ? 'late_waiver' : 'time_correction');
     setRequestedSignInTime(toLocalDateTime(record.signInTime));
     setRequestedSignOutTime(toLocalDateTime(record.signOutTime));
   }, [record]);
@@ -298,7 +321,7 @@ function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
             Request type
             <select value={requestType} onChange={(e) => setRequestType(e.target.value)}
               className="mt-1.5 w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary">
-              {record?.lateMinutes > 0 && <option value="late_waiver">Late waiver</option>}
+              {(record?.status === 'late' || record?.lateMinutes > 0) && <option value="late_waiver">Late waiver</option>}
               <option value="time_correction">Time correction</option>
             </select>
           </label>
@@ -329,11 +352,14 @@ export default function AttendanceListPage() {
   const { user } = useSelector((s) => s.auth);
   const isAdminHR = ['hr', 'super_admin'].includes(user?.role);
   const isManagerUp = ['hr', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
+  const canSelectEmployee = isManagerUp;
 
   const [ym, setYm] = useState(nowYM());
+  const [reportRange, setReportRange] = useState(() => presetRange('month'));
   const [filters, setFilters] = useState({ status: '', employeeId: '' });
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
+  const employeePickerRef = useRef(null);
   const [page, setPage] = useState(1);
   const [correctionRecord, setCorrectionRecord] = useState(null);
   const [regularizeRecord, setRegularizeRecord] = useState(null);
@@ -341,7 +367,7 @@ export default function AttendanceListPage() {
 
   const { data: employeesData, isLoading: employeesLoading } = useListEmployeesQuery(
     { page: 1, limit: 100, sort: '-createdAt' },
-    { skip: !isAdminHR }
+    { skip: !canSelectEmployee }
   );
   const employees = employeesData?.items || [];
   const selectedEmployee = employees.find((employee) => employee._id === filters.employeeId);
@@ -353,15 +379,22 @@ export default function AttendanceListPage() {
       .some((value) => value.toLowerCase().includes(needle));
   });
 
-  const selectedEmployeeId = isAdminHR ? (filters.employeeId || user?.id) : user?.id;
+  const selectedEmployeeId = canSelectEmployee ? (filters.employeeId || user?.id) : user?.id;
   const monthParams = {
     year: ym.year,
     month: ym.month,
     ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
   };
-  const { data: summaryData, isLoading: summaryLoading } = useGetMonthlySummaryQuery(monthParams);
+  const { data: summaryData } = useGetMonthlySummaryQuery(monthParams);
+  const { data: rangeData, isLoading: rangeLoading, isFetching: rangeFetching } = useGetAttendanceRangeSummaryQuery({
+    employeeId: selectedEmployeeId,
+    dateFrom: reportRange.dateFrom,
+    dateTo: reportRange.dateTo,
+  }, { skip: !selectedEmployeeId });
   const { data: listData, isLoading: listLoading, isFetching, refetch } = useListAttendanceQuery({
-    ...monthParams, page, limit: 20, ...filters,
+    page, limit: 30, status: filters.status,
+    dateFrom: reportRange.dateFrom,
+    dateTo: reportRange.dateTo,
     ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
   });
   const { data: pendingData } = useGetPendingRegularizationsQuery(undefined, { skip: !isManagerUp });
@@ -369,20 +402,84 @@ export default function AttendanceListPage() {
   const [requestReg, { isLoading: requesting }] = useRequestRegularizationMutation();
   const [reviewReg, { isLoading: reviewing }] = useReviewRegularizationMutation();
 
-  const summary = summaryData?.data?.summary || {};
+  const summary = rangeData?.data?.summary || {};
+  const trend = rangeData?.data?.trend || [];
+  const reportRecords = rangeData?.data?.records || [];
   const calRecords = summaryData?.data?.records || [];
   const listRecords = listData?.items || [];
   const total = listData?.total || 0;
   const totalPages = listData?.totalPages || 1;
   const pendingRegs = pendingData?.data || [];
 
+  useEffect(() => {
+    if (!employeePickerOpen) return undefined;
+    const closeOutside = (event) => {
+      if (!employeePickerRef.current?.contains(event.target)) setEmployeePickerOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setEmployeePickerOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [employeePickerOpen]);
+
   function prevMonth() {
-    setYm(({ year, month }) => month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 });
+    setYm(({ year, month }) => {
+      const next = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
+      setReportRange({
+        preset: 'month',
+        dateFrom: inputDate(new Date(next.year, next.month - 1, 1)),
+        dateTo: inputDate(new Date(next.year, next.month, 0)),
+      });
+      return next;
+    });
     setPage(1);
   }
   function nextMonth() {
-    setYm(({ year, month }) => month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 });
+    setYm(({ year, month }) => {
+      const next = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
+      setReportRange({
+        preset: 'month',
+        dateFrom: inputDate(new Date(next.year, next.month - 1, 1)),
+        dateTo: inputDate(new Date(next.year, next.month, 0)),
+      });
+      return next;
+    });
     setPage(1);
+  }
+
+  function applyPreset(preset) {
+    setReportRange(presetRange(preset));
+    setPage(1);
+  }
+
+  function exportCsv() {
+    if (!reportRecords.length) {
+      toast.error('No attendance records available to export');
+      return;
+    }
+    const headers = ['Employee', 'Employee Code', 'Date', 'Status', 'Sign In', 'Sign Out', 'Worked Hours', 'Late Minutes', 'Early Leave Minutes', 'Overtime Minutes', 'Method', 'Notes'];
+    const name = selectedEmployee?.fullName || user?.fullName || 'Employee';
+    const code = selectedEmployee?.employeeCode || user?.employeeCode || '';
+    const rows = reportRecords.map((record) => [
+      name, code, inputDate(record.date), STATUS_STYLES[record.status]?.label || record.status,
+      record.signInTime ? fmtTime(record.signInTime, record.shiftTimezone) : '',
+      record.signOutTime ? fmtTime(record.signOutTime, record.shiftTimezone) : '',
+      record.totalHours || 0, record.lateMinutes || 0, record.earlyLeaveMinutes || 0,
+      record.overtimeMinutes || 0, record.method || '', record.notes || record.attendanceAdjustmentReason || '',
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `attendance-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${reportRange.dateFrom}-to-${reportRange.dateTo}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   async function handleCorrection(payload) {
@@ -433,7 +530,7 @@ export default function AttendanceListPage() {
       {/* Sign In/Out widget (own attendance) */}
       <SignInWidget user={user} />
 
-      {isAdminHR && (
+      {canSelectEmployee && (
         <div className="relative z-30 rounded-2xl border border-border bg-card p-4 shadow-soft">
           <div className="mb-2 flex items-center justify-between gap-3">
             <div>
@@ -456,7 +553,7 @@ export default function AttendanceListPage() {
               </Button>
             )}
           </div>
-          <div className="relative max-w-xl">
+          <div ref={employeePickerRef} className="relative max-w-xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-primary" />
             <input
               type="search"
@@ -470,7 +567,11 @@ export default function AttendanceListPage() {
                 setEmployeePickerOpen(true);
               }}
               onKeyDown={(event) => {
-                if (event.key === 'Escape') setEmployeePickerOpen(false);
+                if (event.key === 'Escape') {
+                  event.stopPropagation();
+                  setEmployeePickerOpen(false);
+                  event.currentTarget.blur();
+                }
               }}
               placeholder={employeesLoading ? 'Loading employees...' : 'Search employee...'}
               disabled={employeesLoading}
@@ -511,19 +612,104 @@ export default function AttendanceListPage() {
         </div>
       )}
 
+      {/* Reporting period */}
+      <div className="glass-card p-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="space-y-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-semibold">
+                <CalendarRange className="h-4 w-4 text-primary" /> Attendance report period
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">Choose a quick period or enter any custom dates (maximum one year).</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                ['month', 'This month'], ['3months', 'Last 3 months'],
+                ['6months', 'Last 6 months'], ['year', 'Last 12 months'],
+              ].map(([value, label]) => (
+                <button key={value} type="button" onClick={() => applyPreset(value)}
+                  className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${reportRange.preset === value ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-background hover:border-primary/50 hover:bg-accent'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <Input label="From date" type="date" value={reportRange.dateFrom}
+              max={reportRange.dateTo}
+              onChange={(event) => { setReportRange((old) => ({ ...old, preset: 'custom', dateFrom: event.target.value })); setPage(1); }} />
+            <Input label="To date" type="date" value={reportRange.dateTo}
+              min={reportRange.dateFrom}
+              onChange={(event) => { setReportRange((old) => ({ ...old, preset: 'custom', dateTo: event.target.value })); setPage(1); }} />
+            <Button type="button" variant="secondary" className="gap-2 whitespace-nowrap" onClick={exportCsv}
+              disabled={rangeLoading || !reportRecords.length}>
+              <Download className="h-4 w-4" /> Export CSV
+            </Button>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
+          <span><strong className="text-foreground">Period:</strong> {fmtDate(reportRange.dateFrom)} – {fmtDate(reportRange.dateTo)}</span>
+          <span><strong className="text-foreground">Employee:</strong> {selectedEmployee?.fullName || user?.fullName}</span>
+          {rangeFetching && <span className="text-primary">Updating report...</span>}
+        </div>
+      </div>
+
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {summaryLoading ? (
-          [...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+        {rangeLoading ? (
+          [...Array(6)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)
         ) : (
           <>
             <StatCard title="Present" value={summary.present ?? 0} icon={CheckCircle2}
-              trend={{ label: 'This month', positive: true }} />
+              trend={{ label: `${summary.attendanceRate ?? 0}% attendance`, positive: true }} />
             <StatCard title="Late" value={summary.late ?? 0} icon={AlertCircle} />
             <StatCard title="Absent" value={summary.absent ?? 0} icon={XCircle} />
             <StatCard title="On Leave" value={summary.on_leave ?? 0} icon={Calendar} />
+            <StatCard title="Worked Hours" value={`${summary.workedHours ?? 0}h`} icon={Timer} />
+            <StatCard title="Overtime" value={`${summary.overtimeHours ?? 0}h`} icon={Gauge} />
           </>
         )}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+        <div className="glass-card min-h-[310px] p-5">
+          <h3 className="mb-1 flex items-center gap-2 font-semibold"><BarChart3 className="h-4 w-4 text-primary" /> Monthly attendance trend</h3>
+          <p className="mb-5 text-xs text-muted-foreground">Present, late and absent days across the selected report period.</p>
+          {trend.length ? (
+            <div className="h-60 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.25} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip contentStyle={{ borderRadius: 10, borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="present" name="Present" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="late" name="Late" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">No records in this period.</div>}
+        </div>
+        <div className="glass-card p-5">
+          <h3 className="font-semibold">Period details</h3>
+          <div className="mt-4 divide-y divide-border text-sm">
+            {[
+              ['Attendance rate', `${summary.attendanceRate ?? 0}%`],
+              ['Average daily hours', `${summary.averageHours ?? 0}h`],
+              ['Half days', summary.half_day ?? 0],
+              ['Holidays', summary.holiday ?? 0],
+              ['Late time', `${summary.lateMinutes ?? 0} min`],
+              ['Early departures', `${summary.earlyLeaveMinutes ?? 0} min`],
+              ['Total records', summary.totalRecords ?? 0],
+            ].map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-3 py-2.5">
+                <span className="text-muted-foreground">{label}</span><strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Month navigator + Calendar */}
@@ -531,32 +717,35 @@ export default function AttendanceListPage() {
         <div className="space-y-4">
           {/* Month nav */}
           <div className="flex items-center justify-between">
-            <h2 className="font-semibold">
-              {MONTH_NAMES[ym.month - 1]} {ym.year}
-            </h2>
-            <div className="flex gap-1">
+            <div>
+              <h2 className="font-semibold">Attendance records</h2>
+              <p className="text-xs text-muted-foreground">{fmtDate(reportRange.dateFrom)} – {fmtDate(reportRange.dateTo)}</p>
+            </div>
+            {reportRange.preset === 'month' && <div className="flex items-center gap-2">
+              <span className="hidden text-xs text-muted-foreground sm:inline">{MONTH_NAMES[ym.month - 1]} {ym.year}</span>
               <Button variant="secondary" size="sm" className="px-2" onClick={prevMonth}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <Button variant="secondary" size="sm" className="px-2" onClick={nextMonth}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
-            </div>
+            </div>}
           </div>
 
           {/* Records Table */}
           <div className="glass-card overflow-hidden">
             <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-              {isAdminHR && (
-                <select className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
-                  value={filters.status} onChange={(e) => { setFilters(p => ({ ...p, status: e.target.value })); setPage(1); }}>
-                  <option value="">All Statuses</option>
-                  {Object.keys(STATUS_STYLES).map(s => (
-                    <option key={s} value={s}>{STATUS_STYLES[s].label}</option>
-                  ))}
-                </select>
-              )}
+              <select className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
+                value={filters.status} onChange={(e) => { setFilters(p => ({ ...p, status: e.target.value })); setPage(1); }}>
+                <option value="">All Statuses</option>
+                {Object.keys(STATUS_STYLES).map(s => (
+                  <option key={s} value={s}>{STATUS_STYLES[s].label}</option>
+                ))}
+              </select>
               <span className="text-xs text-muted-foreground ml-auto">{total} records</span>
+            </div>
+            <div className="hidden grid-cols-[1fr_auto_auto_auto] gap-4 border-b border-border bg-muted/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
+              <span>Employee / Date</span><span>Status</span><span>Timing / Hours</span><span>Actions</span>
             </div>
 
             {listLoading ? (

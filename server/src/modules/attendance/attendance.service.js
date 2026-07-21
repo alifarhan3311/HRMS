@@ -65,16 +65,17 @@ function calcTotalHours(signIn, signOut) {
 async function signIn({ employeeId, method = 'manual', notes }, actor) {
   const now = new Date();
   const { employee, shift, schedule } = await resolveShiftContext(employeeId, actor.companyId, now);
+  const attendanceExempt = employee.role === 'super_admin';
   const closure = await findClosure(employee, actor.companyId, schedule.shiftDate);
-  if (closure?.eventType === 'full_day' || (closure && !closure.eventType)) {
+  if (!attendanceExempt && (closure?.eventType === 'full_day' || (closure && !closure.eventType))) {
     throw createHttpError(422, `${closure.title} is a confirmed company off day. Sign-in is not required.`);
   }
-  if (!shift.workingDays.includes(schedule.dayOfWeek)) {
+  if (!attendanceExempt && !shift.workingDays.includes(schedule.dayOfWeek)) {
     throw createHttpError(422, `${shift.name} is not scheduled on this day. Contact HR if you need an exception.`);
   }
   const signInWindowStart = new Date(schedule.scheduledStart.getTime() - (4 * 60 * 60 * 1000));
   const signInWindowEnd = new Date(schedule.scheduledEnd.getTime() + (4 * 60 * 60 * 1000));
-  if (now < signInWindowStart || now > signInWindowEnd) {
+  if (!attendanceExempt && (now < signInWindowStart || now > signInWindowEnd)) {
     throw createHttpError(422, `Sign-in is outside your ${shift.name} window (${shift.startTime} - ${shift.endTime}).`);
   }
   const [year, month, day] = schedule.shiftDate.split('-').map(Number);
@@ -85,8 +86,8 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
     throw createHttpError(409, `You have already signed in for the ${schedule.shiftDate} shift.`);
   }
 
-  const policy = effectivePolicy(closure, shift, schedule);
-  const lateMinutes = calcLateMinutes(now, {
+  const policy = effectivePolicy(attendanceExempt ? null : closure, shift, schedule);
+  const lateMinutes = attendanceExempt ? 0 : calcLateMinutes(now, {
     scheduledStart: policy.effectiveStart,
     graceMinutes: shift.graceMinutes,
   });
@@ -138,7 +139,9 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
       });
 
   // Update employee's lateCount if late
-  if (lateMinutes > 0) {
+  if (attendanceExempt) {
+    await Employee.updateOne({ _id: employeeId }, { $set: { lateCount: 0 } });
+  } else if (lateMinutes > 0) {
     await Employee.findByIdAndUpdate(employeeId, { $inc: { lateCount: 1 } });
     // Check if late count hits multiple of 3 — trigger leave deduction notification
     const emp = await Employee.findById(employeeId);
@@ -167,6 +170,7 @@ async function signOut({ employeeId, notes }, actor) {
     settingsService.getPolicy(actor.companyId),
     Employee.findOne({ _id: employeeId, companyId: actor.companyId }).populate('shiftId'),
   ]);
+  const attendanceExempt = employee?.role === 'super_admin';
   const shift = employee?.shiftId || {
     startTime: record.shiftStartTime,
     endTime: record.shiftEndTime,
@@ -181,15 +185,17 @@ async function signOut({ employeeId, notes }, actor) {
     scheduledEnd: record.scheduledEnd,
     timeZone: record.shiftTimezone || settings.company?.timezone || 'Asia/Karachi',
   };
-  const closure = employee && record.shiftDate ? await findClosure(employee, actor.companyId, record.shiftDate) : null;
+  const closure = !attendanceExempt && employee && record.shiftDate ? await findClosure(employee, actor.companyId, record.shiftDate) : null;
   const policy = effectivePolicy(closure, shift, schedule);
-  const earlyLeaveMinutes = calcEarlyLeaveMinutes(now, { scheduledEnd: policy.effectiveEnd });
+  const earlyLeaveMinutes = attendanceExempt ? 0 : calcEarlyLeaveMinutes(now, { scheduledEnd: policy.effectiveEnd });
   const totalHours = calcTotalHours(record.signInTime, now);
   const clockMinutes = Math.max(0, Math.round((now - new Date(record.signInTime)) / 60000));
-  const workedMinutes = Math.max(0, clockMinutes - policy.breakMinutes);
-  const overtimeMinutes = Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
+  const workedMinutes = Math.max(0, clockMinutes - (attendanceExempt ? 0 : policy.breakMinutes));
+  const overtimeMinutes = attendanceExempt ? 0 : Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
   const fullDayClosure = closure?.eventType === 'full_day' || (closure && !closure.eventType);
-  const status = attendanceStatus(record.status, workedMinutes, policy.effectiveRequiredMinutes, policy.effectiveHalfDayMinutes, fullDayClosure);
+  const status = attendanceExempt
+    ? 'present'
+    : attendanceStatus(record.status, workedMinutes, policy.effectiveRequiredMinutes, policy.effectiveHalfDayMinutes, fullDayClosure);
 
   const updated = await repository.updateById(record._id, {
     signOutTime: now,
@@ -267,9 +273,40 @@ function recordTiming(record, fallback) {
   return fallback;
 }
 
-async function getAttendanceById(id) {
+async function assertCanViewEmployeeAttendance(actor, employeeId) {
+  if (String(employeeId) === String(actor.id)) return;
+  if (!['super_admin', 'hr', 'manager', 'team_lead'].includes(actor.role)) {
+    throw createHttpError(403, 'You can only view your own attendance.');
+  }
+  const employee = await Employee.findById(employeeId).select('companyId role managerId teamLeadId');
+  if (!employee || String(employee.companyId) !== String(actor.companyId)) {
+    throw createHttpError(404, 'Employee not found.');
+  }
+  if (actor.role !== 'super_admin' && employee.role === 'super_admin') {
+    throw createHttpError(403, 'Super Admin attendance is not visible to your role.');
+  }
+  if (actor.role === 'manager' && String(employee.managerId || '') !== String(actor.id)) {
+    throw createHttpError(403, 'You can only view attendance for employees reporting to you.');
+  }
+  if (actor.role === 'team_lead' && String(employee.teamLeadId || '') !== String(actor.id)) {
+    throw createHttpError(403, 'You can only view attendance for your team members.');
+  }
+}
+
+async function visibleAttendanceEmployeeIds(actor, includeSelf = true) {
+  const filter = { companyId: actor.companyId };
+  if (actor.role === 'manager') filter.managerId = actor.id;
+  else if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
+  else if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
+  const ids = await Employee.find(filter).distinct('_id');
+  if (includeSelf && !ids.some((id) => String(id) === String(actor.id))) ids.push(actor.id);
+  return ids;
+}
+
+async function getAttendanceById(id, actor) {
   const record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Attendance record not found.');
+  await assertCanViewEmployeeAttendance(actor, record.employeeId?._id || record.employeeId);
   return record;
 }
 
@@ -277,18 +314,7 @@ async function getAttendanceById(id) {
 // Monthly Summary
 // -------------------------------------------------------------------------
 async function getMonthlySummary(employeeId, year, month, actor) {
-  if (String(employeeId) !== String(actor.id)) {
-    const canViewOthers = ['super_admin', 'hr', 'manager', 'team_lead'].includes(actor.role);
-    if (!canViewOthers) {
-      throw createHttpError(403, 'You can only view your own attendance summary.');
-    }
-
-    const employee = await Employee.findById(employeeId).select('companyId');
-    const sameCompany = employee && String(employee.companyId) === String(actor.companyId);
-    if (!employee || (actor.role !== 'super_admin' && !sameCompany)) {
-      throw createHttpError(404, 'Employee not found.');
-    }
-  }
+  await assertCanViewEmployeeAttendance(actor, employeeId);
 
   const records = await repository.getMonthlySummary(employeeId, year, month);
   const summary = { present: 0, absent: 0, late: 0, half_day: 0, on_leave: 0, holiday: 0 };
@@ -311,7 +337,10 @@ async function listAttendances(query, actor) {
   if (!['hr', 'super_admin', 'manager', 'team_lead'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
+    await assertCanViewEmployeeAttendance(actor, employeeId);
     filter.employeeId = employeeId;
+  } else {
+    filter.employeeId = { $in: await visibleAttendanceEmployeeIds(actor) };
   }
 
   if (status) filter.status = status;
@@ -323,8 +352,14 @@ async function listAttendances(query, actor) {
     };
   } else if (dateFrom || dateTo) {
     filter.date = {};
-    if (dateFrom) filter.date.$gte = new Date(dateFrom);
-    if (dateTo) filter.date.$lte = new Date(dateTo);
+    if (dateFrom) {
+      filter.date.$gte = new Date(dateFrom);
+      filter.date.$gte.setUTCHours(0, 0, 0, 0);
+    }
+    if (dateTo) {
+      filter.date.$lte = new Date(dateTo);
+      filter.date.$lte.setUTCHours(23, 59, 59, 999);
+    }
   }
 
   return repository.findAll({ filter, page: Number(page), limit: Math.min(Number(limit), 100), sort });
@@ -336,6 +371,7 @@ async function listAttendances(query, actor) {
 async function manualCorrection(id, payload, actor) {
   const record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Attendance record not found.');
+  await assertCanViewEmployeeAttendance(actor, record.employeeId?._id || record.employeeId);
 
   const { signInTime, signOutTime, status, notes } = payload;
   const settings = await settingsService.getPolicy(record.companyId);
@@ -380,6 +416,50 @@ async function resolveRegularizationApprover(employee, companyId) {
   return fallback?._id;
 }
 
+async function getRangeSummary(employeeId, dateFrom, dateTo, actor) {
+  await assertCanViewEmployeeAttendance(actor, employeeId);
+
+  const records = await repository.getRangeSummary(employeeId, dateFrom, dateTo);
+  const summary = {
+    totalRecords: records.length,
+    present: 0, late: 0, absent: 0, half_day: 0, on_leave: 0, holiday: 0, weekend: 0,
+    workedHours: 0, overtimeHours: 0, lateMinutes: 0, earlyLeaveMinutes: 0,
+    attendanceRate: 0, averageHours: 0,
+  };
+  const trendMap = new Map();
+
+  records.forEach((record) => {
+    if (Object.prototype.hasOwnProperty.call(summary, record.status)) summary[record.status] += 1;
+    summary.workedHours += Number(record.totalHours || (record.workedMinutes || 0) / 60);
+    summary.overtimeHours += Number(record.overtimeMinutes || 0) / 60;
+    summary.lateMinutes += Number(record.lateMinutes || 0);
+    summary.earlyLeaveMinutes += Number(record.earlyLeaveMinutes || 0);
+
+    const date = new Date(record.date);
+    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+    if (!trendMap.has(key)) trendMap.set(key, {
+      month: key, present: 0, late: 0, absent: 0, half_day: 0, on_leave: 0, workedHours: 0,
+    });
+    const row = trendMap.get(key);
+    if (Object.prototype.hasOwnProperty.call(row, record.status)) row[record.status] += 1;
+    row.workedHours += Number(record.totalHours || (record.workedMinutes || 0) / 60);
+  });
+
+  const scheduledDays = summary.present + summary.late + summary.absent + summary.half_day + summary.on_leave;
+  const attendedDays = summary.present + summary.late + (summary.half_day * 0.5);
+  const daysWithHours = records.filter((record) => Number(record.totalHours || record.workedMinutes) > 0).length;
+  summary.attendanceRate = scheduledDays ? Number(((attendedDays / scheduledDays) * 100).toFixed(1)) : 0;
+  summary.workedHours = Number(summary.workedHours.toFixed(2));
+  summary.overtimeHours = Number(summary.overtimeHours.toFixed(2));
+  summary.averageHours = daysWithHours ? Number((summary.workedHours / daysWithHours).toFixed(2)) : 0;
+
+  const trend = Array.from(trendMap.values()).map((row) => ({
+    ...row,
+    workedHours: Number(row.workedHours.toFixed(2)),
+  }));
+  return { summary, trend, records };
+}
+
 async function requestRegularization(id, payload, actor) {
   const { reason, requestType, requestedSignInTime, requestedSignOutTime } = payload;
   const record = await repository.findById(id);
@@ -390,7 +470,7 @@ async function requestRegularization(id, payload, actor) {
   if (record.regularizationStatus !== 'none') {
     throw createHttpError(409, 'A regularization request already exists for this record.');
   }
-  if (requestType === 'late_waiver' && record.lateMinutes <= 0) {
+  if (requestType === 'late_waiver' && record.lateMinutes <= 0 && record.status !== 'late') {
     throw createHttpError(422, 'A late waiver can only be requested for a late attendance record.');
   }
 
@@ -433,6 +513,7 @@ async function requestRegularization(id, payload, actor) {
 async function reviewRegularization(id, { action, remarks }, actor) {
   const record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Attendance record not found.');
+  await assertCanViewEmployeeAttendance(actor, record.employeeId?._id || record.employeeId);
   if (record.regularizationStatus !== 'pending') {
     throw createHttpError(400, 'No pending regularization for this record.');
   }
@@ -502,7 +583,11 @@ async function reviewRegularization(id, { action, remarks }, actor) {
 // Get pending regularizations (HR/Admin)
 // -------------------------------------------------------------------------
 async function getPendingRegularizations(actor) {
-  return repository.getPendingRegularizations(actor.companyId);
+  const filter = { companyId: actor.companyId };
+  if (actor.role !== 'super_admin') {
+    filter.employeeId = { $in: await visibleAttendanceEmployeeIds(actor, false) };
+  }
+  return repository.getPendingRegularizations(filter);
 }
 
 async function applyClosureToAttendance(closure) {
@@ -629,6 +714,7 @@ module.exports = {
   getTodayAttendance,
   getAttendanceById,
   getMonthlySummary,
+  getRangeSummary,
   listAttendances,
   manualCorrection,
   requestRegularization,

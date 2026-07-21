@@ -39,6 +39,36 @@ function buildApprovalChain() {
   ];
 }
 
+async function visibleLeaveEmployeeIds(actor, includeSelf = true) {
+  const filter = { companyId: actor.companyId };
+  if (actor.role === 'manager') filter.managerId = actor.id;
+  else if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
+  else if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
+  const ids = await Employee.find(filter).distinct('_id');
+  if (includeSelf && !ids.some((id) => String(id) === String(actor.id))) ids.push(actor.id);
+  return ids;
+}
+
+async function assertCanViewLeave(actor, employeeId) {
+  if (String(employeeId) === String(actor.id)) return;
+  const employee = await Employee.findById(employeeId).select('companyId role managerId teamLeadId');
+  if (!employee || String(employee.companyId) !== String(actor.companyId)) {
+    throw createHttpError(404, 'Leave request not found.');
+  }
+  if (actor.role !== 'super_admin' && employee.role === 'super_admin') {
+    throw createHttpError(403, 'Super Admin leave records are not visible to your role.');
+  }
+  if (actor.role === 'manager' && String(employee.managerId || '') !== String(actor.id)) {
+    throw createHttpError(403, 'You can only view leave records for employees reporting to you.');
+  }
+  if (actor.role === 'team_lead' && String(employee.teamLeadId || '') !== String(actor.id)) {
+    throw createHttpError(403, 'You can only view leave records for your team members.');
+  }
+  if (!['super_admin', 'admin', 'hr', 'manager', 'team_lead'].includes(actor.role)) {
+    throw createHttpError(403, 'You can only view your own leave records.');
+  }
+}
+
 async function notifyEmployee(leave, notification) {
   try {
     await notificationService.createNotification({
@@ -58,6 +88,10 @@ async function notifyEmployee(leave, notification) {
 // ─── Apply ───────────────────────────────────────────────────────────────────
 async function applyLeave(payload, actor) {
   const { leaveType, startDate, endDate, reason, emergencyContact } = payload;
+
+  if (leaveType !== 'casual' && !String(reason || '').trim()) {
+    throw createHttpError(422, `A reason is required for ${leaveType || 'this'} leave.`);
+  }
 
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -108,6 +142,7 @@ async function applyLeave(payload, actor) {
 async function approveLeave(id, { remarks }, actor) {
   const leave = await repository.findById(id);
   if (!leave) throw createHttpError(404, 'Leave request not found.');
+  await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   if (leave.status !== 'pending') throw createHttpError(400, 'This leave is no longer pending.');
 
   const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2, admin: 3, super_admin: 3 };
@@ -159,11 +194,15 @@ async function approveLeave(id, { remarks }, actor) {
 async function rejectLeave(id, { remarks }, actor) {
   const leave = await repository.findById(id);
   if (!leave) throw createHttpError(404, 'Leave request not found.');
+  await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   if (leave.status !== 'pending') throw createHttpError(400, 'This leave is no longer pending.');
 
   const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2, admin: 3, super_admin: 3 };
   const actorStage = ROLE_STAGE_MAP[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot reject leave requests.');
+  if (actorStage !== leave.currentStage) {
+    throw createHttpError(403, `This leave is at stage ${leave.currentStage}. You can only reject at stage ${actorStage}.`);
+  }
 
   const chain = leave.approvalChain.map((step) => {
     if (step.stage === actorStage) {
@@ -187,6 +226,7 @@ async function rejectLeave(id, { remarks }, actor) {
 async function cancelLeave(id, { reason }, actor) {
   const leave = await repository.findById(id);
   if (!leave) throw createHttpError(404, 'Leave request not found.');
+  await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   const isOwner = String(leave.employeeId._id || leave.employeeId) === String(actor.id);
   if (!isOwner && !['admin', 'hr', 'super_admin'].includes(actor.role)) {
     throw createHttpError(403, 'You cannot cancel this leave request.');
@@ -216,7 +256,10 @@ async function listLeaves(query, actor) {
   if (!['admin', 'hr', 'super_admin', 'manager', 'team_lead'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
+    await assertCanViewLeave(actor, employeeId);
     filter.employeeId = employeeId;
+  } else {
+    filter.employeeId = { $in: await visibleLeaveEmployeeIds(actor) };
   }
 
   if (status) filter.status = status;
@@ -242,9 +285,10 @@ async function listLeaves(query, actor) {
   return repository.findAll({ filter, page: Number(page), limit: Math.min(Number(limit), 100), sort });
 }
 
-async function getLeaveById(id) {
+async function getLeaveById(id, actor) {
   const record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Leave request not found.');
+  await assertCanViewLeave(actor, record.employeeId?._id || record.employeeId);
   return record;
 }
 
@@ -252,7 +296,10 @@ async function getPendingApprovals(actor) {
   const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2, admin: 3, super_admin: 3 };
   const stage = ROLE_STAGE_MAP[actor.role];
   if (!stage) return [];
-  return repository.getPendingByStage(actor.companyId, stage);
+  const employeeIds = actor.role === 'super_admin'
+    ? null
+    : await visibleLeaveEmployeeIds(actor, false);
+  return repository.getPendingByStage(actor.companyId, stage, employeeIds);
 }
 
 module.exports = { applyLeave, approveLeave, rejectLeave, cancelLeave, listLeaves, getLeaveById, getPendingApprovals };

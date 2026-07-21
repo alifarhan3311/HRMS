@@ -30,13 +30,13 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
     md: 'max-w-xl',
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
-    full: 'max-w-6xl',
+    full: 'max-w-[1400px]',
   };
 
   return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -52,15 +52,18 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 12 }}
             transition={{ type: 'spring', stiffness: 340, damping: 28 }}
-            className={`relative w-full ${SIZE_CLASSES[size]} bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh] ${className}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={title || 'Dialog'}
+            className={`relative flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[calc(100dvh-2rem)] ${SIZE_CLASSES[size]} ${className}`}
           >
             {/* Header */}
             {title && (
-              <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-                <h2 className="text-lg font-semibold">{title}</h2>
+              <div className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-border bg-card/95 px-4 py-4 backdrop-blur sm:px-6">
+                <h2 className="min-w-0 truncate text-lg font-semibold">{title}</h2>
                 <button
                   onClick={onClose}
-                  className="rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  className="shrink-0 rounded-lg border border-transparent p-2 text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-foreground"
                   aria-label="Close modal"
                 >
                   <X className="h-4 w-4" />
@@ -68,7 +71,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
               </div>
             )}
             {/* Body */}
-            <div className="overflow-y-auto flex-1">
+            <div className="sidebar-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {children}
             </div>
           </motion.div>

@@ -169,6 +169,10 @@ async function getHRDashboard(user) {
   const monthEnd = endOfMonth();
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
+  const employeeFilter = { companyId: user.companyId };
+  if (user.role === 'manager') employeeFilter.managerId = user.id;
+  else if (user.role !== 'super_admin') employeeFilter.role = { $ne: 'super_admin' };
+  const visibleEmployeeIds = await Employee.find(employeeFilter).distinct('_id');
 
   const [
     pendingLeaveApprovals,
@@ -183,20 +187,21 @@ async function getHRDashboard(user) {
     activeEmployees,
     settings,
   ] = await Promise.all([
-    LeaveRequest.find({ companyId: user.companyId, status: 'pending' })
+    LeaveRequest.find({ companyId: user.companyId, employeeId: { $in: visibleEmployeeIds }, status: 'pending' })
       .populate('employeeId', 'fullName employeeCode department')
       .sort({ createdAt: -1 })
       .limit(10)
       .lean(),
     Attendance.find({
       companyId: user.companyId,
+      employeeId: { $in: visibleEmployeeIds },
       regularizationStatus: 'pending',
     })
       .populate('employeeId', 'fullName employeeCode')
       .limit(10)
       .lean(),
     Employee.find({
-      companyId: user.companyId,
+      ...employeeFilter,
       status: 'active',
       dateOfBirth: {
         $exists: true,
@@ -213,7 +218,7 @@ async function getHRDashboard(user) {
         })
       ),
     Employee.find({
-      companyId: user.companyId,
+      ...employeeFilter,
       joiningDate: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
     })
       .select('fullName joiningDate department designation')
@@ -221,7 +226,7 @@ async function getHRDashboard(user) {
       .limit(10)
       .lean(),
     Employee.aggregate([
-      { $match: { companyId: user.companyId } },
+      { $match: employeeFilter },
       { $group: { _id: '$department', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
     ]),
@@ -229,6 +234,7 @@ async function getHRDashboard(user) {
       {
         $match: {
           companyId: user.companyId,
+          employeeId: { $in: visibleEmployeeIds },
           date: { $gte: monthStart, $lte: monthEnd },
         },
       },
@@ -238,14 +244,15 @@ async function getHRDashboard(user) {
       {
         $match: {
           companyId: user.companyId,
+          employeeId: { $in: visibleEmployeeIds },
           createdAt: { $gte: monthStart, $lte: monthEnd },
         },
       },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
     getUpcomingHolidays(user.companyId, 8),
-    Employee.countDocuments({ companyId: user.companyId }),
-    Employee.countDocuments({ companyId: user.companyId, status: 'active' }),
+    Employee.countDocuments(employeeFilter),
+    Employee.countDocuments({ ...employeeFilter, status: 'active' }),
     settingsService.getPolicy(user.companyId),
   ]);
 

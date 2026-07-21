@@ -46,8 +46,19 @@ const list = asyncHandler(async (req, res) => {
 });
 
 const getById = asyncHandler(async (req, res) => {
-  const record = await service.getAttendanceById(req.params.id);
+  const record = await service.getAttendanceById(req.params.id, req.user);
   res.status(200).json({ success: true, data: record });
+});
+
+const rangeSummary = asyncHandler(async (req, res) => {
+  const employeeId = req.query.employeeId || req.user.id;
+  const result = await service.getRangeSummary(
+    employeeId,
+    req.query.dateFrom,
+    req.query.dateTo,
+    req.user
+  );
+  res.status(200).json({ success: true, data: result });
 });
 
 const manualCorrection = asyncHandler(async (req, res) => {
@@ -71,7 +82,7 @@ const pendingRegularizations = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  signIn, signOut, today, monthlySummary, list,
+  signIn, signOut, today, monthlySummary, rangeSummary, list,
   getById, manualCorrection, requestRegularization,
   reviewRegularization, pendingRegularizations,
 };

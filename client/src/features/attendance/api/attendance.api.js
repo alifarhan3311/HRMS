@@ -23,6 +23,10 @@ export const attendanceApi = api.injectEndpoints({
       query: (params) => ({ url: '/attendance/monthly-summary', params }),
       providesTags: ['Attendance'],
     }),
+    getAttendanceRangeSummary: builder.query({
+      query: (params) => ({ url: '/attendance/range-summary', params }),
+      providesTags: ['Attendance'],
+    }),
     // List with filters
     listAttendance: builder.query({
       query: (params) => ({ url: '/attendance', params }),
@@ -57,6 +61,7 @@ export const {
   useSignOutMutation,
   useGetTodayAttendanceQuery,
   useGetMonthlySummaryQuery,
+  useGetAttendanceRangeSummaryQuery,
   useListAttendanceQuery,
   useGetPendingRegularizationsQuery,
   useManualCorrectionMutation,

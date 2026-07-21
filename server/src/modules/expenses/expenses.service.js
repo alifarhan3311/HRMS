@@ -23,6 +23,20 @@ async function activeRoleIds(companyId, roles) {
   return employees.map(employee => employee._id);
 }
 
+async function assertExpenseVisible(expense, actor) {
+  const submitterId = expense.submittedBy?._id || expense.submittedBy;
+  if (String(submitterId) === String(actor.id) || actor.role === 'super_admin') return;
+  const submitter = await Employee.findById(submitterId).select('companyId role managerId');
+  if (!submitter || String(submitter.companyId) !== String(actor.companyId)) {
+    throw createHttpError(404, 'Expense not found.');
+  }
+  if (submitter.role === 'super_admin') throw createHttpError(403, 'Super Admin expenses are protected.');
+  if (actor.role === 'manager' && String(submitter.managerId || '') !== String(actor.id)) {
+    throw createHttpError(403, 'You can only access expenses submitted by your team.');
+  }
+  if (!['admin', 'manager'].includes(actor.role)) throw createHttpError(403, 'You can only access your own expenses.');
+}
+
 // ─── Submit ───────────────────────────────────────────────────────────────────
 async function submitExpense(payload, actor) {
   const { category, vendorName, amount, expenseDate, paymentMethod, remarks, invoiceUrl } = payload;
@@ -64,6 +78,7 @@ async function submitExpense(payload, actor) {
 async function approveExpense(id, { remarks }, actor) {
   const expense = await repository.findById(id);
   if (!expense) throw createHttpError(404, 'Expense not found.');
+  await assertExpenseVisible(expense, actor);
   if (!['pending','processing'].includes(expense.status)) {
     throw createHttpError(400, 'This expense cannot be approved.');
   }
@@ -116,6 +131,7 @@ async function approveExpense(id, { remarks }, actor) {
 async function rejectExpense(id, { remarks }, actor) {
   const expense = await repository.findById(id);
   if (!expense) throw createHttpError(404, 'Expense not found.');
+  await assertExpenseVisible(expense, actor);
   if (!['pending','processing'].includes(expense.status)) {
     throw createHttpError(400, 'This expense cannot be rejected.');
   }
@@ -148,6 +164,7 @@ async function rejectExpense(id, { remarks }, actor) {
 async function markPaid(id, actor) {
   const expense = await repository.findById(id);
   if (!expense) throw createHttpError(404, 'Expense not found.');
+  await assertExpenseVisible(expense, actor);
   if (expense.status !== 'approved') throw createHttpError(400, 'Only approved expenses can be marked paid.');
   const updated = await repository.updateById(id, { status: 'paid', paidAt: new Date(), paidBy: actor.id });
   await notifyMany([expense.submittedBy?._id || expense.submittedBy], {
@@ -167,7 +184,13 @@ async function listExpenses(query, actor) {
   const { page=1, limit=20, status, category, dateFrom, dateTo, sort='-createdAt' } = query;
   const filter = { companyId: actor.companyId };
 
-  if (!['admin','super_admin','manager'].includes(actor.role)) {
+  if (actor.role === 'manager') {
+    const ids = await Employee.find({ companyId: actor.companyId, managerId: actor.id }).distinct('_id');
+    ids.push(actor.id);
+    filter.submittedBy = { $in: ids };
+  } else if (actor.role === 'admin') {
+    filter.submittedBy = { $in: await Employee.find({ companyId: actor.companyId, role: { $ne: 'super_admin' } }).distinct('_id') };
+  } else if (actor.role !== 'super_admin') {
     filter.submittedBy = actor.id;
   }
   if (status) filter.status = status;
@@ -181,9 +204,10 @@ async function listExpenses(query, actor) {
   return repository.findAll({ filter, page: Number(page), limit: Math.min(Number(limit),100), sort });
 }
 
-async function getExpenseById(id) {
+async function getExpenseById(id, actor) {
   const record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Expense not found.');
+  await assertExpenseVisible(record, actor);
   return record;
 }
 

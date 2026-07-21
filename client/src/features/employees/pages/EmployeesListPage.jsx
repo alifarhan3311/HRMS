@@ -4,13 +4,14 @@
  * Features: search, filter by dept/status/role, sortable table, pagination,
  * create/edit modal, detail panel, promote modal, status change, delete confirm.
  */
-import { useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users, Plus, Search, Filter, ChevronLeft, ChevronRight,
   MoreHorizontal, Edit, Trash2, UserX, UserCheck, TrendingUp,
   Eye, Download, RefreshCw, Building2, Briefcase, Network,
+  X,
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import { toast } from '../../../utils/toast';
@@ -68,7 +69,7 @@ function TeamStructure({ employees = [] }) {
 
   function Person({ employee }) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2">
+      <div className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-background px-3 py-3 shadow-sm transition-colors hover:border-primary/30 hover:bg-accent/30">
         <Avatar name={employee.fullName} src={employee.profilePicture} size="xs" />
         <div className="min-w-0"><p className="truncate text-sm font-medium">{employee.fullName}</p><p className="truncate text-[11px] text-muted-foreground">{employee.designation || employee.employeeCode}</p></div>
       </div>
@@ -78,10 +79,10 @@ function TeamStructure({ employees = [] }) {
   function LeadTeam({ lead }) {
     const assigned = members.filter((member) => idOf(member.teamLeadId) === idOf(lead));
     return (
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+      <div className="min-w-0 rounded-2xl border border-primary/20 bg-primary/5 p-3 sm:p-4">
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-primary">Team Lead</p>
         <Person employee={lead} />
-        <div className="ml-4 mt-2 space-y-2 border-l border-border pl-3">
+        <div className="ml-3 mt-3 space-y-2 border-l-2 border-primary/15 pl-3 sm:ml-5 sm:pl-4">
           {assigned.length ? assigned.map((member) => <Person key={member._id} employee={member} />) : <p className="py-2 text-xs text-muted-foreground">No members assigned</p>}
         </div>
       </div>
@@ -93,15 +94,15 @@ function TeamStructure({ employees = [] }) {
   const unassigned = members.filter((member) => !member.managerId && !member.teamLeadId);
 
   return (
-    <div className="space-y-5 p-5">
+    <div className="space-y-5 p-3 sm:p-5 lg:p-6">
       {managers.map((manager) => {
         const leads = teamLeads.filter((lead) => idOf(lead.managerId) === idOf(manager));
         const direct = members.filter((member) => idOf(member.managerId) === idOf(manager) && !member.teamLeadId);
         return (
-          <section key={manager._id} className="rounded-2xl border border-border bg-muted/10 p-4">
+          <section key={manager._id} className="overflow-hidden rounded-2xl border border-border bg-muted/10 p-3 sm:p-4">
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Manager</p>
             <Person employee={manager} />
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="mt-3 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))]">
               {leads.map((lead) => <LeadTeam key={lead._id} lead={lead} />)}
               {direct.length > 0 && <div className="rounded-xl border border-border p-3"><p className="mb-2 text-xs font-semibold">Direct Reports</p><div className="space-y-2">{direct.map((member) => <Person key={member._id} employee={member} />)}</div></div>}
             </div>
@@ -109,7 +110,7 @@ function TeamStructure({ employees = [] }) {
           </section>
         );
       })}
-      {independentLeads.length > 0 && <section><h3 className="mb-3 font-semibold">Teams without a Manager</h3><div className="grid gap-3 md:grid-cols-2">{independentLeads.map((lead) => <LeadTeam key={lead._id} lead={lead} />)}</div></section>}
+      {independentLeads.length > 0 && <section className="rounded-2xl border border-dashed border-border bg-muted/5 p-3 sm:p-4"><h3 className="mb-3 font-semibold">Teams without a Manager</h3><div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))]">{independentLeads.map((lead) => <LeadTeam key={lead._id} lead={lead} />)}</div></section>}
       {unassigned.length > 0 && <section className="rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-4"><h3 className="mb-3 font-semibold text-amber-600">Unassigned Employees ({unassigned.length})</h3><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{unassigned.map((member) => <Person key={member._id} employee={member} />)}</div></section>}
       {!employees.length && <p className="py-12 text-center text-muted-foreground">No hierarchy data available.</p>}
     </div>
@@ -130,6 +131,9 @@ export default function EmployeesListPage() {
     && manageableRoles.includes(employee?.role)
   );
   const assignableRoles = manageableRoles;
+  const visibleFilterRoles = user?.role === 'super_admin'
+    ? ROLES
+    : ROLES.filter((role) => role !== 'super_admin');
 
   // Filters
   const [search, setSearch] = useState('');
@@ -180,9 +184,17 @@ export default function EmployeesListPage() {
   const teamLeads = hierarchyEmployees.filter((employee) => employee.role === 'team_lead' && employee._id !== editEmployee?._id);
 
   // Search with debounce on Enter / blur
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
   function handleSearchSubmit(e) {
     e.preventDefault();
-    setSearch(searchInput);
+    setSearch(searchInput.trim());
     setPage(1);
   }
 
@@ -358,7 +370,15 @@ export default function EmployeesListPage() {
                 className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-4 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
+                aria-label="Search employees"
               />
+              {searchInput && (
+                <button type="button" aria-label="Clear employee search"
+                  onClick={() => { setSearchInput(''); setSearch(''); setPage(1); }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
           </form>
 
@@ -431,7 +451,7 @@ export default function EmployeesListPage() {
                     onChange={(e) => applyFilter('role', e.target.value)}
                   >
                     <option value="">All Roles</option>
-                    {ROLES.map((r) => (
+                    {visibleFilterRoles.map((r) => (
                       <option key={r} value={r}>{r.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
                     ))}
                   </select>
@@ -776,10 +796,3 @@ function EmptyState({ hasFilters, onClear, onAdd, canManage }) {
 }
 
 // Missing X import — add it
-function X({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path d="M18 6L6 18M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}

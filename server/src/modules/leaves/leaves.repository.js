@@ -39,8 +39,13 @@ async function countActiveLeaves(employeeId, startDate, endDate) {
   });
 }
 
-async function getPendingByStage(companyId, stage) {
-  return LeaveRequest.find({ companyId, status: 'pending', currentStage: stage })
+async function getPendingByStage(companyId, stage, employeeIds = null) {
+  return LeaveRequest.find({
+    companyId,
+    status: 'pending',
+    currentStage: stage,
+    ...(employeeIds && { employeeId: { $in: employeeIds } }),
+  })
     .populate('employeeId', 'fullName employeeCode department designation profilePicture')
     .sort('-createdAt').limit(50);
 }

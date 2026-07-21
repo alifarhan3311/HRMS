@@ -51,6 +51,8 @@ const attendanceSchema = new mongoose.Schema(
     },
     lateMinutes: { type: Number, default: 0 },
     earlyLeaveMinutes: { type: Number, default: 0 },
+    missedPunchType: { type: String, enum: ['sign_in', 'sign_out'] },
+    lateCountAppliedAt: { type: Date },
     closureId: { type: mongoose.Schema.Types.ObjectId, ref: 'Holiday' },
     closureType: { type: String, enum: ['full_day', 'half_day', 'early_closure', 'late_opening'] },
     attendanceAdjustmentReason: { type: String },

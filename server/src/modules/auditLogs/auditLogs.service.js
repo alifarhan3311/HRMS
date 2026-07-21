@@ -1,4 +1,5 @@
 const AuditLog = require('./auditLogs.model');
+const Employee = require('../employees/employees.model');
 
 async function listAuditLogs(query, actor) {
   const page = Math.max(Number(query.page) || 1, 1);
@@ -7,7 +8,21 @@ async function listAuditLogs(query, actor) {
     ? { companyId: query.companyId }
     : { companyId: actor.companyId };
 
-  if (query.userId) filter.userId = query.userId;
+  if (actor.role !== 'super_admin') {
+    filter.userId = {
+      $in: await Employee.find({ companyId: actor.companyId, role: { $ne: 'super_admin' } }).distinct('_id'),
+    };
+  }
+
+  if (query.userId) {
+    const visible = await Employee.exists({
+      _id: query.userId,
+      companyId: actor.companyId,
+      ...(actor.role !== 'super_admin' && { role: { $ne: 'super_admin' } }),
+    });
+    if (!visible) return { items: [], total: 0, page, limit, totalPages: 0 };
+    filter.userId = query.userId;
+  }
   if (query.action) filter.action = query.action;
   if (query.dateFrom || query.dateTo) {
     filter.createdAt = {};

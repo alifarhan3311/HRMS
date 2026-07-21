@@ -105,7 +105,7 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
     if (!form.startDate) e.startDate = 'Start date required';
     if (!form.endDate) e.endDate = 'End date required';
     if (form.endDate && form.startDate && form.endDate < form.startDate) e.endDate = 'End must be after start';
-    if (!form.reason.trim()) e.reason = 'Please provide a reason';
+    if (form.leaveType !== 'casual' && !form.reason.trim()) e.reason = 'Please provide a reason';
     setErrors(e);
     return !Object.keys(e).length;
   }
@@ -147,9 +147,9 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
             <span className="text-muted-foreground ml-1">will be applied for this period.</span>
           </div>
         )}
-        <Textarea label="Reason" required value={form.reason}
+        <Textarea label={form.leaveType === 'casual' ? 'Reason (optional)' : 'Reason'} required={form.leaveType !== 'casual'} value={form.reason}
           onChange={(e) => set('reason', e.target.value)} error={errors.reason}
-          placeholder="Please explain why you need this leave..." />
+          placeholder={form.leaveType === 'casual' ? 'Add a reason if you want...' : 'Please explain why you need this leave...'} />
         <Input label="Emergency Contact (optional)" value={form.emergencyContact}
           onChange={(e) => set('emergencyContact', e.target.value)}
           placeholder="+92 300 1234567" />

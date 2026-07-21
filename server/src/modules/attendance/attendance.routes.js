@@ -11,6 +11,7 @@ const {
   signInSchema,
   signOutSchema,
   monthlySummaryQuerySchema,
+  rangeSummaryQuerySchema,
   listQuerySchema,
   manualCorrectionSchema,
   regularizationRequestSchema,
@@ -33,6 +34,12 @@ router.get(
   authorize(...ALL),
   validate(monthlySummaryQuerySchema, 'query'),
   controller.monthlySummary
+);
+router.get(
+  '/range-summary',
+  authorize(...ALL),
+  validate(rangeSummaryQuerySchema, 'query'),
+  controller.rangeSummary
 );
 
 // Admin/HR views

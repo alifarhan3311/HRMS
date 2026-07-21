@@ -53,6 +53,10 @@ function normalizeOptionalReferences(payload) {
   return normalized;
 }
 
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 async function validateAssignedShift(shiftId, companyId) {
   if (!shiftId) return;
   const exists = await Shift.exists({ _id: shiftId, companyId, isActive: true });
@@ -131,6 +135,7 @@ function assertCanAssignRole(actor, role) {
 }
 
 function teamLeaderCanView(actor, employee) {
+  if (actor.role !== 'super_admin' && employee.role === 'super_admin') return false;
   if (!['manager', 'team_lead'].includes(actor.role)) return true;
   const actorId = String(actor.id);
   if (String(employee._id) === actorId) return true;
@@ -297,6 +302,9 @@ async function listEmployees(query, actor) {
 
   const filter = { companyId: actor.companyId };
 
+  // The Super Admin identity is private/protected from every lower role.
+  if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
+
   // Managers see only their direct department team. Department automation
   // assigns both Team Leads and Employees to managerId, so this includes the
   // complete team without exposing another manager's staff.
@@ -305,13 +313,19 @@ async function listEmployees(query, actor) {
 
   if (status) filter.status = status;
   if (department) filter.department = new RegExp(department, 'i');
-  if (role) filter.role = role;
+  if (role) {
+    if (actor.role !== 'super_admin' && role === 'super_admin') {
+      throw createHttpError(403, 'Super Admin accounts are not visible to your role.');
+    }
+    filter.role = role;
+  }
   if (search) {
+    const safeSearch = new RegExp(escapeRegex(String(search).trim()), 'i');
     filter.$or = [
-      { fullName: new RegExp(search, 'i') },
-      { email: new RegExp(search, 'i') },
-      { employeeCode: new RegExp(search, 'i') },
-      { designation: new RegExp(search, 'i') },
+      { fullName: safeSearch },
+      { email: safeSearch },
+      { employeeCode: safeSearch },
+      { designation: safeSearch },
     ];
   }
 
@@ -414,6 +428,7 @@ async function getEmployeeHierarchy(actor) {
     repository.syncDepartmentTeamLeads(actor.companyId),
   ]);
   const filter = { companyId: actor.companyId };
+  if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   if (actor.role === 'manager') {
     filter.$or = [{ _id: actor.id }, { managerId: actor.id }];
   } else if (actor.role === 'team_lead') {
@@ -556,6 +571,7 @@ async function getEmployeeStats(actor) {
     ]);
   }
   const filter = { companyId: actor.companyId };
+  if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   if (actor.role === 'manager') filter.managerId = actor.id;
   if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
   return repository.getStats(filter);

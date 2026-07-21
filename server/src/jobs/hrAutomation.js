@@ -103,9 +103,49 @@ async function processCalendarYearLeaveCycles(now = new Date()) {
 const processLeaveAnniversaries = processCalendarYearLeaveCycles;
 
 async function reconcileAttendance(now = new Date()) {
-  const employees = await Employee.find({ status: 'active' })
+  const superAdminIds = await Employee.find({ role: 'super_admin' }).distinct('_id');
+  if (superAdminIds.length) {
+    const openSuperAdminRecords = await Attendance.find({
+      employeeId: { $in: superAdminIds },
+      signInTime: { $exists: true },
+      signOutTime: { $exists: false },
+      $or: [
+        { scheduledEnd: { $lte: now } },
+        { scheduledEnd: { $exists: false }, signInTime: { $lte: new Date(now.getTime() - DAY_MS) } },
+      ],
+    });
+    for (const record of openSuperAdminRecords) {
+      const fallbackEnd = new Date(new Date(record.signInTime).getTime() + (8 * 60 * 60 * 1000));
+      const automaticSignOut = record.scheduledEnd && new Date(record.scheduledEnd) > new Date(record.signInTime)
+        ? new Date(record.scheduledEnd)
+        : fallbackEnd;
+      const workedMinutes = Math.max(0, Math.round((automaticSignOut - new Date(record.signInTime)) / 60000));
+      record.signOutTime = automaticSignOut;
+      record.totalHours = Number((workedMinutes / 60).toFixed(2));
+      record.workedMinutes = workedMinutes;
+      record.status = 'present';
+      record.lateMinutes = 0;
+      record.earlyLeaveMinutes = 0;
+      record.overtimeMinutes = 0;
+      record.notes = `${record.notes || ''} [Attendance-exempt Super Admin shift auto-closed without penalty.]`.trim();
+      await record.save();
+    }
+    await Promise.all([
+      Employee.updateMany({ _id: { $in: superAdminIds } }, { $set: { lateCount: 0 } }),
+      Attendance.updateMany({
+        employeeId: { $in: superAdminIds },
+        status: { $in: ['late', 'absent', 'half_day'] },
+      }, {
+        $set: { status: 'present', lateMinutes: 0, earlyLeaveMinutes: 0, overtimeMinutes: 0 },
+        $unset: { missedPunchType: '', lateCountAppliedAt: '' },
+      }),
+    ]);
+  }
+
+  const employees = await Employee.find({ status: 'active', role: { $ne: 'super_admin' } })
     .select('_id companyId branchId joiningDate department shiftId');
   if (!employees.length) return 0;
+  const employeeIds = employees.map((employee) => employee._id);
 
   const policyCache = new Map();
   for (const employee of employees) {
@@ -141,27 +181,73 @@ async function reconcileAttendance(now = new Date()) {
         const settings = policyCache.get(String(employee.companyId));
         return !settings.timing.weekendDays.includes(date.getDay());
       })
-      .map((employee) => ({
+      .map((employee) => {
+        const onLeave = employeesOnLeave.has(String(employee._id));
+        return ({
         updateOne: {
-          filter: { employeeId: employee._id, date },
+          filter: { employeeId: employee._id, date: { $gte: date, $lte: dayEnd } },
           update: {
             $setOnInsert: {
               employeeId: employee._id,
               companyId: employee.companyId,
               branchId: employee.branchId,
               date,
-              status: employeesOnLeave.has(String(employee._id)) ? 'on_leave' : 'absent',
+              status: onLeave ? 'on_leave' : 'late',
               method: 'manual',
-              notes: 'Automatically reconciled by HR automation.',
+              ...(!onLeave && { missedPunchType: 'sign_in' }),
+              notes: onLeave
+                ? 'Approved leave recorded by HR automation.'
+                : 'Missed sign-in: automatically counted as a late violation.',
             },
           },
           upsert: true,
         },
-      }));
+      });
+      });
 
     if (operations.length) {
       const result = await Attendance.bulkWrite(operations, { ordered: false });
       created += result.upsertedCount || 0;
+    }
+
+    await Attendance.updateMany({
+      employeeId: { $in: employeeIds },
+      date: { $gte: date, $lte: dayEnd },
+      signInTime: { $exists: true },
+      signOutTime: { $exists: false },
+      status: { $nin: ['on_leave', 'holiday', 'weekend'] },
+    }, {
+      $set: {
+        status: 'late',
+        missedPunchType: 'sign_out',
+        notes: 'Missed sign-out: automatically counted as a late violation. Submit a regularization request if needed.',
+      },
+    });
+
+    const violations = await Attendance.find({
+      employeeId: { $in: employeeIds },
+      date: { $gte: date, $lte: dayEnd },
+      missedPunchType: { $in: ['sign_in', 'sign_out'] },
+      lateCountAppliedAt: { $exists: false },
+    }).select('_id employeeId companyId missedPunchType date');
+    for (const violation of violations) {
+      const claimed = await Attendance.findOneAndUpdate(
+        { _id: violation._id, lateCountAppliedAt: { $exists: false } },
+        { $set: { lateCountAppliedAt: now } },
+        { new: true },
+      );
+      if (!claimed) continue;
+      await Employee.updateOne({ _id: violation.employeeId }, { $inc: { lateCount: 1 } });
+      await notificationService.createNotification({
+        recipientId: violation.employeeId,
+        companyId: violation.companyId,
+        type: 'attendance_missed_punch',
+        title: violation.missedPunchType === 'sign_in' ? 'Missed sign-in counted as late' : 'Missed sign-out counted as late',
+        message: `Your missed ${violation.missedPunchType === 'sign_in' ? 'sign-in' : 'sign-out'} on ${violation.date.toLocaleDateString('en-GB')} was counted as one late. You can submit a regularization request.`,
+        link: '/attendance',
+        metadata: { attendanceId: violation._id, missedPunchType: violation.missedPunchType },
+        dedupeKey: `attendance-missed-punch:${violation._id}`,
+      });
     }
   }
 
@@ -170,7 +256,9 @@ async function reconcileAttendance(now = new Date()) {
 
 async function sendMissingLeaveApplicationReminders(now = new Date()) {
   const scanStart = startOfDay(new Date(now.getTime() - 120 * DAY_MS));
+  const employeeIds = await Employee.find({ role: { $ne: 'super_admin' } }).distinct('_id');
   const absences = await Attendance.find({
+    employeeId: { $in: employeeIds },
     status: 'absent',
     date: { $gte: scanStart, $lte: endOfDay(new Date(now.getTime() - DAY_MS)) },
     leaveApplicationReminderSentAt: null,
