@@ -55,6 +55,14 @@ async function updateRaw(id, update) {
   return Employee.findByIdAndUpdate(id, update, { new: true });
 }
 
+async function resetPassword(id, passwordHash) {
+  return Employee.findByIdAndUpdate(
+    id,
+    { $set: { passwordHash }, $inc: { tokenVersion: 1 } },
+    { new: true },
+  );
+}
+
 async function deleteById(id) {
   return Employee.findByIdAndDelete(id);
 }
@@ -195,6 +203,7 @@ module.exports = {
   findAll,
   updateById,
   updateRaw,
+  resetPassword,
   deleteById,
   clearReportingReferences,
   findActiveDepartmentManager,

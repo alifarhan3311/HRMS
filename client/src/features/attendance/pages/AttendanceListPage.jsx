@@ -94,6 +94,18 @@ function SignInWidget({ user }) {
   const { data: todayData, isLoading } = useGetTodayAttendanceQuery();
   const [signIn, { isLoading: signingIn }] = useSignInMutation();
   const [signOut, { isLoading: signingOut }] = useSignOutMutation();
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const updateClock = () => setNow(new Date());
+    updateClock();
+    const timer = window.setInterval(updateClock, 1000);
+    document.addEventListener('visibilitychange', updateClock);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', updateClock);
+    };
+  }, []);
 
   const record = todayData?.data;
   const hasSignedIn = !!record?.signInTime;
@@ -116,7 +128,6 @@ function SignInWidget({ user }) {
     }
   }
 
-  const now = new Date();
   const timeZone = record?.shiftTimezone;
   const timeStr = now.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit', ...(timeZone && { timeZone }) });
   const dateStr = now.toLocaleDateString('en-CA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', ...(timeZone && { timeZone }) });

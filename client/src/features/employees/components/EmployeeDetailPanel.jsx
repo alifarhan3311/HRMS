@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Mail, Phone, MapPin, Briefcase, Calendar, User, Heart,
   Droplets, GraduationCap, Banknote, TrendingUp, Clock, Shield,
-  CreditCard, Award, Edit, UserX, UserCheck, ArrowUpRight,
+  CreditCard, Award, Edit, UserX, UserCheck, ArrowUpRight, KeyRound,
 } from 'lucide-react';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge, RoleBadge, Badge } from '../../../components/ui/Badge';
@@ -47,6 +47,7 @@ export default function EmployeeDetailPanel({
   onEdit,
   onStatusChange,
   onPromote,
+  onResetPassword,
   canManage = false,
 }) {
   if (!employee) return null;
@@ -125,7 +126,7 @@ export default function EmployeeDetailPanel({
 
               {/* Action Buttons */}
               {canManage && (
-                <div className="flex gap-2 mb-2">
+                <div className="mb-2 grid grid-cols-2 gap-2">
                   <Button
                     variant="secondary" size="sm"
                     className="flex-1 gap-1.5"
@@ -139,6 +140,13 @@ export default function EmployeeDetailPanel({
                     onClick={() => onPromote(employee)}
                   >
                     <TrendingUp className="h-3.5 w-3.5" /> Promote
+                  </Button>
+                  <Button
+                    variant="secondary" size="sm"
+                    className="gap-1.5"
+                    onClick={() => onResetPassword(employee)}
+                  >
+                    <KeyRound className="h-3.5 w-3.5" /> Reset Password
                   </Button>
                   {employee.status === 'active' ? (
                     <Button

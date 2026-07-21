@@ -22,6 +22,10 @@ export const employeesApi = api.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/employees/${id}`, method: 'PUT', body }),
       invalidatesTags: (result, error, { id }) => [{ type: 'Employees', id }, 'Employees', 'Auth'],
     }),
+    resetEmployeePassword: builder.mutation({
+      query: ({ id, ...body }) => ({ url: `/employees/${id}/reset-password`, method: 'PATCH', body }),
+      invalidatesTags: (result, error, { id }) => [{ type: 'Employees', id }, 'Employees'],
+    }),
     deleteEmployee: builder.mutation({
       query: (id) => ({ url: `/employees/${id}`, method: 'DELETE' }),
       invalidatesTags: ['Employees'],
@@ -55,6 +59,7 @@ export const {
   useGetEmployeeByIdQuery,
   useCreateEmployeeMutation,
   useUpdateEmployeeMutation,
+  useResetEmployeePasswordMutation,
   useDeleteEmployeeMutation,
   useChangeEmployeeStatusMutation,
   usePromoteEmployeeMutation,

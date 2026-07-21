@@ -8,6 +8,7 @@ const {
   updateSchema,
   statusSchema,
   promotionSchema,
+  resetPasswordSchema,
 } = require('./employees.validation');
 
 function asyncHandler(fn) {
@@ -87,9 +88,17 @@ const stats = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: result[0] || {} });
 });
 
+const resetPassword = [
+  validate(resetPasswordSchema),
+  asyncHandler(async (req, res) => {
+    const result = await service.resetEmployeePassword(req.params.id, req.body, req.user);
+    res.status(200).json({ success: true, ...result });
+  }),
+];
+
 const hierarchy = asyncHandler(async (req, res) => {
   const result = await service.getEmployeeHierarchy(req.user);
   res.status(200).json({ success: true, data: result });
 });
 
-module.exports = { create, getById, list, update, remove, changeStatus, promote, departments, stats, hierarchy };
+module.exports = { create, getById, list, update, resetPassword, remove, changeStatus, promote, departments, stats, hierarchy };

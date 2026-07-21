@@ -80,6 +80,9 @@ export default function RealtimeNotifications() {
         console.warn('[realtime] Socket connection failed; polling fallback remains active.', error.message);
       }
     };
+    const onSessionRevoked = () => {
+      window.dispatchEvent(new CustomEvent('auth:session-expired'));
+    };
     const onNewNotification = notification => {
       seenNotificationIds.current.add(String(notification._id));
       refreshNotifications();
@@ -108,6 +111,7 @@ export default function RealtimeNotifications() {
     socket.on('notification:new', onNewNotification);
     socket.on('socket:ready', onSocketReady);
     socket.on('connect_error', onConnectError);
+    socket.on('session:revoked', onSessionRevoked);
     SYNC_EVENTS.forEach(event => socket.on(event, refreshNotifications));
     Object.entries(dataSyncHandlers).forEach(([event, handler]) => socket.on(event, handler));
 
@@ -132,6 +136,7 @@ export default function RealtimeNotifications() {
       socket.off('notification:new', onNewNotification);
       socket.off('socket:ready', onSocketReady);
       socket.off('connect_error', onConnectError);
+      socket.off('session:revoked', onSessionRevoked);
       SYNC_EVENTS.forEach(event => socket.off(event, refreshNotifications));
       Object.entries(dataSyncHandlers).forEach(([event, handler]) => socket.off(event, handler));
       disconnectSocket();

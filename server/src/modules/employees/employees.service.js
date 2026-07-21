@@ -9,6 +9,7 @@ const repository = require('./employees.repository');
 const Session = require('../auth/auth.model');
 const Shift = require('../shifts/shifts.model');
 const settingsService = require('../companySettings/companySettings.service');
+const { emitToUser } = require('../../config/socket');
 
 const PASSWORD_SALT_ROUNDS = 12;
 const LEAVE_BALANCE_TYPES = ['paid', 'casual', 'sick', 'annual'];
@@ -401,6 +402,22 @@ async function updateEmployee(id, payload, actor) {
   return sanitize(updated);
 }
 
+async function resetEmployeePassword(id, { newPassword }, actor) {
+  const employee = await repository.findById(id);
+  if (!employee) throw createHttpError(404, 'Employee not found.');
+  assertCanManageEmployee(actor, employee, { action: 'reset the password for' });
+
+  const passwordHash = await bcrypt.hash(newPassword, PASSWORD_SALT_ROUNDS);
+  await repository.resetPassword(id, passwordHash);
+  await Session.updateMany(
+    { employeeId: id, revoked: false },
+    { $set: { revoked: true } },
+  );
+  emitToUser(id, 'session:revoked', { reason: 'password_reset' });
+
+  return { message: `${employee.fullName}'s password was reset and all active sessions were signed out.` };
+}
+
 async function deleteEmployee(id, actor) {
   const existing = await repository.findById(id);
   if (!existing) throw createHttpError(404, 'Employee not found.');
@@ -575,6 +592,7 @@ module.exports = {
   listEmployees,
   getEmployeeHierarchy,
   updateEmployee,
+  resetEmployeePassword,
   deleteEmployee,
   changeStatus,
   promoteEmployee,

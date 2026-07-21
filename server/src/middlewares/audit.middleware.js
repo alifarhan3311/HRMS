@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 const SENSITIVE_KEYS = new Set([
-  'password', 'passwordHash', 'accessToken', 'refreshToken',
+  'password', 'newPassword', 'confirmPassword', 'passwordHash', 'accessToken', 'refreshToken',
   'token', 'secret', 'smtpPass', 'encryptionMasterKey',
 ]);
 

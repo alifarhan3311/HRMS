@@ -37,6 +37,13 @@ router.put(
   controller.update
 );
 
+router.patch(
+  '/:id/reset-password',
+  authorize(...HR_MANAGEMENT),
+  enforceTenantScope(async (req) => repository.findById(req.params.id)),
+  controller.resetPassword
+);
+
 router.delete(
   '/:id',
   authorize('super_admin'),

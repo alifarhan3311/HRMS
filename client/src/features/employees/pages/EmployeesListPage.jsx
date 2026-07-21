@@ -20,6 +20,7 @@ import {
   useListEmployeesQuery,
   useCreateEmployeeMutation,
   useUpdateEmployeeMutation,
+  useResetEmployeePasswordMutation,
   useDeleteEmployeeMutation,
   useChangeEmployeeStatusMutation,
   usePromoteEmployeeMutation,
@@ -30,13 +31,64 @@ import {
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge, RoleBadge } from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
-import { Modal } from '../../../components/ui/Modal';
+import { Modal, ModalFooter } from '../../../components/ui/Modal';
+import { Input } from '../../../components/ui/Input';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import StatCard from '../../../components/ui/StatCard';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import EmployeeForm from '../components/EmployeeForm';
 import EmployeeDetailPanel from '../components/EmployeeDetailPanel';
 import PromoteEmployeeModal from '../components/PromoteEmployeeModal';
+
+function ResetPasswordModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
+  const [form, setForm] = useState({ newPassword: '', confirmPassword: '' });
+  const [errors, setErrors] = useState({});
+
+  useEffect(() => {
+    if (isOpen) {
+      setForm({ newPassword: '', confirmPassword: '' });
+      setErrors({});
+    }
+  }, [employee?._id, isOpen]);
+
+  function submit(event) {
+    event.preventDefault();
+    const nextErrors = {};
+    if (form.newPassword.length < 8) nextErrors.newPassword = 'Password must be at least 8 characters';
+    else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(form.newPassword)) {
+      nextErrors.newPassword = 'Include uppercase, lowercase and a number';
+    }
+    if (form.confirmPassword !== form.newPassword) nextErrors.confirmPassword = 'Passwords do not match';
+    setErrors(nextErrors);
+    if (!Object.keys(nextErrors).length) onSubmit(form);
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Reset Employee Password" size="sm">
+      <form onSubmit={submit}>
+        <div className="space-y-4 px-6 py-5">
+          <p className="text-sm text-muted-foreground">
+            Set a new password for <span className="font-medium text-foreground">{employee?.fullName}</span>.
+            All of this employee&apos;s active sessions will be signed out.
+          </p>
+          <Input label="New Password" required type="password" autoComplete="new-password"
+            value={form.newPassword} error={errors.newPassword}
+            onChange={(event) => setForm((current) => ({ ...current, newPassword: event.target.value }))} />
+          <Input label="Confirm New Password" required type="password" autoComplete="new-password"
+            value={form.confirmPassword} error={errors.confirmPassword}
+            onChange={(event) => setForm((current) => ({ ...current, confirmPassword: event.target.value }))} />
+          <p className="text-xs text-muted-foreground">Minimum 8 characters with uppercase, lowercase and a number.</p>
+        </div>
+        <ModalFooter>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" size="sm" disabled={isLoading}>
+            {isLoading ? 'Resetting...' : 'Reset Password'}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
 
 const STATUSES = ['active', 'inactive', 'on_leave', 'resigned'];
 const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'];
@@ -149,6 +201,7 @@ export default function EmployeesListPage() {
   const [editEmployee, setEditEmployee] = useState(null);
   const [detailEmployee, setDetailEmployee] = useState(null);
   const [promoteEmployee, setPromoteEmployee] = useState(null);
+  const [resetPasswordTarget, setResetPasswordTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [statusTarget, setStatusTarget] = useState(null); // { employee, newStatus }
   const [actionMenuId, setActionMenuId] = useState(null);
@@ -171,6 +224,7 @@ export default function EmployeesListPage() {
 
   const [createEmployee, { isLoading: isCreating }] = useCreateEmployeeMutation();
   const [updateEmployee, { isLoading: isUpdating }] = useUpdateEmployeeMutation();
+  const [resetEmployeePassword, { isLoading: isResettingPassword }] = useResetEmployeePasswordMutation();
   const [deleteEmployee, { isLoading: isDeleting }] = useDeleteEmployeeMutation();
   const [changeStatus, { isLoading: isChangingStatus }] = useChangeEmployeeStatusMutation();
   const [promoteEmp, { isLoading: isPromoting }] = usePromoteEmployeeMutation();
@@ -269,6 +323,17 @@ export default function EmployeesListPage() {
       setPromoteEmployee(null);
     } catch (err) {
       toast.error(err?.data?.error?.message || 'Failed to promote employee');
+    }
+  }
+
+  async function handleResetPassword(payload) {
+    if (!resetPasswordTarget) return;
+    try {
+      await resetEmployeePassword({ id: resetPasswordTarget._id, ...payload }).unwrap();
+      toast.success(`${resetPasswordTarget.fullName}'s password was reset. All sessions were signed out.`);
+      setResetPasswordTarget(null);
+    } catch (err) {
+      toast.error(err?.data?.error?.message || 'Failed to reset employee password');
     }
   }
 
@@ -658,7 +723,16 @@ export default function EmployeesListPage() {
         onEdit={(emp) => { openEdit(emp); setDetailEmployee(null); }}
         onStatusChange={(emp, status) => { setStatusTarget({ employee: emp, newStatus: status }); setDetailEmployee(null); }}
         onPromote={(emp) => { setPromoteEmployee(emp); setDetailEmployee(null); }}
+        onResetPassword={(emp) => { setResetPasswordTarget(emp); setDetailEmployee(null); }}
         canManage={canManageEmployee(detailEmployee)}
+      />
+
+      <ResetPasswordModal
+        employee={resetPasswordTarget}
+        isOpen={Boolean(resetPasswordTarget)}
+        onClose={() => setResetPasswordTarget(null)}
+        onSubmit={handleResetPassword}
+        isLoading={isResettingPassword}
       />
 
       {/* Promote Modal */}

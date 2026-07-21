@@ -110,4 +110,17 @@ const promotionSchema = Joi.object({
   remarks: Joi.string().trim().max(500).optional().allow(''),
 });
 
-module.exports = { createSchema, updateSchema, statusSchema, promotionSchema };
+const resetPasswordSchema = Joi.object({
+  newPassword: Joi.string()
+    .min(8)
+    .max(100)
+    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .required()
+    .messages({
+      'string.pattern.base': 'Password must contain uppercase, lowercase, and a number.',
+    }),
+  confirmPassword: Joi.string().valid(Joi.ref('newPassword')).required()
+    .messages({ 'any.only': 'Password confirmation does not match.' }),
+});
+
+module.exports = { createSchema, updateSchema, statusSchema, promotionSchema, resetPasswordSchema };
