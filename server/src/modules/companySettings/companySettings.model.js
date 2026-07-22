@@ -18,6 +18,10 @@ const companySettingsSchema = new mongoose.Schema(
       address: String,
       timezone: { type: String, default: 'Asia/Karachi' },
     },
+    departments: {
+      type: [String],
+      default: [],
+    },
     holidayPolicy: {
       country: { type: String, default: 'CA' },
       province: { type: String, default: 'ON' },

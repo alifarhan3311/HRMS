@@ -42,6 +42,10 @@ export const employeesApi = api.injectEndpoints({
       query: () => '/employees/departments',
       providesTags: ['Employees'],
     }),
+    createEmployeeDepartment: builder.mutation({
+      query: (body) => ({ url: '/employees/departments', method: 'POST', body }),
+      invalidatesTags: ['Employees'],
+    }),
     getEmployeeStats: builder.query({
       query: () => '/employees/stats',
       providesTags: ['Employees'],
@@ -64,6 +68,7 @@ export const {
   useChangeEmployeeStatusMutation,
   usePromoteEmployeeMutation,
   useGetEmployeeDepartmentsQuery,
+  useCreateEmployeeDepartmentMutation,
   useGetEmployeeStatsQuery,
   useGetEmployeeHierarchyQuery,
 } = employeesApi;

@@ -16,6 +16,7 @@ router.use(authenticate);
 // List & stats
 router.get('/', authorize(...MANAGER_UP), controller.list);
 router.get('/departments', authorize(...HR_MANAGEMENT), controller.departments);
+router.post('/departments', authorize(...HR_MANAGEMENT), controller.createDepartment);
 router.get('/stats', authorize(...MANAGER_UP), controller.stats);
 router.get('/hierarchy', authorize(...MANAGER_UP), controller.hierarchy);
 

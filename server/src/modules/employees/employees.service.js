@@ -216,6 +216,7 @@ async function reconcileLeaveBalance(employee) {
 
 async function createEmployee(payload, actor) {
   payload = normalizeOptionalReferences(payload);
+  payload.department = String(payload.department || '').trim().toLowerCase();
   assertCanAssignRole(actor, payload.role);
   await applyDepartmentReportingLine(payload, actor.companyId, payload.role);
   // Validate uniqueness
@@ -362,6 +363,9 @@ async function listEmployees(query, actor) {
 
 async function updateEmployee(id, payload, actor) {
   payload = normalizeOptionalReferences(payload);
+  if (payload.department !== undefined) {
+    payload.department = String(payload.department || '').trim().toLowerCase();
+  }
   const existing = await repository.findById(id);
   if (!existing) throw createHttpError(404, 'Employee not found.');
   assertCanManageEmployee(actor, existing, { allowSelf: true, action: 'edit' });
@@ -487,6 +491,9 @@ async function changeStatus(id, { status, reason }, actor) {
 // -------------------------------------------------------------------------
 
 async function promoteEmployee(id, promotionData, actor) {
+  if (promotionData.department) {
+    promotionData.department = String(promotionData.department).trim().toLowerCase();
+  }
   const employee = await repository.findById(id);
   if (!employee) throw createHttpError(404, 'Employee not found.');
   assertCanManageEmployee(actor, employee, { action: 'promote' });
@@ -560,7 +567,37 @@ async function promoteEmployee(id, promotionData, actor) {
 // -------------------------------------------------------------------------
 
 async function getDepartmentList(companyId) {
-  return repository.getDistinctDepartments(companyId);
+  await repository.normalizeDepartmentNames(companyId);
+  const [settings, employeeDepartments] = await Promise.all([
+    settingsService.getPolicy(companyId),
+    repository.getDistinctDepartments(companyId),
+  ]);
+  const departments = [
+    ...(settings.departments || []),
+    ...employeeDepartments,
+  ]
+    .map((department) => String(department || '').trim().toLowerCase())
+    .filter(Boolean);
+
+  return [...new Set(departments)]
+    .sort((left, right) => left.localeCompare(right));
+}
+
+async function createDepartment(name, actor) {
+  const normalizedName = String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const departments = await getDepartmentList(actor.companyId);
+  const existing = departments.find(
+    (department) => department.toLowerCase() === normalizedName.toLowerCase()
+  );
+  if (existing) {
+    throw createHttpError(409, `Department “${existing}” already exists.`);
+  }
+
+  await settingsService.addDepartment(actor.companyId, normalizedName, actor.id);
+  return {
+    name: normalizedName,
+    departments: await getDepartmentList(actor.companyId),
+  };
 }
 
 async function getEmployeeStats(actor) {
@@ -597,5 +634,6 @@ module.exports = {
   changeStatus,
   promoteEmployee,
   getDepartmentList,
+  createDepartment,
   getEmployeeStats,
 };

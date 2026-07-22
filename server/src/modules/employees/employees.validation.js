@@ -123,4 +123,19 @@ const resetPasswordSchema = Joi.object({
     .messages({ 'any.only': 'Password confirmation does not match.' }),
 });
 
-module.exports = { createSchema, updateSchema, statusSchema, promotionSchema, resetPasswordSchema };
+const departmentSchema = Joi.object({
+  name: Joi.string().trim().min(2).max(100).required()
+    .messages({
+      'string.empty': 'Department name is required.',
+      'string.min': 'Department name must contain at least 2 characters.',
+    }),
+});
+
+module.exports = {
+  createSchema,
+  updateSchema,
+  statusSchema,
+  promotionSchema,
+  resetPasswordSchema,
+  departmentSchema,
+};

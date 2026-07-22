@@ -14,6 +14,10 @@ import { Input, Select, Textarea } from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import { ModalFooter } from '../../../components/ui/Modal';
 import { useListShiftsQuery } from '../../shifts/api/shifts.api';
+import {
+  useCreateEmployeeDepartmentMutation,
+  useGetEmployeeDepartmentsQuery,
+} from '../api/employees.api';
 import { toast } from '../../../utils/toast';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 
@@ -29,7 +33,7 @@ const GENDERS = ['male', 'female', 'other'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
 const DEFAULT_ROLES = ['employee', 'team_lead', 'manager'];
-const DEPARTMENTS = ['Digital Media', 'Call Center'];
+const HIDDEN_CREATE_DEPARTMENTS = new Set(['hr', 'executive']);
 
 function formatCnic(value) {
   const digits = String(value || '').replace(/\D/g, '').slice(0, 13);
@@ -112,6 +116,11 @@ export default function EmployeeForm({
   });
   const [errors, setErrors] = useState({});
   const [skillInput, setSkillInput] = useState('');
+  const [departmentCreatorOpen, setDepartmentCreatorOpen] = useState(false);
+  const [newDepartment, setNewDepartment] = useState('');
+  const [departmentError, setDepartmentError] = useState('');
+  const { data: departmentsData } = useGetEmployeeDepartmentsQuery();
+  const [createDepartment, { isLoading: isCreatingDepartment }] = useCreateEmployeeDepartmentMutation();
   const {
     data: shiftsData,
     isLoading: shiftsLoading,
@@ -119,6 +128,12 @@ export default function EmployeeForm({
     refetch: refetchShifts,
   } = useListShiftsQuery({ active: true });
   const shifts = shiftsData?.data || [];
+  const departments = [...new Set([
+    ...(departmentsData?.data || []),
+    ...(form.department ? [form.department] : []),
+  ].map((department) => String(department).trim().toLowerCase()))]
+    .filter((department) => isEdit || !HIDDEN_CREATE_DEPARTMENTS.has(department))
+    .sort((left, right) => left.localeCompare(right));
   const normalizedDepartment = String(form.department || '').trim().toLowerCase();
   const availableManagers = managers.filter((manager) => (
     Boolean(normalizedDepartment)
@@ -179,6 +194,29 @@ export default function EmployeeForm({
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => ({ ...prev, [field]: '' }));
+  }
+
+  async function handleCreateDepartment() {
+    const name = newDepartment.trim().replace(/\s+/g, ' ');
+    if (name.length < 2) {
+      setDepartmentError('Enter at least 2 characters.');
+      return;
+    }
+    if (!isEdit && HIDDEN_CREATE_DEPARTMENTS.has(name.toLowerCase())) {
+      setDepartmentError('This department is not available for employee creation.');
+      return;
+    }
+    try {
+      const result = await createDepartment({ name }).unwrap();
+      const savedName = result.data.name;
+      set('department', savedName);
+      setNewDepartment('');
+      setDepartmentError('');
+      setDepartmentCreatorOpen(false);
+      toast.success(`${savedName} department added.`);
+    } catch (error) {
+      setDepartmentError(error?.data?.error?.message || 'Unable to add department.');
+    }
   }
 
   function handleCnicChange(event) {
@@ -450,20 +488,77 @@ export default function EmployeeForm({
                   onChange={(e) => set('joiningDate', e.target.value)}
                   error={errors.joiningDate}
                 />
-                <Select
-                  label="Department" required
-                  value={form.department}
-                  onChange={(e) => set('department', e.target.value)}
-                  error={errors.department}
-                >
-                  <option value="">Select department</option>
-                  {form.department && !DEPARTMENTS.includes(form.department) && (
-                    <option value={form.department}>{form.department}</option>
-                  )}
-                  {DEPARTMENTS.map((department) => (
-                    <option key={department} value={department}>{department}</option>
-                  ))}
-                </Select>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Department<span className="ml-0.5 text-destructive">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDepartmentCreatorOpen((open) => !open);
+                        setDepartmentError('');
+                      }}
+                      className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+                      aria-label="Add department"
+                      title="Add department"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add
+                    </button>
+                  </div>
+                  <Select
+                    required
+                    value={form.department}
+                    onChange={(e) => set('department', e.target.value.toLowerCase())}
+                    error={errors.department}
+                  >
+                    <option value="">Select department</option>
+                    {departments.map((department) => (
+                      <option key={department} value={department}>{department}</option>
+                    ))}
+                  </Select>
+                  <AnimatePresence initial={false}>
+                    {departmentCreatorOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-2 rounded-lg border border-primary/25 bg-primary/5 p-3">
+                          <div className="flex gap-2">
+                            <input
+                              autoFocus
+                              value={newDepartment}
+                              onChange={(event) => {
+                                setNewDepartment(event.target.value);
+                                setDepartmentError('');
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  handleCreateDepartment();
+                                }
+                              }}
+                              maxLength={100}
+                              placeholder="Department name"
+                              className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              loading={isCreatingDepartment}
+                              onClick={handleCreateDepartment}
+                            >
+                              Save
+                            </Button>
+                          </div>
+                          {departmentError && <p className="mt-1.5 text-xs text-destructive">{departmentError}</p>}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
                 <Input
                   label="Designation"
                   placeholder="Software Engineer"

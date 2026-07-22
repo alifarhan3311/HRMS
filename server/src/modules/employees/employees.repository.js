@@ -163,6 +163,19 @@ async function getDistinctDepartments(companyId) {
   return Employee.distinct('department', { companyId, department: { $ne: null, $ne: '' } });
 }
 
+async function normalizeDepartmentNames(companyId) {
+  return Employee.updateMany(
+    { companyId, department: { $type: 'string', $ne: '', $regex: /[A-Z]|^\s|\s$/ } },
+    [{
+      $set: {
+        department: {
+          $toLower: { $trim: { input: '$department' } },
+        },
+      },
+    }]
+  );
+}
+
 async function getStats(filter) {
   // Mongoose casts normal find() filters but not aggregation pipeline
   // values. JWT tenant/user ids arrive as strings, so cast them explicitly.
@@ -215,6 +228,7 @@ module.exports = {
   countByCompany,
   nextSequence,
   getDistinctDepartments,
+  normalizeDepartmentNames,
   getStats,
   getHierarchy,
 };

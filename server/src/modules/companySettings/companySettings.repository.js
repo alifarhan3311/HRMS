@@ -23,4 +23,16 @@ async function update(companyId, changes) {
   );
 }
 
-module.exports = { getOrCreate, update };
+async function addDepartment(companyId, name, updatedBy) {
+  await getOrCreate(companyId);
+  return CompanySettings.findOneAndUpdate(
+    { companyId },
+    {
+      $addToSet: { departments: name },
+      $set: { updatedBy },
+    },
+    { new: true, runValidators: true }
+  );
+}
+
+module.exports = { getOrCreate, update, addDepartment };
