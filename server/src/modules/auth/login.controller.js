@@ -64,10 +64,13 @@ const refresh = asyncHandler(async (req, res) => {
 });
 
 const logout = asyncHandler(async (req, res) => {
-  await loginService.logout({ rawRefreshToken: req.cookies?.refreshToken });
+  // Clear browser credentials before touching the database. Even if session
+  // revocation encounters a temporary DB error, the response still carries
+  // the cookie-removal headers and the browser is signed out locally.
   res.clearCookie('accessToken', COOKIE_OPTS);
   res.clearCookie('refreshToken', { ...COOKIE_OPTS, path: '/' });
   res.clearCookie('refreshToken', { ...COOKIE_OPTS, path: '/api/v1/auth/refresh' });
+  await loginService.logout({ rawRefreshToken: req.cookies?.refreshToken });
   res.status(200).json({ success: true });
 });
 

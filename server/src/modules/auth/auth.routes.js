@@ -15,9 +15,11 @@ const router = express.Router();
 // Public
 router.post('/login', loginController.login);
 router.post('/refresh', loginController.refresh);
+// Logout must also work when the short-lived access cookie has expired.
+// The refresh cookie identifies the server session that should be revoked.
+router.post('/logout', loginController.logout);
 
 // Requires a valid access token
-router.post('/logout', authenticate, loginController.logout);
 router.get('/me', authenticate, loginController.me);
 router.patch('/profile', authenticate, validate(profileUpdateSchema), loginController.updateProfile);
 router.patch('/change-password', authenticate, validate(changePasswordSchema), loginController.changePassword);

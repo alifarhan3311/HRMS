@@ -9,6 +9,8 @@ import {
 import { useTheme } from '../../context/ThemeContext';
 import { clearCredentials } from '../../features/auth/store/auth.slice';
 import { useLogoutMutation } from '../../features/auth/api/auth.api';
+import { api } from '../../services/apiSlice';
+import { disconnectSocket } from '../../services/socket';
 import {
   useListNotificationsQuery,
   useMarkAllNotificationsReadMutation,
@@ -49,6 +51,7 @@ export default function Header({ onMenuClick = () => {} }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(isNotificationSoundEnabled);
   const searchRef = useRef(null);
   const notifRef = useRef(null);
@@ -111,9 +114,21 @@ export default function Header({ onMenuClick = () => {} }) {
   }, []);
 
   async function handleLogout() {
-    try { await logout().unwrap(); } catch { /* session may already be expired */ }
-    dispatch(clearCredentials());
-    navigate('/login');
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    setProfileOpen(false);
+    setNotifOpen(false);
+    try {
+      await logout().unwrap();
+    } catch {
+      // Local sign-out must still complete if the session already expired or
+      // the server is temporarily unreachable.
+    } finally {
+      disconnectSocket();
+      dispatch(clearCredentials());
+      dispatch(api.util.resetApiState());
+      navigate('/login', { replace: true });
+    }
   }
 
   function navigateFromSearch(path) {
@@ -284,7 +299,13 @@ export default function Header({ onMenuClick = () => {} }) {
                     <MenuAction icon={Settings} label="Settings" onClick={() => { navigate('/settings'); setProfileOpen(false); }} />
                   )}
                   <div className="my-1 h-px bg-border" />
-                  <MenuAction icon={LogOut} label="Sign Out" onClick={handleLogout} className="text-destructive hover:bg-destructive/10" />
+                  <MenuAction
+                    icon={LogOut}
+                    label={isLoggingOut ? 'Signing Out...' : 'Sign Out'}
+                    onClick={handleLogout}
+                    disabled={isLoggingOut}
+                    className="text-destructive hover:bg-destructive/10"
+                  />
                 </div>
               </motion.div>
             )}
@@ -295,9 +316,14 @@ export default function Header({ onMenuClick = () => {} }) {
   );
 }
 
-function MenuAction({ icon: Icon, label, onClick, className = '' }) {
+function MenuAction({ icon: Icon, label, onClick, className = '', disabled = false }) {
   return (
-    <button onClick={onClick} className={`flex w-full items-center gap-2.5 px-4 py-2 text-sm transition-colors hover:bg-accent ${className}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex w-full items-center gap-2.5 px-4 py-2 text-sm transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
+    >
       <Icon className="h-3.5 w-3.5" /> {label}
     </button>
   );
