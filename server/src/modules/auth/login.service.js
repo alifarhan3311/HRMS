@@ -5,8 +5,10 @@
  */
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const createHttpError = require('http-errors');
 const Employee = require('../employees/employees.model');
+const Shift = require('../shifts/shifts.model');
 const Session = require('./auth.model');
 const { decryptField, generateSecureToken } = require('../../utils/crypto');
 const logger = require('../../utils/logger');
@@ -39,7 +41,7 @@ function signAccessToken(employee) {
 async function login({ email, password, userAgent, ipAddress }) {
   const employee = await Employee.findOne({ email })
     .select('+passwordHash')
-    .populate('shiftId', 'name code startTime endTime graceMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive');
+    .populate('shiftId', 'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive');
   if (!employee || employee.status !== 'active') {
     throw createHttpError(401, 'Invalid email or password.');
   }
@@ -142,9 +144,6 @@ function createSocketToken(actor) {
 async function getCurrentUser(employeeId) {
   const employee = await Employee.findById(employeeId)
     .select('-passwordHash -__v')
-    .populate('managerId', 'fullName employeeCode designation')
-    .populate('teamLeadId', 'fullName employeeCode designation')
-    .populate('shiftId', 'name code startTime endTime graceMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive')
     // Read the stored values without schema getters first. Older production
     // records may contain plaintext fields, while records encrypted with a
     // previous master key must not make the entire /auth/me request fail.
@@ -179,8 +178,40 @@ async function getCurrentUser(employeeId) {
     }
   }
 
+  // Resolve optional references independently. A malformed/deleted legacy
+  // manager, team-lead or shift reference must not turn authentication into
+  // a 500 response and lock the employee out of the entire application.
+  const safeReference = async (Model, id, select, field) => {
+    if (!id || !mongoose.isValidObjectId(id)) return null;
+    try {
+      return await Model.findById(id).select(select).lean();
+    } catch (error) {
+      logger.error('[auth] Could not load employee profile reference', {
+        employeeId: String(employee._id),
+        field,
+        referenceId: String(id),
+        error: error.message,
+      });
+      return null;
+    }
+  };
+
+  const [manager, teamLead, shift] = await Promise.all([
+    safeReference(Employee, employee.managerId, 'fullName employeeCode designation', 'managerId'),
+    safeReference(Employee, employee.teamLeadId, 'fullName employeeCode designation', 'teamLeadId'),
+    safeReference(
+      Shift,
+      employee.shiftId,
+      'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive',
+      'shiftId'
+    ),
+  ]);
+
+  user.managerId = manager;
+  user.teamLeadId = teamLead;
   user.id = employee._id;
-  user.shift = employee.shiftId || null;
+  user.shiftId = shift;
+  user.shift = shift;
   delete user.passwordHash;
   return user;
 }

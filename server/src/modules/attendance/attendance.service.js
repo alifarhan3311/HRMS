@@ -11,9 +11,16 @@
 const createHttpError = require('http-errors');
 const repository = require('./attendance.repository');
 const Employee = require('../employees/employees.model');
+const { normalizeDurationPolicy } = require('../shifts/shifts.service');
 const settingsService = require('../companySettings/companySettings.service');
 const notificationService = require('../notifications/notifications.service');
-const { buildShiftSchedule, lateMinutes: calculateShiftLate, earlyLeaveMinutes: calculateShiftEarlyLeave } = require('./shiftTime');
+const {
+  buildShiftSchedule,
+  buildFlexibleSchedule,
+  lateMinutes: calculateShiftLate,
+  arrivalStatus: calculateArrivalStatus,
+  earlyLeaveMinutes: calculateShiftEarlyLeave,
+} = require('./shiftTime');
 const { findClosure, effectivePolicy } = require('./closurePolicy');
 
 function startOfDay(date = new Date()) {
@@ -73,9 +80,10 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
   if (!attendanceExempt && !shift.workingDays.includes(schedule.dayOfWeek)) {
     throw createHttpError(422, `${shift.name} is not scheduled on this day. Contact HR if you need an exception.`);
   }
+  const isFlexible = shift.shiftType === 'flexible';
   const signInWindowStart = new Date(schedule.scheduledStart.getTime() - (4 * 60 * 60 * 1000));
   const signInWindowEnd = new Date(schedule.scheduledEnd.getTime() + (4 * 60 * 60 * 1000));
-  if (!attendanceExempt && (now < signInWindowStart || now > signInWindowEnd)) {
+  if (!attendanceExempt && !isFlexible && (now < signInWindowStart || now > signInWindowEnd)) {
     throw createHttpError(422, `Sign-in is outside your ${shift.name} window (${shift.startTime} - ${shift.endTime}).`);
   }
   const [year, month, day] = schedule.shiftDate.split('-').map(Number);
@@ -87,11 +95,11 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
   }
 
   const policy = effectivePolicy(attendanceExempt ? null : closure, shift, schedule);
-  const lateMinutes = attendanceExempt ? 0 : calcLateMinutes(now, {
-    scheduledStart: policy.effectiveStart,
-    graceMinutes: shift.graceMinutes,
-  });
-  const status = lateMinutes > 0 ? 'late' : 'present';
+  const arrival = attendanceExempt
+    ? { status: 'present', lateMinutes: 0 }
+    : calculateArrivalStatus(now, { scheduledStart: policy.effectiveStart }, shift);
+  const lateMinutes = arrival.lateMinutes;
+  const status = arrival.status;
 
   const record = existing
     ? await repository.updateById(existing._id, {
@@ -99,9 +107,11 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
         shiftDate: schedule.shiftDate,
         shiftId: shift._id || undefined,
         shiftName: shift.name,
+        shiftType: shift.shiftType || 'fixed',
         shiftStartTime: shift.startTime,
         shiftEndTime: shift.endTime,
         shiftGraceMinutes: shift.graceMinutes,
+        shiftLateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes,
         shiftRequiredMinutes: policy.requiredMinutes,
         shiftBreakMinutes: policy.breakMinutes,
         shiftHalfDayMinutes: policy.halfDayMinutes,
@@ -117,9 +127,11 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
         shiftDate: schedule.shiftDate,
         shiftId: shift._id || undefined,
         shiftName: shift.name,
+        shiftType: shift.shiftType || 'fixed',
         shiftStartTime: shift.startTime,
         shiftEndTime: shift.endTime,
         shiftGraceMinutes: shift.graceMinutes,
+        shiftLateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes,
         shiftRequiredMinutes: policy.requiredMinutes,
         shiftBreakMinutes: policy.breakMinutes,
         shiftHalfDayMinutes: policy.halfDayMinutes,
@@ -171,7 +183,10 @@ async function signOut({ employeeId, notes }, actor) {
     Employee.findOne({ _id: employeeId, companyId: actor.companyId }).populate('shiftId'),
   ]);
   const attendanceExempt = employee?.role === 'super_admin';
-  const shift = employee?.shiftId || {
+  // Use the policy snapshot captured at sign-in. Editing an assigned shift
+  // while somebody is clocked in must not change that open attendance day.
+  const shift = {
+    shiftType: record.shiftType || 'fixed',
     startTime: record.shiftStartTime,
     endTime: record.shiftEndTime,
     requiredMinutes: record.shiftRequiredMinutes || 480,
@@ -187,7 +202,10 @@ async function signOut({ employeeId, notes }, actor) {
   };
   const closure = !attendanceExempt && employee && record.shiftDate ? await findClosure(employee, actor.companyId, record.shiftDate) : null;
   const policy = effectivePolicy(closure, shift, schedule);
-  const earlyLeaveMinutes = attendanceExempt ? 0 : calcEarlyLeaveMinutes(now, { scheduledEnd: policy.effectiveEnd });
+  const isFlexible = (record.shiftType || shift.shiftType) === 'flexible';
+  const earlyLeaveMinutes = attendanceExempt || isFlexible
+    ? 0
+    : calcEarlyLeaveMinutes(now, { scheduledEnd: policy.effectiveEnd });
   const totalHours = calcTotalHours(record.signInTime, now);
   const clockMinutes = Math.max(0, Math.round((now - new Date(record.signInTime)) / 60000));
   const workedMinutes = Math.max(0, clockMinutes - (attendanceExempt ? 0 : policy.breakMinutes));
@@ -238,6 +256,9 @@ async function getTodayAttendance(employeeId, actor) {
 
 function attendanceStatus(currentStatus, workedMinutes, requiredMinutes, halfDayMinutes, isFullDayClosure = false) {
   if (isFullDayClosure) return 'holiday';
+  // A fixed-shift employee who crossed the arrival half-day boundary remains
+  // half-day even when they stay late enough to complete the raw hours.
+  if (currentStatus === 'half_day') return 'half_day';
   if (workedMinutes >= requiredMinutes) return currentStatus === 'late' ? 'late' : 'present';
   if (workedMinutes >= halfDayMinutes) return 'half_day';
   return 'absent';
@@ -252,16 +273,29 @@ async function resolveShiftContext(employeeId, companyId, now = new Date()) {
   if (employee.shiftId && !employee.shiftId.isActive) {
     throw createHttpError(422, 'Your assigned shift is inactive. Please contact HR.');
   }
-  const shift = employee.shiftId || {
+  const assignedShift = employee.shiftId || {
     _id: null,
     name: 'General Shift', code: 'GENERAL',
     startTime: settings.timing.officeStart, endTime: settings.timing.officeEnd,
-    graceMinutes: settings.timing.graceMinutes,
+    graceMinutes: 15,
+    shiftType: 'fixed',
+    lateHalfDayAfterMinutes: 150,
+    requiredMinutes: 480,
+    breakMinutes: 0,
+    halfDayMinutes: 240,
+    overtimeAfterMinutes: 480,
     workingDays: [0, 1, 2, 3, 4, 5, 6].filter(day => !settings.timing.weekendDays.includes(day)),
     isActive: true,
   };
+  const shift = {
+    ...(assignedShift.toObject ? assignedShift.toObject() : assignedShift),
+    ...normalizeDurationPolicy({}, assignedShift),
+  };
   const timeZone = settings.company?.timezone || 'Asia/Karachi';
-  return { employee, shift, schedule: buildShiftSchedule(now, shift, timeZone) };
+  const schedule = shift.shiftType === 'flexible'
+    ? buildFlexibleSchedule(now, shift, timeZone)
+    : buildShiftSchedule(now, shift, timeZone);
+  return { employee, shift, schedule };
 }
 
 function recordTiming(record, fallback) {

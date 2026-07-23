@@ -9,6 +9,7 @@
     "seed": "node scripts/seed.js",
     "bootstrap:super-admin": "node scripts/bootstrap-super-admin.js",
     "migrate:remove-finance-role": "node scripts/migrate-remove-finance-role.js",
+    "test": "node --test test/*.test.js",
     "lint": "eslint src --ext .js"
   },
   "dependencies": {

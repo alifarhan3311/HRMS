@@ -13,23 +13,30 @@ function shiftWindowMinutes(startTime, endTime) {
 }
 
 function normalizeDurationPolicy(payload, existing = {}) {
+  const shiftType = payload.shiftType || existing.shiftType || 'fixed';
   const startTime = payload.startTime || existing.startTime;
   const endTime = payload.endTime || existing.endTime;
   const windowMinutes = shiftWindowMinutes(startTime, endTime);
   const breakMinutes = Number(payload.breakMinutes ?? existing.breakMinutes ?? 0);
-  const requiredMinutes = Number(payload.requiredMinutes ?? existing.requiredMinutes ?? (windowMinutes - breakMinutes));
-  const halfDayMinutes = Number(payload.halfDayMinutes ?? existing.halfDayMinutes ?? Math.ceil(requiredMinutes / 2));
-  const overtimeAfterMinutes = Number(payload.overtimeAfterMinutes ?? existing.overtimeAfterMinutes ?? requiredMinutes);
-  if (requiredMinutes + breakMinutes > windowMinutes) {
+  const isFlexible = shiftType === 'flexible';
+  const requiredMinutes = isFlexible ? 480 : Math.max(60, windowMinutes - breakMinutes);
+  const graceMinutes = isFlexible ? 0 : (windowMinutes > 420 ? 15 : 0);
+  const lateHalfDayAfterMinutes = isFlexible ? 0 : (windowMinutes > 420 ? 150 : 120);
+  const halfDayMinutes = isFlexible ? 240 : Math.ceil(requiredMinutes / 2);
+  const overtimeAfterMinutes = requiredMinutes;
+  if (!isFlexible && requiredMinutes + breakMinutes > windowMinutes) {
     throw createHttpError(422, 'Required duty plus break time cannot exceed the shift window.');
   }
-  if (halfDayMinutes > requiredMinutes) {
-    throw createHttpError(422, 'Half-day threshold cannot exceed required duty minutes.');
-  }
-  if (overtimeAfterMinutes < requiredMinutes) {
-    throw createHttpError(422, 'Overtime threshold cannot be less than required duty minutes.');
-  }
-  return { ...payload, requiredMinutes, breakMinutes, halfDayMinutes, overtimeAfterMinutes };
+  return {
+    ...payload,
+    shiftType,
+    requiredMinutes,
+    breakMinutes,
+    graceMinutes,
+    lateHalfDayAfterMinutes,
+    halfDayMinutes,
+    overtimeAfterMinutes,
+  };
 }
 
 async function listShifts(actor, { active } = {}) {
@@ -37,9 +44,9 @@ async function listShifts(actor, { active } = {}) {
   if (existingCount === 0) {
     try {
       await Shift.insertMany([
-        { name: 'Day Shift', code: 'DAY', startTime: '09:00', endTime: '17:00', graceMinutes: 15, workingDays: [1, 2, 3, 4, 5], companyId: actor.companyId, createdBy: actor.id },
-        { name: 'Evening Shift', code: 'EVENING', startTime: '18:00', endTime: '02:00', graceMinutes: 15, workingDays: [1, 2, 3, 4, 5], companyId: actor.companyId, createdBy: actor.id },
-        { name: 'Night Shift', code: 'NIGHT', startTime: '21:00', endTime: '05:00', graceMinutes: 15, workingDays: [1, 2, 3, 4, 5], companyId: actor.companyId, createdBy: actor.id },
+        { ...normalizeDurationPolicy({ name: 'Day Shift', code: 'DAY', shiftType: 'fixed', startTime: '09:00', endTime: '17:00', workingDays: [1, 2, 3, 4, 5] }), companyId: actor.companyId, createdBy: actor.id },
+        { ...normalizeDurationPolicy({ name: 'Evening Shift', code: 'EVENING', shiftType: 'fixed', startTime: '18:00', endTime: '02:00', workingDays: [1, 2, 3, 4, 5] }), companyId: actor.companyId, createdBy: actor.id },
+        { ...normalizeDurationPolicy({ name: 'Night Shift', code: 'NIGHT', shiftType: 'fixed', startTime: '21:00', endTime: '05:00', workingDays: [1, 2, 3, 4, 5] }), companyId: actor.companyId, createdBy: actor.id },
       ]);
     } catch (error) {
       if (error?.code !== 11000) throw error;
@@ -47,7 +54,19 @@ async function listShifts(actor, { active } = {}) {
   }
   const filter = { companyId: actor.companyId };
   if (active !== undefined) filter.isActive = active === true || active === 'true';
-  return Shift.find(filter).sort({ startTime: 1, name: 1 }).lean();
+  const shifts = await Shift.find(filter).sort({ startTime: 1, name: 1 });
+  const updates = shifts.map((shift) => {
+    const normalized = normalizeDurationPolicy({}, shift);
+    Object.assign(shift, normalized);
+    return {
+      updateOne: {
+        filter: { _id: shift._id },
+        update: { $set: normalized },
+      },
+    };
+  });
+  if (updates.length) await Shift.bulkWrite(updates);
+  return shifts.map(shift => shift.toObject());
 }
 
 async function createShift(payload, actor) {
@@ -80,4 +99,4 @@ async function deleteShift(id, actor) {
   return { message: 'Shift deleted.' };
 }
 
-module.exports = { listShifts, createShift, updateShift, deleteShift };
+module.exports = { listShifts, createShift, updateShift, deleteShift, normalizeDurationPolicy };

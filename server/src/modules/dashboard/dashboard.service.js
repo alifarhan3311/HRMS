@@ -60,7 +60,7 @@ async function getEmployeeDashboard(user) {
 
   const [employee, settings] = await Promise.all([
     Employee.findById(user.id)
-      .populate('shiftId', 'name code startTime endTime graceMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive')
+      .populate('shiftId', 'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive')
       .lean(),
     settingsService.getPolicy(user.companyId),
   ]);

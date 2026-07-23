@@ -6,7 +6,7 @@ import { toast } from '../../../utils/toast';
 import { useCreateShiftMutation, useDeleteShiftMutation, useListShiftsQuery, useUpdateShiftMutation } from '../../shifts/api/shifts.api';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const EMPTY = { name: '', code: '', startTime: '09:00', endTime: '17:00', graceMinutes: 15, requiredMinutes: 480, breakMinutes: 0, halfDayMinutes: 240, overtimeAfterMinutes: 480, workingDays: [1, 2, 3, 4, 5], isActive: true };
+const EMPTY = { name: '', code: '', shiftType: 'fixed', startTime: '09:00', endTime: '17:00', graceMinutes: 15, lateHalfDayAfterMinutes: 150, requiredMinutes: 480, breakMinutes: 0, halfDayMinutes: 240, overtimeAfterMinutes: 480, workingDays: [1, 2, 3, 4, 5], isActive: true };
 
 function duration(start, end) {
   const [sh, sm] = start.split(':').map(Number);
@@ -34,20 +34,36 @@ export default function ShiftSettings() {
   const shifts = data?.data || [];
   const set = (field, value) => setForm(previous => ({ ...previous, [field]: value }));
 
+  function applyPolicy(next) {
+    if (next.shiftType === 'flexible') {
+      return { ...next, graceMinutes: 0, lateHalfDayAfterMinutes: 0, requiredMinutes: 480, halfDayMinutes: 240, overtimeAfterMinutes: 480 };
+    }
+    const windowMinutes = durationMinutes(next.startTime, next.endTime);
+    const requiredMinutes = Math.max(60, windowMinutes - Number(next.breakMinutes || 0));
+    return {
+      ...next,
+      graceMinutes: windowMinutes > 420 ? 15 : 0,
+      lateHalfDayAfterMinutes: windowMinutes > 420 ? 150 : 120,
+      requiredMinutes,
+      halfDayMinutes: Math.ceil(requiredMinutes / 2),
+      overtimeAfterMinutes: requiredMinutes,
+    };
+  }
+
+  function setShiftType(value) {
+    setForm(previous => applyPolicy({
+      ...previous,
+      shiftType: value,
+      ...(value === 'flexible' && { startTime: '00:00', endTime: '08:00', breakMinutes: 0 }),
+    }));
+  }
+
   function setTime(field, value) {
-    setForm(previous => {
-      const next = { ...previous, [field]: value };
-      const requiredMinutes = Math.max(60, durationMinutes(next.startTime, next.endTime) - Number(next.breakMinutes || 0));
-      return { ...next, requiredMinutes, halfDayMinutes: Math.ceil(requiredMinutes / 2), overtimeAfterMinutes: requiredMinutes };
-    });
+    setForm(previous => applyPolicy({ ...previous, [field]: value }));
   }
 
   function setBreak(value) {
-    setForm(previous => {
-      const breakMinutes = Number(value || 0);
-      const requiredMinutes = Math.max(60, durationMinutes(previous.startTime, previous.endTime) - breakMinutes);
-      return { ...previous, breakMinutes: value, requiredMinutes, halfDayMinutes: Math.ceil(requiredMinutes / 2), overtimeAfterMinutes: requiredMinutes };
-    });
+    setForm(previous => applyPolicy({ ...previous, breakMinutes: value }));
   }
 
   function toggleDay(day) {
@@ -56,13 +72,13 @@ export default function ShiftSettings() {
 
   function edit(shift) {
     setEditingId(shift._id);
-    setForm({ name: shift.name, code: shift.code, startTime: shift.startTime, endTime: shift.endTime, graceMinutes: shift.graceMinutes, requiredMinutes: shift.requiredMinutes || 480, breakMinutes: shift.breakMinutes || 0, halfDayMinutes: shift.halfDayMinutes || Math.ceil((shift.requiredMinutes || 480) / 2), overtimeAfterMinutes: shift.overtimeAfterMinutes || shift.requiredMinutes || 480, workingDays: shift.workingDays, isActive: shift.isActive });
+    setForm({ name: shift.name, code: shift.code, shiftType: shift.shiftType || 'fixed', startTime: shift.startTime, endTime: shift.endTime, graceMinutes: shift.graceMinutes, lateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes ?? 150, requiredMinutes: shift.requiredMinutes || 480, breakMinutes: shift.breakMinutes || 0, halfDayMinutes: shift.halfDayMinutes || Math.ceil((shift.requiredMinutes || 480) / 2), overtimeAfterMinutes: shift.overtimeAfterMinutes || shift.requiredMinutes || 480, workingDays: shift.workingDays, isActive: shift.isActive });
   }
 
   async function save(event) {
     event.preventDefault();
     try {
-      const numeric = { ...form, graceMinutes: Number(form.graceMinutes), requiredMinutes: Number(form.requiredMinutes), breakMinutes: Number(form.breakMinutes), halfDayMinutes: Number(form.halfDayMinutes), overtimeAfterMinutes: Number(form.overtimeAfterMinutes) };
+      const numeric = { ...form, graceMinutes: Number(form.graceMinutes), lateHalfDayAfterMinutes: Number(form.lateHalfDayAfterMinutes), requiredMinutes: Number(form.requiredMinutes), breakMinutes: Number(form.breakMinutes), halfDayMinutes: Number(form.halfDayMinutes), overtimeAfterMinutes: Number(form.overtimeAfterMinutes) };
       if (editingId) await updateShift({ id: editingId, ...numeric }).unwrap();
       else await createShift(numeric).unwrap();
       toast.success(editingId ? 'Shift updated.' : 'Shift created.');
@@ -83,23 +99,25 @@ export default function ShiftSettings() {
       <form onSubmit={save} className="glass-card space-y-5 p-6">
         <div className="border-b border-border pb-3">
           <h3 className="flex items-center gap-2 font-semibold"><Clock3 className="h-5 w-5 text-primary" /> {editingId ? 'Edit Shift' : 'Create Shift'}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">End time earlier than start time is treated as an overnight shift.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Fixed shifts follow their exact start time. Flexible shifts may complete 8 hours from any start time.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Input label="Shift Name" required value={form.name} onChange={event => set('name', event.target.value)} placeholder="Night Shift" />
           <Input label="Code" required value={form.code} onChange={event => set('code', event.target.value.toUpperCase())} placeholder="NIGHT" />
-          <Input label="Start" type="time" required value={form.startTime} onChange={event => setTime('startTime', event.target.value)} />
-          <Input label="End" type="time" required value={form.endTime} onChange={event => setTime('endTime', event.target.value)} />
-          <Input label="Grace (minutes)" type="number" min="0" max="180" value={form.graceMinutes} onChange={event => set('graceMinutes', event.target.value)} />
-          <Input label="Required Duty (minutes)" type="number" min="60" max="1440" value={form.requiredMinutes} onChange={event => set('requiredMinutes', event.target.value)} />
-          <Input label="Break (minutes)" type="number" min="0" max="240" value={form.breakMinutes} onChange={event => setBreak(event.target.value)} />
-          <Input label="Half Day At (minutes)" type="number" min="30" max="720" value={form.halfDayMinutes} onChange={event => set('halfDayMinutes', event.target.value)} />
-          <Input label="Overtime After (minutes)" type="number" min="60" max="1440" value={form.overtimeAfterMinutes} onChange={event => set('overtimeAfterMinutes', event.target.value)} />
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Shift Type</span><select value={form.shiftType} onChange={event => setShiftType(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3"><option value="fixed">Fixed timing</option><option value="flexible">Flexible 8 hours</option></select></label>
+          <Input label="Start" type="time" required disabled={form.shiftType === 'flexible'} value={form.startTime} onChange={event => setTime('startTime', event.target.value)} />
+          <Input label="End" type="time" required disabled={form.shiftType === 'flexible'} value={form.endTime} onChange={event => setTime('endTime', event.target.value)} />
+          <Input label="Grace (automatic)" type="number" readOnly value={form.graceMinutes} />
+          <Input label="Late Half Day After" type="number" readOnly value={form.lateHalfDayAfterMinutes} />
+          <Input label="Required Duty (automatic)" type="number" readOnly value={form.requiredMinutes} />
+          <Input label="Break (minutes)" type="number" min="0" max="240" disabled={form.shiftType === 'flexible'} value={form.breakMinutes} onChange={event => setBreak(event.target.value)} />
+          <Input label="Worked Half Day At" type="number" readOnly value={form.halfDayMinutes} />
+          <Input label="Overtime After" type="number" readOnly value={form.overtimeAfterMinutes} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-2 text-sm text-muted-foreground">Working days:</span>
           {DAYS.map((day, index) => <button type="button" key={day} onClick={() => toggleDay(index)} className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${form.workingDays.includes(index) ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground'}`}>{day}</button>)}
-          <span className="ml-auto rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">Duration: {duration(form.startTime, form.endTime)}</span>
+          <span className="ml-auto rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">{form.shiftType === 'flexible' ? 'Any start time · 8h required' : `Duration: ${duration(form.startTime, form.endTime)}`}</span>
         </div>
         <div className="flex justify-end gap-2">
           {editingId && <Button type="button" variant="ghost" onClick={() => { setEditingId(null); setForm(EMPTY); }}>Cancel</Button>}
@@ -112,7 +130,7 @@ export default function ShiftSettings() {
           <div key={shift._id} className="flex flex-col gap-3 border-b border-border p-4 last:border-0 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="flex items-center gap-2"><p className="font-medium">{shift.name}</p><span className="rounded bg-muted px-2 py-0.5 text-xs">{shift.code}</span><span className={`rounded-full px-2 py-0.5 text-xs ${shift.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{shift.isActive ? 'Active' : 'Inactive'}</span></div>
-              <p className="mt-1 text-sm text-muted-foreground">{shift.startTime} – {shift.endTime} · Window {duration(shift.startTime, shift.endTime)} · Required {shift.requiredMinutes || 480}m · Break {shift.breakMinutes || 0}m · Half day {shift.halfDayMinutes || Math.ceil((shift.requiredMinutes || 480) / 2)}m · Grace {shift.graceMinutes}m · {shift.workingDays.map(day => DAYS[day]).join(', ')}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{shift.shiftType === 'flexible' ? 'Flexible · any start time' : `${shift.startTime} – ${shift.endTime} · Window ${duration(shift.startTime, shift.endTime)}`} · Required {shift.requiredMinutes || 480}m · Worked half day {shift.halfDayMinutes || 240}m · Grace {shift.graceMinutes}m{shift.shiftType !== 'flexible' ? ` · Late half day after ${shift.lateHalfDayAfterMinutes || 150}m` : ''} · {shift.workingDays.map(day => DAYS[day]).join(', ')}</p>
             </div>
             <div className="flex gap-2">
               <Button size="sm" variant="outline" onClick={() => edit(shift)} className="gap-1"><Pencil className="h-3.5 w-3.5" /> Edit</Button>

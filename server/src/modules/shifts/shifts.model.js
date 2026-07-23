@@ -3,9 +3,11 @@ const mongoose = require('mongoose');
 const shiftSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 100 },
   code: { type: String, required: true, trim: true, uppercase: true, maxlength: 20 },
+  shiftType: { type: String, enum: ['fixed', 'flexible'], default: 'fixed' },
   startTime: { type: String, required: true, match: /^([01]\d|2[0-3]):[0-5]\d$/ },
   endTime: { type: String, required: true, match: /^([01]\d|2[0-3]):[0-5]\d$/ },
   graceMinutes: { type: Number, default: 15, min: 0, max: 180 },
+  lateHalfDayAfterMinutes: { type: Number, default: 150, min: 0, max: 720 },
   requiredMinutes: { type: Number, default: 480, min: 60, max: 1440 },
   breakMinutes: { type: Number, default: 0, min: 0, max: 240 },
   halfDayMinutes: { type: Number, default: 240, min: 30, max: 720 },

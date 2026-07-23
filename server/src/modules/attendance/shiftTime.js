@@ -49,9 +49,40 @@ function buildShiftSchedule(now, shift, timeZone) {
   return { shiftDate, scheduledStart, scheduledEnd, overnight, dayOfWeek, timeZone };
 }
 
+function buildFlexibleSchedule(now, shift, timeZone) {
+  const local = zonedParts(now, timeZone);
+  const shiftDate = `${local.year}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
+  const requiredMinutes = Number(shift.requiredMinutes || 480);
+  const breakMinutes = Number(shift.breakMinutes || 0);
+  return {
+    shiftDate,
+    scheduledStart: new Date(now),
+    scheduledEnd: new Date(now.getTime() + ((requiredMinutes + breakMinutes) * 60000)),
+    overnight: false,
+    dayOfWeek: new Date(Date.UTC(local.year, local.month - 1, local.day, 12)).getUTCDay(),
+    timeZone,
+  };
+}
+
 function lateMinutes(signInTime, schedule, graceMinutes = 0) {
   const deadline = new Date(schedule.scheduledStart.getTime() + graceMinutes * 60000);
   return signInTime <= deadline ? 0 : Math.round((signInTime - deadline) / 60000);
+}
+
+function arrivalStatus(signInTime, schedule, shift = {}) {
+  if (shift.shiftType === 'flexible') return { status: 'present', lateMinutes: 0, arrivalMinutes: 0 };
+  const arrivalMinutes = Math.max(
+    0,
+    Math.floor((signInTime - new Date(schedule.scheduledStart)) / 60000)
+  );
+  const late = lateMinutes(signInTime, schedule, Number(shift.graceMinutes || 0));
+  return {
+    status: arrivalMinutes > Number(shift.lateHalfDayAfterMinutes || 0)
+      ? 'half_day'
+      : late > 0 ? 'late' : 'present',
+    lateMinutes: late,
+    arrivalMinutes,
+  };
 }
 
 function earlyLeaveMinutes(signOutTime, schedule) {
@@ -67,4 +98,4 @@ function boundaryForShiftDate(shiftDate, time, shift, schedule) {
   return zonedDateTimeToUtc({ ...date, hour, minute }, schedule.timeZone);
 }
 
-module.exports = { buildShiftSchedule, lateMinutes, earlyLeaveMinutes, boundaryForShiftDate };
+module.exports = { buildShiftSchedule, buildFlexibleSchedule, lateMinutes, arrivalStatus, earlyLeaveMinutes, boundaryForShiftDate };
