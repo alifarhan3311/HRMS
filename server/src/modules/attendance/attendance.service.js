@@ -313,7 +313,7 @@ function recordTiming(record, fallback) {
 
 async function assertCanViewEmployeeAttendance(actor, employeeId) {
   if (String(employeeId) === String(actor.id)) return;
-  if (!['super_admin', 'hr', 'manager', 'team_lead'].includes(actor.role)) {
+  if (!['super_admin', 'hr', 'manager'].includes(actor.role)) {
     throw createHttpError(403, 'You can only view your own attendance.');
   }
   const employee = await Employee.findById(employeeId).select('companyId role managerId teamLeadId');
@@ -326,15 +326,14 @@ async function assertCanViewEmployeeAttendance(actor, employeeId) {
   if (actor.role === 'manager' && String(employee.managerId || '') !== String(actor.id)) {
     throw createHttpError(403, 'You can only view attendance for employees reporting to you.');
   }
-  if (actor.role === 'team_lead' && String(employee.teamLeadId || '') !== String(actor.id)) {
-    throw createHttpError(403, 'You can only view attendance for your team members.');
-  }
 }
 
 async function visibleAttendanceEmployeeIds(actor, includeSelf = true) {
+  if (!['super_admin', 'hr', 'manager'].includes(actor.role)) {
+    return includeSelf ? [actor.id] : [];
+  }
   const filter = { companyId: actor.companyId };
   if (actor.role === 'manager') filter.managerId = actor.id;
-  else if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
   else if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   const ids = await Employee.find(filter).distinct('_id');
   if (includeSelf && !ids.some((id) => String(id) === String(actor.id))) ids.push(actor.id);
@@ -372,7 +371,7 @@ async function listAttendances(query, actor) {
   const filter = { companyId: actor.companyId };
 
   // Users without HR/team authority only see their own records.
-  if (!['hr', 'super_admin', 'manager', 'team_lead'].includes(actor.role)) {
+  if (!['hr', 'super_admin', 'manager'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
     await assertCanViewEmployeeAttendance(actor, employeeId);

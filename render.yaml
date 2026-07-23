@@ -34,3 +34,5 @@ services:
         value: "21600000"
       - key: ATTENDANCE_RECONCILIATION_DAYS
         value: "7"
+      - key: DB_SYNC_INDEXES
+        value: "true"

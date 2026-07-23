@@ -23,6 +23,8 @@ const authSchema = new mongoose.Schema(
   }
 );
 
-authSchema.index({ companyId: 1 });
+authSchema.index({ employeeId: 1, revoked: 1, expiresAt: 1 });
+authSchema.index({ revoked: 1, expiresAt: 1 });
+authSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 module.exports = mongoose.model('Session', authSchema);

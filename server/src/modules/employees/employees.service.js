@@ -158,6 +158,14 @@ function redactManagerPrivateFields(employee) {
   return visible;
 }
 
+function enforceLeaveBalanceVisibility(employee, actor) {
+  if (['manager', 'hr', 'super_admin'].includes(actor.role)) return employee;
+  const visible = { ...employee };
+  delete visible.leaveBalance;
+  delete visible.enabledLeaveTypes;
+  return visible;
+}
+
 function balanceFromPolicy(entitlements, existingBalance = {}, carriedForward = {}) {
   return Object.fromEntries(LEAVE_BALANCE_TYPES.map((type) => [type, {
     available: Number(entitlements?.[type] || 0) + Number(carriedForward?.[type] || 0),
@@ -281,9 +289,10 @@ async function getEmployeeById(id, actor) {
     validCarriedForward(record)
   );
   obj.tenure = obj.joiningDate ? calcTenure(obj.joiningDate) : null;
-  return ['manager', 'team_lead'].includes(actor.role) && String(actor.id) !== String(obj._id)
+  const visible = ['manager', 'team_lead'].includes(actor.role) && String(actor.id) !== String(obj._id)
     ? redactManagerPrivateFields(obj)
     : obj;
+  return enforceLeaveBalanceVisibility(visible, actor);
 }
 
 async function listEmployees(query, actor) {
@@ -355,7 +364,10 @@ async function listEmployees(query, actor) {
       ),
       tenure: obj.joiningDate ? calcTenure(obj.joiningDate) : null,
     };
-    return ['manager', 'team_lead'].includes(actor.role) ? redactManagerPrivateFields(item) : item;
+    const visible = ['manager', 'team_lead'].includes(actor.role)
+      ? redactManagerPrivateFields(item)
+      : item;
+    return enforceLeaveBalanceVisibility(visible, actor);
   });
 
   return result;

@@ -101,6 +101,10 @@ const employeesSchema = new mongoose.Schema(
 );
 
 employeesSchema.index({ companyId: 1 });
+employeesSchema.index({ companyId: 1, status: 1, createdAt: -1 });
+employeesSchema.index({ companyId: 1, department: 1, role: 1, status: 1 });
+employeesSchema.index({ managerId: 1, status: 1 });
+employeesSchema.index({ teamLeadId: 1, status: 1 });
 employeesSchema.index(
   { employeeCardNumber: 1 },
   { unique: true, partialFilterExpression: { employeeCardNumber: { $gt: '' } } }

@@ -55,16 +55,24 @@ async function listShifts(actor, { active } = {}) {
   const filter = { companyId: actor.companyId };
   if (active !== undefined) filter.isActive = active === true || active === 'true';
   const shifts = await Shift.find(filter).sort({ startTime: 1, name: 1 });
-  const updates = shifts.map((shift) => {
+  const policyFields = [
+    'shiftType', 'requiredMinutes', 'breakMinutes', 'graceMinutes',
+    'lateHalfDayAfterMinutes', 'halfDayMinutes', 'overtimeAfterMinutes',
+  ];
+  const updates = shifts.flatMap((shift) => {
     const normalized = normalizeDurationPolicy({}, shift);
+    const changed = policyFields.some(field => Number.isFinite(Number(normalized[field]))
+      ? Number(shift[field]) !== Number(normalized[field])
+      : shift[field] !== normalized[field]);
     Object.assign(shift, normalized);
-    return {
+    return changed ? [{
       updateOne: {
         filter: { _id: shift._id },
         update: { $set: normalized },
       },
-    };
+    }] : [];
   });
+  // Legacy shifts are migrated once; normal list reads remain read-only.
   if (updates.length) await Shift.bulkWrite(updates);
   return shifts.map(shift => shift.toObject());
 }

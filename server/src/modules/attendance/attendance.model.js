@@ -90,6 +90,8 @@ attendanceSchema.index(
   { unique: true, partialFilterExpression: { shiftDate: { $type: 'string' } } }
 );
 attendanceSchema.index({ companyId: 1, date: 1 });
+attendanceSchema.index({ companyId: 1, employeeId: 1, date: -1 });
+attendanceSchema.index({ companyId: 1, status: 1, date: -1 });
 attendanceSchema.index({ employeeId: 1, status: 1 });
 attendanceSchema.index({ employeeId: 1, signOutTime: 1, signInTime: -1 });
 

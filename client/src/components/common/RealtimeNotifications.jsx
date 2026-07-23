@@ -28,6 +28,7 @@ export default function RealtimeNotifications() {
   const dispatch = useDispatch();
   const seenNotificationIds = useRef(new Set());
   const pollingInitialized = useRef(false);
+  const socketReadyOnce = useRef(false);
   const { data: pollingData } = useListNotificationsQuery(
     { limit: 5 },
     { skip: !user?.id, pollingInterval: 30000, refetchOnFocus: true },
@@ -78,7 +79,10 @@ export default function RealtimeNotifications() {
     const onSocketReady = () => {
       // Pull anything created during a temporary disconnect immediately.
       refreshNotifications();
-      dispatch(api.util.invalidateTags(ALL_LIVE_TAGS));
+      // Initial page queries are already loading. Only a later reconnect
+      // needs a broad catch-up refresh for changes missed while disconnected.
+      if (socketReadyOnce.current) dispatch(api.util.invalidateTags(ALL_LIVE_TAGS));
+      socketReadyOnce.current = true;
     };
     const onConnectError = (error) => {
       if (import.meta.env.DEV) {

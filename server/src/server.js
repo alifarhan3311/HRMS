@@ -6,7 +6,7 @@
 require('dotenv').config();
 const http = require('http');
 const app = require('./app');
-const { connectDatabase, disconnectDatabase } = require('./database/db');
+const { connectDatabase, disconnectDatabase, ensureDatabaseIndexes } = require('./database/db');
 const { initSocket } = require('./config/socket');
 const { startHrAutomation } = require('./jobs/hrAutomation');
 const logger = require('./utils/logger');
@@ -27,13 +27,16 @@ async function start() {
   // cloud liveness endpoint responsive during a slow/transient database
   // connection instead of exposing a platform-level 502 while booting.
   connectDatabase()
-    .then(() => {
+    .then(async () => {
+      if (process.env.DB_SYNC_INDEXES !== 'false') {
+        await ensureDatabaseIndexes();
+      }
       stopHrAutomation = startHrAutomation();
     })
     .catch((err) => {
       // API requests use the cached connection gate in app.js and can retry
       // after a transient startup failure; the process itself stays healthy.
-      logger.error('[server] Initial database connection failed; API requests will retry', {
+      logger.error('[server] Database initialization failed; API requests will continue', {
         error: err.message,
       });
     });

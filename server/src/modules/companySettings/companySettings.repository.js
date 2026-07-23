@@ -1,11 +1,16 @@
 const CompanySettings = require('./companySettings.model');
 
 async function getOrCreate(companyId) {
-  const settings = await CompanySettings.findOneAndUpdate(
-    { companyId },
-    { $setOnInsert: { companyId } },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
-  );
+  // Reads dominate this hot path (attendance, dashboard, settings). Avoid an
+  // upsert/write lock for every read; only create when the document is absent.
+  let settings = await CompanySettings.findOne({ companyId });
+  if (!settings) {
+    settings = await CompanySettings.findOneAndUpdate(
+      { companyId },
+      { $setOnInsert: { companyId } },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
+  }
   // Earlier Canada-holiday work temporarily made the whole company timezone
   // Canadian. Operations are Pakistan-based; migrate that accidental value.
   if (settings.company?.timezone?.startsWith('America/')) {

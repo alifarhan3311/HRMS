@@ -46,6 +46,8 @@ const leavesSchema = new mongoose.Schema(
 );
 
 leavesSchema.index({ companyId: 1, status: 1 });
+leavesSchema.index({ companyId: 1, status: 1, createdAt: -1 });
+leavesSchema.index({ companyId: 1, currentStage: 1, status: 1, createdAt: -1 });
 leavesSchema.index({ employeeId: 1, startDate: -1 });
 
 module.exports = mongoose.model('LeaveRequest', leavesSchema);

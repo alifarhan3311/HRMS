@@ -155,8 +155,36 @@ async function disconnectDatabase() {
   }
 }
 
+async function ensureDatabaseIndexes() {
+  const modelNames = mongoose.modelNames();
+  const results = await Promise.allSettled(
+    modelNames.map(name => mongoose.model(name).createIndexes())
+  );
+  const conflicts = results
+    .map((result, index) => ({ result, model: modelNames[index] }))
+    .filter(({ result }) => result.status === 'rejected'
+      && [85, 86].includes(result.reason?.code));
+  conflicts.forEach(({ model, result }) => logger.warn('[database] Legacy index options conflict; existing index preserved', {
+    model,
+    error: result.reason?.message || String(result.reason),
+  }));
+  const failures = results
+    .map((result, index) => ({ result, model: modelNames[index] }))
+    .filter(({ result }) => result.status === 'rejected'
+      && ![85, 86].includes(result.reason?.code));
+  if (failures.length) {
+    failures.forEach(({ model, result }) => logger.error('[database] Index creation failed', {
+      model,
+      error: result.reason?.message || String(result.reason),
+    }));
+    throw new Error(`Index creation failed for ${failures.length} model(s).`);
+  }
+  logger.info('[database] Model indexes verified', { models: modelNames.length });
+}
+
 module.exports = {
   connectDatabase,
   disconnectDatabase,
+  ensureDatabaseIndexes,
   connection: mongoose.connection,
 };

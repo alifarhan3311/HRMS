@@ -114,7 +114,10 @@ async function refresh({ rawRefreshToken }) {
 
 async function logout({ rawRefreshToken }) {
   if (!rawRefreshToken) return;
-  const sessions = await Session.find({ revoked: false });
+  const sessions = await Session.find({
+    revoked: false,
+    expiresAt: { $gt: new Date() },
+  }).limit(500);
   const bcrypt_ = require('bcrypt');
   for (const session of sessions) {
     // eslint-disable-next-line no-await-in-loop

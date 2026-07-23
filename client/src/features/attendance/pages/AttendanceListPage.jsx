@@ -366,7 +366,8 @@ export default function AttendanceListPage() {
   const { user } = useSelector((s) => s.auth);
   const isAdminHR = ['hr', 'super_admin'].includes(user?.role);
   const isManagerUp = ['hr', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
-  const canSelectEmployee = isManagerUp;
+  const canSelectEmployee = ['manager', 'hr', 'super_admin'].includes(user?.role);
+  const canViewLeaveBalances = canSelectEmployee;
 
   const [ym, setYm] = useState(nowYM());
   const [reportRange, setReportRange] = useState(() => presetRange('month'));
@@ -395,6 +396,7 @@ export default function AttendanceListPage() {
   });
 
   const selectedEmployeeId = canSelectEmployee ? (filters.employeeId || user?.id) : user?.id;
+  const viewedEmployee = employees.find(employee => employee._id === selectedEmployeeId);
   const monthParams = {
     year: ym.year,
     month: ym.month,
@@ -633,6 +635,36 @@ export default function AttendanceListPage() {
           <p className="mt-2 text-xs text-muted-foreground">
             Showing: <span className="font-medium text-foreground">{selectedEmployee?.fullName || `${user?.fullName || 'My'} attendance`}</span>
           </p>
+        </div>
+      )}
+
+      {canViewLeaveBalances && viewedEmployee && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {[
+            ['Casual Leave', 'casual', 'bg-sky-500/10 text-sky-600'],
+            ['Sick Leave', 'sick', 'bg-rose-500/10 text-rose-600'],
+          ].map(([label, type, accent]) => {
+            const balance = viewedEmployee.leaveBalance?.[type] || {};
+            const total = Number(balance.available || 0);
+            const used = Number(balance.used || 0);
+            const remaining = Math.max(0, total - used);
+            return (
+              <div key={type} className="glass-card overflow-hidden p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{label}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{viewedEmployee.fullName}</p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${accent}`}>{remaining} remaining</span>
+                </div>
+                <div className="mt-5 grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-muted/20 py-3 text-center">
+                  <div><p className="text-lg font-bold">{total}</p><p className="text-[11px] text-muted-foreground">Total</p></div>
+                  <div><p className="text-lg font-bold text-amber-600">{used}</p><p className="text-[11px] text-muted-foreground">Used</p></div>
+                  <div><p className="text-lg font-bold text-emerald-600">{remaining}</p><p className="text-[11px] text-muted-foreground">Remaining</p></div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

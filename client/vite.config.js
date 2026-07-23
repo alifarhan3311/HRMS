@@ -6,6 +6,20 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    build: {
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-state': ['@reduxjs/toolkit', 'react-redux', 'axios'],
+            'vendor-ui': ['framer-motion', 'lucide-react'],
+            'vendor-charts': ['recharts'],
+            'vendor-realtime': ['socket.io-client'],
+          },
+        },
+      },
+    },
     server: {
       port: 5173,
       host: true,
