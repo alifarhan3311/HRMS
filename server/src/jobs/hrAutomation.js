@@ -215,6 +215,13 @@ async function reconcileAttendance(now = new Date()) {
       date: { $gte: date, $lte: dayEnd },
       signInTime: { $exists: true },
       signOutTime: { $exists: false },
+      // Overnight and late shifts can still be legitimately open when the
+      // calendar-day automation runs. Do not flag a missed sign-out until the
+      // employee's own scheduled shift end has actually passed.
+      $or: [
+        { scheduledEnd: { $lte: now } },
+        { scheduledEnd: { $exists: false } },
+      ],
       status: { $nin: ['on_leave', 'holiday', 'weekend'] },
     }, {
       $set: {

@@ -26,6 +26,7 @@ test('fixed shifts of seven hours or less have no grace and use a 120 minute hal
   assert.equal(shift.requiredMinutes, 390);
   assert.equal(shift.graceMinutes, 0);
   assert.equal(shift.lateHalfDayAfterMinutes, 120);
+  assert.equal(arrivalStatus(new Date(start.getTime() + 59 * 1000), schedule, shift).status, 'present');
   assert.equal(arrivalStatus(new Date(start.getTime() + 1 * 60000), schedule, shift).status, 'late');
   assert.equal(arrivalStatus(new Date(start.getTime() + 121 * 60000), schedule, shift).status, 'half_day');
 });

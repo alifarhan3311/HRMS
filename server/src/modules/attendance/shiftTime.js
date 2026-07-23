@@ -66,7 +66,10 @@ function buildFlexibleSchedule(now, shift, timeZone) {
 
 function lateMinutes(signInTime, schedule, graceMinutes = 0) {
   const deadline = new Date(schedule.scheduledStart.getTime() + graceMinutes * 60000);
-  return signInTime <= deadline ? 0 : Math.round((signInTime - deadline) / 60000);
+  // Attendance is displayed and configured at minute precision. Seconds within
+  // the deadline minute (for example 10:00:45 for a 10:00 shift) must not turn
+  // into a late minute; lateness starts when the next full minute begins.
+  return signInTime <= deadline ? 0 : Math.floor((signInTime - deadline) / 60000);
 }
 
 function arrivalStatus(signInTime, schedule, shift = {}) {

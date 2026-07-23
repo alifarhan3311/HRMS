@@ -45,7 +45,7 @@ function calcLateMinutes(signInTime, timing) {
   const graceDeadline = new Date(officeStart.getTime() + timing.graceMinutes * 60 * 1000);
 
   if (signIn <= graceDeadline) return 0;
-  return Math.round((signIn - graceDeadline) / 60000);
+  return Math.floor((signIn - graceDeadline) / 60000);
 }
 
 function calcEarlyLeaveMinutes(signOutTime, timing) {
