@@ -28,6 +28,7 @@ const attendanceSchema = new mongoose.Schema(
     shiftDate: { type: String },
     shiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift' },
     shiftName: { type: String },
+    employeeDepartment: { type: String },
     shiftType: { type: String, enum: ['fixed', 'flexible'], default: 'fixed' },
     shiftStartTime: { type: String },
     shiftEndTime: { type: String },
@@ -90,5 +91,6 @@ attendanceSchema.index(
 );
 attendanceSchema.index({ companyId: 1, date: 1 });
 attendanceSchema.index({ employeeId: 1, status: 1 });
+attendanceSchema.index({ employeeId: 1, signOutTime: 1, signInTime: -1 });
 
 module.exports = mongoose.model('Attendance', attendanceSchema);

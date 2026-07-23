@@ -33,7 +33,7 @@ function timeAgo(value) {
   return `${Math.floor(seconds / 86400)}d ago`;
 }
 
-export default function Header({ onMenuClick = () => {} }) {
+export default function Header({ onMenuClick = () => {}, onLogoutLoadingChange = () => {} }) {
   const { user } = useSelector(state => state.auth);
   const { theme, toggleTheme } = useTheme();
   const dispatch = useDispatch();
@@ -116,6 +116,7 @@ export default function Header({ onMenuClick = () => {} }) {
   async function handleLogout() {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
+    onLogoutLoadingChange(true);
     setProfileOpen(false);
     setNotifOpen(false);
     try {

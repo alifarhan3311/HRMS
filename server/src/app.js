@@ -141,6 +141,7 @@ app.use(
 
 // Persist a redacted audit record after every mutating request completes.
 app.use(require('./middlewares/audit.middleware'));
+app.use(require('./middlewares/realtimeSync.middleware'));
 
 // -------------------------------------------------------------------------
 // Rate limiting — global baseline plus a stricter limiter specifically on

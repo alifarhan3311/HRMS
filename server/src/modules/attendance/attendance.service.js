@@ -107,6 +107,7 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
         shiftDate: schedule.shiftDate,
         shiftId: shift._id || undefined,
         shiftName: shift.name,
+        employeeDepartment: employee.department,
         shiftType: shift.shiftType || 'fixed',
         shiftStartTime: shift.startTime,
         shiftEndTime: shift.endTime,
@@ -127,6 +128,7 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
         shiftDate: schedule.shiftDate,
         shiftId: shift._id || undefined,
         shiftName: shift.name,
+        employeeDepartment: employee.department,
         shiftType: shift.shiftType || 'fixed',
         shiftStartTime: shift.startTime,
         shiftEndTime: shift.endTime,
@@ -178,11 +180,7 @@ async function signOut({ employeeId, notes }, actor) {
   if (record.signOutTime) throw createHttpError(409, 'You have already signed out today.');
 
   const now = new Date();
-  const [settings, employee] = await Promise.all([
-    settingsService.getPolicy(actor.companyId),
-    Employee.findOne({ _id: employeeId, companyId: actor.companyId }).populate('shiftId'),
-  ]);
-  const attendanceExempt = employee?.role === 'super_admin';
+  const attendanceExempt = actor.role === 'super_admin';
   // Use the policy snapshot captured at sign-in. Editing an assigned shift
   // while somebody is clocked in must not change that open attendance day.
   const shift = {
@@ -198,9 +196,15 @@ async function signOut({ employeeId, notes }, actor) {
     shiftDate: record.shiftDate,
     scheduledStart: record.scheduledStart,
     scheduledEnd: record.scheduledEnd,
-    timeZone: record.shiftTimezone || settings.company?.timezone || 'Asia/Karachi',
+    timeZone: record.shiftTimezone || 'Asia/Karachi',
   };
-  const closure = !attendanceExempt && employee && record.shiftDate ? await findClosure(employee, actor.companyId, record.shiftDate) : null;
+  const closureSubject = {
+    department: record.employeeDepartment,
+    shiftId: record.shiftId,
+  };
+  const closure = !attendanceExempt && record.shiftDate
+    ? await findClosure(closureSubject, actor.companyId, record.shiftDate)
+    : null;
   const policy = effectivePolicy(closure, shift, schedule);
   const isFlexible = (record.shiftType || shift.shiftType) === 'flexible';
   const earlyLeaveMinutes = attendanceExempt || isFlexible

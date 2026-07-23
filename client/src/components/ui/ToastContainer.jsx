@@ -35,7 +35,11 @@ export default function ToastContainer() {
   }
 
   return createPortal(
-    <div className="fixed inset-x-4 bottom-5 z-[200] flex flex-col items-stretch gap-2 pointer-events-none sm:inset-x-auto sm:right-5 sm:items-end">
+    <div
+      aria-live="polite"
+      aria-atomic="false"
+      className="fixed inset-x-4 bottom-5 z-[1000] flex flex-col items-stretch gap-2 pointer-events-none sm:inset-x-auto sm:right-5 sm:items-end"
+    >
       <AnimatePresence>
         {toasts.map((toast) => {
           const { Icon, cls } = ICONS[toast.type] || ICONS.info;

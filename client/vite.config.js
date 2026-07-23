@@ -17,6 +17,11 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_PROXY || 'http://localhost:5001',
           changeOrigin: true,
         },
+        '/socket.io': {
+          target: env.VITE_SOCKET_PROXY || env.VITE_API_PROXY || 'http://localhost:5001',
+          changeOrigin: true,
+          ws: true,
+        },
       },
     },
   };

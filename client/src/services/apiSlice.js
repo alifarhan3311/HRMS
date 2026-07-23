@@ -43,6 +43,11 @@ const axiosBaseQuery =
 export const api = createApi({
   reducerPath: 'api',
   baseQuery: axiosBaseQuery(),
+  // Do not wait for unrelated in-flight queries before refreshing data
+  // invalidated by a successful create/update/delete mutation.
+  invalidationBehavior: 'immediately',
+  refetchOnFocus: true,
+  refetchOnReconnect: true,
   tagTypes: [
     'Auth',
     'Dashboard',

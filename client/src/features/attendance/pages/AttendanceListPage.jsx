@@ -90,7 +90,7 @@ function csvCell(value) {
 }
 
 // ─── Sign-In/Out Widget ──────────────────────────────────────────────────────
-function SignInWidget({ user }) {
+function SignInWidget({ user, onSigningOutChange }) {
   const { data: todayData, isLoading } = useGetTodayAttendanceQuery();
   const [signIn, { isLoading: signingIn }] = useSignInMutation();
   const [signOut, { isLoading: signingOut }] = useSignOutMutation();
@@ -120,11 +120,14 @@ function SignInWidget({ user }) {
     }
   }
   async function handleSignOut() {
+    onSigningOutChange?.(true);
     try {
       await signOut({}).unwrap();
       toast.success('Signed out successfully!');
     } catch (err) {
       toast.error(err?.data?.error?.message || 'Sign out failed');
+    } finally {
+      onSigningOutChange?.(false);
     }
   }
 
@@ -375,6 +378,7 @@ export default function AttendanceListPage() {
   const [correctionRecord, setCorrectionRecord] = useState(null);
   const [regularizeRecord, setRegularizeRecord] = useState(null);
   const [reviewRecord, setReviewRecord] = useState(null);
+  const [fullPageSigningOut, setFullPageSigningOut] = useState(false);
 
   const { data: employeesData, isLoading: employeesLoading } = useListEmployeesQuery(
     { page: 1, limit: 100, sort: '-createdAt' },
@@ -524,7 +528,16 @@ export default function AttendanceListPage() {
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
+      {fullPageSigningOut && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/85 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card px-8 py-6 shadow-xl">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
+            <p className="font-semibold">Signing out...</p>
+            <p className="text-sm text-muted-foreground">Attendance calculate ho rahi hai</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -539,7 +552,7 @@ export default function AttendanceListPage() {
       </motion.div>
 
       {/* Sign In/Out widget (own attendance) */}
-      <SignInWidget user={user} />
+      <SignInWidget user={user} onSigningOutChange={setFullPageSigningOut} />
 
       {canSelectEmployee && (
         <div className="relative z-30 rounded-2xl border border-border bg-card p-4 shadow-soft">
