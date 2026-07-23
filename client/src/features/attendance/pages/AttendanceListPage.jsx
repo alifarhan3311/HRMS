@@ -64,6 +64,43 @@ function toLocalDateTime(value) {
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
+
+function zonedDateTimeParts(value, timeZone) {
+  if (!value) return { date: '', time: '' };
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timeZone || undefined,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(value)).reduce((result, part) => {
+    if (part.type !== 'literal') result[part.type] = part.value;
+    return result;
+  }, {});
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}`,
+  };
+}
+
+function zonedDateTimeToIso(date, time, timeZone) {
+  if (!timeZone) return new Date(`${date}T${time}`).toISOString();
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  const targetAsUtc = Date.UTC(year, month - 1, day, hour, minute);
+  let guess = targetAsUtc;
+  for (let pass = 0; pass < 2; pass += 1) {
+    const actual = zonedDateTimeParts(new Date(guess), timeZone);
+    const [actualYear, actualMonth, actualDay] = actual.date.split('-').map(Number);
+    const [actualHour, actualMinute] = actual.time.split(':').map(Number);
+    guess -= Date.UTC(actualYear, actualMonth - 1, actualDay, actualHour, actualMinute) - targetAsUtc;
+  }
+  return new Date(guess).toISOString();
+}
+
+function addIsoDateDays(date, amount) {
+  const [year, month, day] = date.split('-').map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day + amount, 12));
+  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
+}
 function nowYM() {
   const n = new Date();
   return { year: n.getFullYear(), month: n.getMonth() + 1 };
@@ -257,13 +294,42 @@ function MonthlyCalendar({ year, month, records = [] }) {
 
 // ─── Correction Modal ────────────────────────────────────────────────────────
 function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
-  const [form, setForm] = useState({
-    signInTime: record?.signInTime ? new Date(record.signInTime).toISOString().slice(0,16) : '',
-    signOutTime: record?.signOutTime ? new Date(record.signOutTime).toISOString().slice(0,16) : '',
-    notes: '',
-  });
+  const [form, setForm] = useState({ signInDate: '', signInTime: '', signOutDate: '', signOutTime: '', notes: '' });
+
+  useEffect(() => {
+    if (!isOpen || !record) return;
+    const signInParts = zonedDateTimeParts(record.signInTime || record.scheduledStart, record.shiftTimezone);
+    const signOutParts = zonedDateTimeParts(record.signOutTime || record.scheduledEnd, record.shiftTimezone);
+    const fixedShift = (record.shiftType || 'fixed') === 'fixed';
+    const fixedWorkDate = record.shiftDate || signInParts.date || inputDate(record.date);
+    const overnight = fixedShift && record.shiftStartTime && record.shiftEndTime
+      && record.shiftEndTime <= record.shiftStartTime;
+    setForm({
+      signInDate: fixedShift ? fixedWorkDate : signInParts.date,
+      signInTime: signInParts.time || '',
+      signOutDate: fixedShift
+        ? addIsoDateDays(fixedWorkDate, overnight ? 1 : 0)
+        : (signOutParts.date || fixedWorkDate),
+      signOutTime: record.signOutTime ? (signOutParts.time || '') : '',
+      notes: '',
+    });
+  }, [isOpen, record]);
+
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
-  function handleSubmit(e) { e.preventDefault(); onSubmit(form); }
+  function handleSubmit(e) {
+    e.preventDefault();
+    const fixedShift = (record.shiftType || 'fixed') === 'fixed';
+    const crossesMidnight = fixedShift && form.signInTime && form.signOutTime
+      && form.signOutTime <= form.signInTime;
+    const resolvedSignOutDate = crossesMidnight
+      ? addIsoDateDays(form.signInDate, 1)
+      : form.signOutDate;
+    onSubmit({
+      signInTime: form.signInTime ? zonedDateTimeToIso(form.signInDate, form.signInTime, record.shiftTimezone) : undefined,
+      signOutTime: form.signOutTime ? zonedDateTimeToIso(resolvedSignOutDate, form.signOutTime, record.shiftTimezone) : undefined,
+      notes: form.notes,
+    });
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Manual Attendance Correction" size="sm">
@@ -276,10 +342,15 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
               </span>
             </div>
           )}
-          <Input label="Sign In Time" type="datetime-local" value={form.signInTime}
+          <Input label="Sign In Time" type="time" value={form.signInTime}
             onChange={(e) => set('signInTime', e.target.value)} />
-          <Input label="Sign Out Time" type="datetime-local" value={form.signOutTime}
+          <Input label="Sign Out Time" type="time" value={form.signOutTime}
             onChange={(e) => set('signOutTime', e.target.value)} />
+          {form.signOutDate && form.signOutDate !== form.signInDate && (
+            <p className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
+              Overnight shift: sign-out date is automatically fixed to the next day.
+            </p>
+          )}
           <Textarea label="Notes / Reason" value={form.notes}
             onChange={(e) => set('notes', e.target.value)} placeholder="Reason for correction..." />
         </div>

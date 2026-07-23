@@ -328,6 +328,38 @@ async function assertCanViewEmployeeAttendance(actor, employeeId) {
   }
 }
 
+function zonedDateKey(value, timeZone = 'Asia/Karachi') {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value)).reduce((result, part) => {
+    if (part.type !== 'literal') result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function zonedTimeKey(value, timeZone = 'Asia/Karachi') {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(value)).reduce((result, part) => {
+    if (part.type !== 'literal') result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.hour}:${parts.minute}`;
+}
+
+function addDateKeyDays(dateKey, amount) {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day + amount, 12));
+  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-${String(value.getUTCDate()).padStart(2, '0')}`;
+}
+
 async function visibleAttendanceEmployeeIds(actor, includeSelf = true) {
   if (!['super_admin', 'hr', 'manager'].includes(actor.role)) {
     return includeSelf ? [actor.id] : [];
@@ -415,6 +447,35 @@ async function manualCorrection(id, payload, actor) {
   const update = { notes };
   const correctedSignIn = signInTime ? new Date(signInTime) : record.signInTime;
   const correctedSignOut = signOutTime ? new Date(signOutTime) : record.signOutTime;
+  const timeZone = record.shiftTimezone || settings.company?.timezone || 'Asia/Karachi';
+
+  if (signInTime) {
+    const fixedSignInDate = record.shiftDate || zonedDateKey(
+      record.scheduledStart || record.signInTime || record.date, timeZone
+    );
+    if (zonedDateKey(correctedSignIn, timeZone) !== fixedSignInDate) {
+      throw createHttpError(422, `Sign-in date is fixed to ${fixedSignInDate}; only the time can be corrected.`);
+    }
+  }
+  if (signOutTime) {
+    const fixedWorkDate = record.shiftDate || zonedDateKey(
+      record.scheduledStart || record.signInTime || record.date, timeZone
+    );
+    const scheduledOvernight = record.scheduledStart && record.scheduledEnd
+      && zonedDateKey(record.scheduledEnd, timeZone) !== zonedDateKey(record.scheduledStart, timeZone);
+    const correctedClockOvernight = correctedSignIn && correctedSignOut
+      && zonedTimeKey(correctedSignOut, timeZone) <= zonedTimeKey(correctedSignIn, timeZone);
+    const overnight = (record.shiftStartTime && record.shiftEndTime
+      && record.shiftEndTime <= record.shiftStartTime)
+      || scheduledOvernight
+      || correctedClockOvernight;
+    const fixedSignOutDate = record.shiftType === 'flexible'
+      ? zonedDateKey(record.signOutTime || record.scheduledEnd || correctedSignOut, timeZone)
+      : addDateKeyDays(fixedWorkDate, overnight ? 1 : 0);
+    if (zonedDateKey(correctedSignOut, timeZone) !== fixedSignOutDate) {
+      throw createHttpError(422, `Sign-out date is fixed to ${fixedSignOutDate}; only the time can be corrected.`);
+    }
+  }
 
   if (correctedSignIn && correctedSignOut && correctedSignOut <= correctedSignIn) {
     throw createHttpError(422, 'Sign-out time must be after sign-in time.');

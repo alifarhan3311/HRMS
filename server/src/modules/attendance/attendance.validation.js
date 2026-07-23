@@ -53,13 +53,18 @@ const listQuerySchema = Joi.object({
 
 const manualCorrectionSchema = Joi.object({
   signInTime: Joi.date().iso().optional(),
-  signOutTime: Joi.when('signInTime', {
-    is: Joi.exist(),
-    then: Joi.date().iso().min(Joi.ref('signInTime')),
-    otherwise: Joi.date().iso(),
-  }).optional(),
+  // Overnight shifts legitimately sign out on the next calendar day even
+  // when the displayed clock time is lower. The service validates the fully
+  // resolved fixed dates and returns a clear business error when needed.
+  signOutTime: Joi.date().iso().optional(),
   status: Joi.string().valid(...statuses).optional(),
   notes: Joi.string().trim().max(500).allow('').optional(),
+}).custom((value, helpers) => {
+  if (value.signInTime && value.signOutTime
+      && new Date(value.signOutTime) <= new Date(value.signInTime)) {
+    return helpers.message({ custom: 'Sign-out must be after sign-in. Overnight shifts use the next fixed calendar day automatically.' });
+  }
+  return value;
 }).min(1);
 
 const regularizationRequestSchema = Joi.object({
