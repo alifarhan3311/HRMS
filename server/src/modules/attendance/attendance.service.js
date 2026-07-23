@@ -571,6 +571,33 @@ async function requestRegularization(id, payload, actor) {
   if (requestType === 'late_waiver' && record.lateMinutes <= 0 && record.status !== 'late') {
     throw createHttpError(422, 'A late waiver can only be requested for a late attendance record.');
   }
+  if (requestType === 'time_correction') {
+    const settings = await settingsService.getPolicy(record.companyId);
+    const timeZone = record.shiftTimezone || settings.company?.timezone || 'Asia/Karachi';
+    const fixedWorkDate = record.shiftDate || zonedDateKey(
+      record.scheduledStart || record.signInTime || record.date, timeZone
+    );
+    const requestedIn = requestedSignInTime ? new Date(requestedSignInTime) : null;
+    const requestedOut = requestedSignOutTime ? new Date(requestedSignOutTime) : null;
+    const scheduledOvernight = record.scheduledStart && record.scheduledEnd
+      && zonedDateKey(record.scheduledEnd, timeZone) !== zonedDateKey(record.scheduledStart, timeZone);
+    const requestedClockOvernight = requestedIn && requestedOut
+      && zonedTimeKey(requestedOut, timeZone) <= zonedTimeKey(requestedIn, timeZone);
+    const overnight = (record.shiftStartTime && record.shiftEndTime
+      && record.shiftEndTime <= record.shiftStartTime)
+      || scheduledOvernight
+      || requestedClockOvernight;
+    const fixedSignOutDate = record.shiftType === 'flexible'
+      ? zonedDateKey(record.signOutTime || record.scheduledEnd || requestedOut, timeZone)
+      : addDateKeyDays(fixedWorkDate, overnight ? 1 : 0);
+
+    if (requestedIn && zonedDateKey(requestedIn, timeZone) !== fixedWorkDate) {
+      throw createHttpError(422, `Requested sign-in date is fixed to ${fixedWorkDate}; only the time can be changed.`);
+    }
+    if (requestedOut && zonedDateKey(requestedOut, timeZone) !== fixedSignOutDate) {
+      throw createHttpError(422, `Requested sign-out date is fixed to ${fixedSignOutDate}; only the time can be changed.`);
+    }
+  }
 
   const employee = await Employee.findById(actor.id).select('managerId teamLeadId companyId fullName');
   const assignedApprover = await resolveRegularizationApprover(employee, actor.companyId);

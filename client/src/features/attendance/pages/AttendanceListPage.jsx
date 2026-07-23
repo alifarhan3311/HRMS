@@ -369,27 +369,48 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
 function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
   const [reason, setReason] = useState('');
   const [requestType, setRequestType] = useState('time_correction');
-  const [requestedSignInTime, setRequestedSignInTime] = useState('');
-  const [requestedSignOutTime, setRequestedSignOutTime] = useState('');
+  const [times, setTimes] = useState({
+    signInDate: '', signInTime: '', signOutDate: '', signOutTime: '',
+  });
 
   useEffect(() => {
     if (!record) return;
+    const signInParts = zonedDateTimeParts(record.signInTime || record.scheduledStart, record.shiftTimezone);
+    const signOutParts = zonedDateTimeParts(record.signOutTime || record.scheduledEnd, record.shiftTimezone);
+    const fixedShift = (record.shiftType || 'fixed') === 'fixed';
+    const fixedWorkDate = record.shiftDate || signInParts.date || inputDate(record.date);
+    const overnight = fixedShift && (
+      (record.shiftStartTime && record.shiftEndTime && record.shiftEndTime <= record.shiftStartTime)
+      || (signOutParts.date && signOutParts.date !== fixedWorkDate)
+    );
     setReason('');
     setRequestType(record.status === 'late' || record.lateMinutes > 0 ? 'late_waiver' : 'time_correction');
-    setRequestedSignInTime(toLocalDateTime(record.signInTime));
-    setRequestedSignOutTime(toLocalDateTime(record.signOutTime));
+    setTimes({
+      signInDate: fixedShift ? fixedWorkDate : signInParts.date,
+      signInTime: record.signInTime ? (signInParts.time || '') : '',
+      signOutDate: fixedShift
+        ? addIsoDateDays(fixedWorkDate, overnight ? 1 : 0)
+        : (signOutParts.date || fixedWorkDate),
+      signOutTime: record.signOutTime ? (signOutParts.time || '') : '',
+    });
   }, [record]);
 
   function handleSubmit(e) {
     e.preventDefault();
+    const fixedShift = (record.shiftType || 'fixed') === 'fixed';
+    const crossesMidnight = fixedShift && times.signInTime && times.signOutTime
+      && times.signOutTime <= times.signInTime;
+    const resolvedSignOutDate = crossesMidnight
+      ? addIsoDateDays(times.signInDate, 1)
+      : times.signOutDate;
     onSubmit({
       reason,
       requestType,
-      ...(requestType === 'time_correction' && requestedSignInTime
-        ? { requestedSignInTime: new Date(requestedSignInTime).toISOString() }
+      ...(requestType === 'time_correction' && times.signInTime
+        ? { requestedSignInTime: zonedDateTimeToIso(times.signInDate, times.signInTime, record.shiftTimezone) }
         : {}),
-      ...(requestType === 'time_correction' && requestedSignOutTime
-        ? { requestedSignOutTime: new Date(requestedSignOutTime).toISOString() }
+      ...(requestType === 'time_correction' && times.signOutTime
+        ? { requestedSignOutTime: zonedDateTimeToIso(resolvedSignOutDate, times.signOutTime, record.shiftTimezone) }
         : {}),
     });
   }
@@ -412,10 +433,10 @@ function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
           </label>
           {requestType === 'time_correction' && (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input label="Requested Sign In" type="datetime-local" value={requestedSignInTime}
-                onChange={(e) => setRequestedSignInTime(e.target.value)} />
-              <Input label="Requested Sign Out" type="datetime-local" value={requestedSignOutTime}
-                onChange={(e) => setRequestedSignOutTime(e.target.value)} />
+              <Input label="Requested Sign In Time" type="time" value={times.signInTime}
+                onChange={(e) => setTimes((previous) => ({ ...previous, signInTime: e.target.value }))} />
+              <Input label="Requested Sign Out Time" type="time" value={times.signOutTime}
+                onChange={(e) => setTimes((previous) => ({ ...previous, signOutTime: e.target.value }))} />
             </div>
           )}
           <Textarea label="Reason" required value={reason} onChange={(e) => setReason(e.target.value)}
