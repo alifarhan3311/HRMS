@@ -128,7 +128,6 @@ export default function ShiftSettings() {
           <Input label="Required Duty (automatic)" type="number" readOnly value={form.requiredMinutes} />
           <Input label="Break (minutes)" type="number" min="0" max="240" disabled={form.shiftType === 'flexible'} value={form.breakMinutes} onChange={event => setBreak(event.target.value)} />
           <Input label="Worked Half Day At" type="number" readOnly value={form.halfDayMinutes} />
-          <Input label="Overtime After" type="number" readOnly value={form.overtimeAfterMinutes} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-2 text-sm text-muted-foreground">Working days:</span>

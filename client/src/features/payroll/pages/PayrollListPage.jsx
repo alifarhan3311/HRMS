@@ -18,6 +18,7 @@ import {
   useSubmitPayrollMutation, useApprovePayrollMutation,
   useMarkPayrollPaidMutation, useLockPayrollMutation,
 } from '../api/payroll.api';
+import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import { toast } from '../../../utils/toast';
 import StatCard from '../../../components/ui/StatCard';
 import Button from '../../../components/ui/Button';
@@ -49,7 +50,7 @@ function fmtDate(d) {
 }
 
 // ─── Payslip Detail Modal ─────────────────────────────────────────────────────
-function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canManage, isActioning }) {
+function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canGenerate, canApprove, isActioning }) {
   if (!payslip) return null;
   const emp = payslip.employeeId;
   const st = STATUS_STYLES[payslip.status] || STATUS_STYLES.draft;
@@ -59,10 +60,10 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canManage, isA
     ...(payslip.allowanceItems||[]).map(a => ({ label: a.label, amount: a.amount, type: 'add' })),
     ...(payslip.bonus     ? [{ label: 'Bonus',       amount: payslip.bonus,      type: 'add' }] : []),
     ...(payslip.incentives? [{ label: 'Incentives',  amount: payslip.incentives, type: 'add' }] : []),
-    ...(payslip.overtime  ? [{ label: 'Overtime',    amount: payslip.overtime,   type: 'add' }] : []),
     ...(payslip.deductionItems||[]).map(d => ({ label: d.label, amount: d.amount, type: 'deduct' })),
     ...(payslip.taxDeduction ? [{ label: 'Income Tax', amount: payslip.taxDeduction, type: 'deduct' }] : []),
   ];
+  const totalDeductions = Number(payslip.deductions || 0) + Number(payslip.taxDeduction || 0);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Payslip Details" size="lg">
@@ -89,10 +90,28 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canManage, isA
             { label: 'Present', val: payslip.presentDays, cls: 'text-emerald-600' },
             { label: 'Absent',  val: payslip.absentDays,  cls: 'text-red-500' },
             { label: 'Late',    val: payslip.lateDays,    cls: 'text-amber-500' },
+            { label: 'Half Days', val: payslip.halfDays, cls: 'text-orange-500' },
+            { label: 'Paid Leave', val: payslip.paidLeaveDays, cls: 'text-blue-500' },
+            { label: 'Unpaid Leave', val: payslip.unpaidLeaveDays, cls: 'text-red-500' },
+            { label: 'Holidays', val: payslip.holidayDays, cls: 'text-violet-500' },
           ].map(({ label, val, cls }) => (
             <div key={label} className="glass-card p-3 text-center">
               <p className={`text-xl font-bold ${cls || ''}`}>{val ?? 0}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[
+            { label: 'Per Day', value: payslip.perDaySalary },
+            { label: 'Per Hour', value: payslip.perHourSalary },
+            { label: 'Gross Salary', value: payslip.grossSalary, cls: 'text-emerald-600' },
+            { label: 'Total Deductions', value: totalDeductions, cls: 'text-red-500' },
+          ].map(item => (
+            <div key={item.label} className="rounded-xl border border-border bg-muted/20 p-3">
+              <p className="text-xs text-muted-foreground">{item.label}</p>
+              <p className={`mt-1 text-sm font-bold ${item.cls || ''}`}>{fmtPKR(item.value)}</p>
             </div>
           ))}
         </div>
@@ -119,6 +138,10 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canManage, isA
               </div>
             ))}
           </div>
+          <div className="space-y-2 border-t border-border bg-muted/20 px-4 py-3 text-sm">
+            <div className="flex justify-between"><span>Gross Salary</span><span className="font-semibold text-emerald-600">{fmtPKR(payslip.grossSalary)}</span></div>
+            <div className="flex justify-between"><span>Total Deductions</span><span className="font-semibold text-red-500">− {fmtPKR(totalDeductions)}</span></div>
+          </div>
           {/* Net total */}
           <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border-t-2 border-primary/20">
             <span className="font-bold">Net Salary</span>
@@ -133,27 +156,27 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canManage, isA
         )}
 
         {/* Action buttons */}
-        {canManage && (
+        {(canGenerate || canApprove) && (
           <div className="flex gap-2 flex-wrap">
-            {payslip.status === 'draft' && (
+            {canGenerate && payslip.status === 'draft' && (
               <Button variant="primary" size="sm" className="gap-1.5"
                 onClick={() => onAction('submit', payslip._id)} disabled={isActioning}>
                 <FileText className="h-4 w-4" /> Submit for Approval
               </Button>
             )}
-            {payslip.status === 'pending_approval' && (
+            {canApprove && payslip.status === 'pending_approval' && (
               <Button variant="primary" size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
                 onClick={() => onAction('approve', payslip._id)} disabled={isActioning}>
                 <CheckCircle2 className="h-4 w-4" /> Approve
               </Button>
             )}
-            {payslip.status === 'approved' && (
+            {canGenerate && payslip.status === 'approved' && (
               <Button variant="primary" size="sm" className="gap-1.5"
                 onClick={() => onAction('paid', payslip._id)} disabled={isActioning}>
                 <CreditCard className="h-4 w-4" /> Mark as Paid
               </Button>
             )}
-            {payslip.status === 'paid' && (
+            {canApprove && payslip.status === 'paid' && (
               <Button variant="secondary" size="sm" className="gap-1.5"
                 onClick={() => onAction('lock', payslip._id)} disabled={isActioning}>
                 <Lock className="h-4 w-4" /> Lock Payslip
@@ -167,13 +190,13 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canManage, isA
 }
 
 // ─── Generate Payslip Form ────────────────────────────────────────────────────
-function GenerateForm({ onSubmit, onClose, isLoading, draftKey }) {
+function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
   const now = new Date();
   const [form, setForm, clearDraft] = useFormDraft(draftKey, {
     employeeId: '',
     month: now.getMonth() + 1,
     year: now.getFullYear(),
-    bonus: '', incentives: '', overtime: '',
+    bonus: '', incentives: '',
     loanDeduction: '', advanceSalary: '', notes: '',
     allowanceItems: [{ label: 'House Rent', amount: '' }, { label: 'Transport', amount: '' }],
   });
@@ -190,14 +213,13 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.employeeId) { toast.error('Employee ID is required'); return; }
+    if (!form.employeeId) { toast.error('Please select an employee'); return; }
     const saved = await onSubmit({
       ...form,
       month: Number(form.month),
       year: Number(form.year),
       bonus: Number(form.bonus) || 0,
       incentives: Number(form.incentives) || 0,
-      overtime: Number(form.overtime) || 0,
       loanDeduction: Number(form.loanDeduction) || 0,
       advanceSalary: Number(form.advanceSalary) || 0,
       allowanceItems: form.allowanceItems
@@ -210,8 +232,14 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey }) {
   return (
     <form onSubmit={handleSubmit}>
       <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
-        <Input label="Employee ID" required placeholder="MongoDB ObjectId of employee"
-          value={form.employeeId} onChange={(e) => set('employeeId', e.target.value)} />
+        <Select label="Employee" required value={form.employeeId} onChange={(e) => set('employeeId', e.target.value)}>
+          <option value="">Select employee</option>
+          {employees.map(employee => (
+            <option key={employee._id} value={employee._id}>
+              {employee.fullName} · {employee.employeeCode} · {employee.department}
+            </option>
+          ))}
+        </Select>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Select label="Month" value={form.month} onChange={(e) => set('month', e.target.value)}>
             {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
@@ -240,7 +268,6 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey }) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Input label="Bonus (PKR)" type="number" placeholder="0" value={form.bonus} onChange={(e) => set('bonus', e.target.value)} />
           <Input label="Incentives (PKR)" type="number" placeholder="0" value={form.incentives} onChange={(e) => set('incentives', e.target.value)} />
-          <Input label="Overtime (PKR)" type="number" placeholder="0" value={form.overtime} onChange={(e) => set('overtime', e.target.value)} />
           <Input label="Loan Deduction (PKR)" type="number" placeholder="0" value={form.loanDeduction} onChange={(e) => set('loanDeduction', e.target.value)} />
           <Input label="Advance Salary (PKR)" type="number" placeholder="0" value={form.advanceSalary} onChange={(e) => set('advanceSalary', e.target.value)} />
         </div>
@@ -259,7 +286,9 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PayrollListPage() {
   const { user } = useSelector((s) => s.auth);
-  const canManage = ['admin', 'super_admin'].includes(user?.role);
+  const canGenerate = ['admin', 'super_admin'].includes(user?.role);
+  const canApprove = ['admin', 'super_admin', 'hr'].includes(user?.role);
+  const canViewTeamPayroll = canGenerate || canApprove;
   const now = new Date();
 
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -268,6 +297,10 @@ export default function PayrollListPage() {
   const [filters, setFilters] = useState({ month: '', year: String(now.getFullYear()), status: '' });
 
   const { data, isLoading, isFetching, refetch } = useListPayrollQuery({ page, limit: 15, ...filters });
+  const { data: employeesData } = useListEmployeesQuery(
+    { page: 1, limit: 100, status: 'active' },
+    { skip: !canGenerate }
+  );
   const [generatePayroll, { isLoading: generating }] = useGeneratePayrollMutation();
   const [submitPayroll,   { isLoading: submitting }]  = useSubmitPayrollMutation();
   const [approvePayroll,  { isLoading: approving }]   = useApprovePayrollMutation();
@@ -279,6 +312,7 @@ export default function PayrollListPage() {
   const payslips   = data?.items || [];
   const total      = data?.total || 0;
   const totalPages = data?.totalPages || 1;
+  const employees = employeesData?.items || [];
 
   // Stats
   const stats = {
@@ -318,7 +352,7 @@ export default function PayrollListPage() {
             onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
           </Button>
-          {canManage && (
+          {canGenerate && (
             <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setGenerateOpen(true)}>
               <Plus className="h-4 w-4" /> Generate Payslip
             </Button>
@@ -327,7 +361,7 @@ export default function PayrollListPage() {
       </motion.div>
 
       {/* Stats */}
-      {canManage && (
+      {canViewTeamPayroll && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard title="Total Payslips" value={total} icon={Wallet} />
           <StatCard title="Pending Approval" value={stats.pending} icon={FileText}
@@ -377,14 +411,14 @@ export default function PayrollListPage() {
             <Wallet className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
             <p className="font-medium">No payslips found</p>
             <p className="text-sm text-muted-foreground mt-1">
-              {canManage ? 'Generate payslips using the button above.' : 'No payslips available for your account yet.'}
+              {canGenerate ? 'Generate payslips using the button above.' : 'No payslips available for your account yet.'}
             </p>
           </div>
         ) : (
           <>
             {/* Header row */}
-            <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-4 px-5 py-2.5 border-b border-border bg-muted/30">
-              {['Employee','Period','Net Salary','Status','Generated',''].map(h => (
+            <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_1fr_60px] gap-3 px-5 py-2.5 border-b border-border bg-muted/30">
+              {['Employee','Period','Gross','Deductions','Net Salary','Status','Generated',''].map(h => (
                 <span key={h} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</span>
               ))}
             </div>
@@ -395,7 +429,7 @@ export default function PayrollListPage() {
                 return (
                   <motion.div key={p._id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: i * 0.025 }}
-                    className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_80px] gap-4 px-5 py-3.5 hover:bg-accent/30 transition-colors cursor-pointer group"
+                    className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_1fr_60px] gap-3 px-5 py-3.5 hover:bg-accent/30 transition-colors cursor-pointer group"
                     onClick={() => setDetailPayslip(p)}>
                     <div className="flex items-center gap-3 min-w-0">
                       <Avatar name={p.employeeId?.fullName} size="sm" />
@@ -406,6 +440,12 @@ export default function PayrollListPage() {
                     </div>
                     <div className="flex items-center">
                       <span className="text-sm">{MONTHS[p.month - 1]} {p.year}</span>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="text-sm">{fmtPKR(p.grossSalary)}</span>
+                    </div>
+                    <div className="flex items-center">
+                      <span className="text-sm text-red-500">− {fmtPKR(Number(p.deductions || 0) + Number(p.taxDeduction || 0))}</span>
                     </div>
                     <div className="flex items-center">
                       <span className="text-sm font-semibold text-primary">{fmtPKR(p.netSalary)}</span>
@@ -450,6 +490,7 @@ export default function PayrollListPage() {
       {/* Generate Modal */}
       <Modal isOpen={generateOpen} onClose={() => setGenerateOpen(false)} title="Generate Payslip" size="lg">
         <GenerateForm onSubmit={handleGenerate} onClose={() => setGenerateOpen(false)} isLoading={generating}
+          employees={employees}
           draftKey={`hrms:draft:payroll:create:${user?.id || 'user'}`} />
       </Modal>
 
@@ -459,7 +500,8 @@ export default function PayrollListPage() {
         isOpen={!!detailPayslip}
         onClose={() => setDetailPayslip(null)}
         onAction={handleAction}
-        canManage={canManage}
+        canGenerate={canGenerate}
+        canApprove={canApprove}
         isActioning={isActioning}
       />
     </div>

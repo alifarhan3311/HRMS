@@ -13,7 +13,7 @@ import { useSelector } from 'react-redux';
 import {
   Clock, CheckCircle2, XCircle, AlertCircle, Calendar,
   ChevronLeft, ChevronRight, Edit, RefreshCw, Search, X,
-  Download, CalendarRange, Timer, Gauge, BarChart3,
+  Download, CalendarRange, Timer, BarChart3,
 } from 'lucide-react';
 import { BarChart, Bar, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
@@ -571,7 +571,7 @@ export default function AttendanceListPage() {
       toast.error('No attendance records available to export');
       return;
     }
-    const headers = ['Employee', 'Employee Code', 'Date', 'Status', 'Sign In', 'Sign Out', 'Worked Hours', 'Late Minutes', 'Early Leave Minutes', 'Overtime Minutes', 'Method', 'Notes'];
+    const headers = ['Employee', 'Employee Code', 'Date', 'Status', 'Sign In', 'Sign Out', 'Worked Hours', 'Late Minutes', 'Early Leave Minutes', 'Method', 'Notes'];
     const name = selectedEmployee?.fullName || user?.fullName || 'Employee';
     const code = selectedEmployee?.employeeCode || user?.employeeCode || '';
     const rows = reportRecords.map((record) => [
@@ -579,7 +579,7 @@ export default function AttendanceListPage() {
       record.signInTime ? fmtTime(record.signInTime, record.shiftTimezone) : '',
       record.signOutTime ? fmtTime(record.signOutTime, record.shiftTimezone) : '',
       record.totalHours || 0, record.lateMinutes || 0, record.earlyLeaveMinutes || 0,
-      record.overtimeMinutes || 0, record.method || '', record.notes || record.attendanceAdjustmentReason || '',
+      record.method || '', record.notes || record.attendanceAdjustmentReason || '',
     ]);
     const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
     const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
@@ -814,7 +814,7 @@ export default function AttendanceListPage() {
             <StatCard title="Absent" value={summary.absent ?? 0} icon={XCircle} />
             <StatCard title="On Leave" value={summary.on_leave ?? 0} icon={Calendar} />
             <StatCard title="Worked Hours" value={`${summary.workedHours ?? 0}h`} icon={Timer} />
-            <StatCard title="Overtime" value={`${summary.overtimeHours ?? 0}h`} icon={Gauge} />
+            <StatCard title="Half Days" value={summary.half_day ?? 0} icon={AlertCircle} />
           </>
         )}
       </div>

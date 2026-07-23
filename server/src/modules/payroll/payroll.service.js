@@ -2,7 +2,7 @@
  * modules/payroll/payroll.service.js
  * Payroll calculation engine:
  *  - Generate payslip from employee salary + attendance data
- *  - Salary breakdown: basic + allowances - deductions + bonus + incentives + overtime
+ *  - Salary breakdown: basic + allowances - deductions + bonus + incentives
  *  - Deductions: absence penalty, late deductions, loan, advance, tax
  *  - Approval workflow: draft → pending_approval → approved → paid → locked
  */
@@ -10,6 +10,7 @@ const createHttpError = require('http-errors');
 const repository = require('./payroll.repository');
 const Employee = require('../employees/employees.model');
 const Attendance = require('../attendance/attendance.model');
+const LeaveRequest = require('../leaves/leaves.model');
 const notificationService = require('../notifications/notifications.service');
 
 async function notifyEmployee(record, type, title, message, suffix) {
@@ -28,10 +29,23 @@ async function notifyEmployee(record, type, title, message, suffix) {
 
 // ─── Calculation Engine ───────────────────────────────────────────────────────
 
-function calcAttendanceDeductions(basic, absentDays, workingDays) {
-  if (!workingDays || !absentDays) return 0;
-  const perDay = Number(basic) / workingDays;
-  return Math.round(perDay * absentDays);
+function calculateAttendancePayroll({
+  basicSalary, workingDays, absent, halfDay, late, unpaidLeave,
+  requiredMinutes = 480,
+}) {
+  const perDaySalary = workingDays ? Number(basicSalary) / workingDays : 0;
+  const requiredHours = Number(requiredMinutes || 480) / 60;
+  const perHourSalary = requiredHours ? perDaySalary / requiredHours : 0;
+  const lateDeductionDays = Math.floor(Number(late || 0) / 3);
+  return {
+    perDaySalary,
+    perHourSalary,
+    absenceDeduction: Math.round(perDaySalary * Number(absent || 0)),
+    halfDayDeduction: Math.round(perDaySalary * Number(halfDay || 0) * 0.5),
+    lateDeductionDays,
+    lateDeduction: Math.round(perDaySalary * lateDeductionDays),
+    unpaidLeaveDeduction: Math.round(perDaySalary * Number(unpaidLeave || 0)),
+  };
 }
 
 function calcTaxDeduction(gross) {
@@ -47,50 +61,122 @@ function calcTaxDeduction(gross) {
   return Math.round(annualTax / 12);
 }
 
-async function getAttendanceData(employeeId, month, year) {
-  const start = new Date(year, month - 1, 1);
-  const end = new Date(year, month, 0, 23, 59, 59, 999);
-  const records = await Attendance.find({ employeeId, date: { $gte: start, $lte: end } });
+function dateKey(value) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function monthBounds(month, year) {
+  return {
+    start: new Date(Date.UTC(year, month - 1, 1)),
+    end: new Date(Date.UTC(year, month, 0, 23, 59, 59, 999)),
+  };
+}
+
+function leaveDutyDates(leave) {
+  if (leave.dutyDates?.length) return leave.dutyDates;
+  const dates = [];
+  const cursor = new Date(leave.startDate);
+  const end = new Date(leave.endDate);
+  while (cursor <= end) {
+    dates.push(dateKey(cursor));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+async function getAttendanceData(employee, month, year) {
+  const { start, end } = monthBounds(month, year);
+  const [records, approvedLeaves] = await Promise.all([
+    Attendance.find({ employeeId: employee._id, date: { $gte: start, $lte: end } }),
+    LeaveRequest.find({
+      employeeId: employee._id,
+      status: 'approved',
+      startDate: { $lte: end },
+      endDate: { $gte: start },
+    }).select('leaveType startDate endDate dutyDates'),
+  ]);
   const present = records.filter(r => r.status === 'present' || r.status === 'late').length;
   const absent = records.filter(r => r.status === 'absent').length;
   const late = records.filter(r => r.status === 'late').length;
-  // Working days = all weekdays in month
+  const halfDay = records.filter(r => r.status === 'half_day').length;
+  const holiday = records.filter(r => r.status === 'holiday').length;
+  const weekend = records.filter(r => r.status === 'weekend').length;
+  const workedMinutes = records.reduce((sum, record) => sum + Number(record.workedMinutes || 0), 0);
+  const paidLeaveDates = new Set();
+  const unpaidLeaveDates = new Set();
+  for (const leave of approvedLeaves) {
+    for (const dutyDate of leaveDutyDates(leave)) {
+      if (dutyDate < dateKey(start) || dutyDate > dateKey(end)) continue;
+      (leave.leaveType === 'unpaid' ? unpaidLeaveDates : paidLeaveDates).add(dutyDate);
+    }
+  }
+  for (const date of unpaidLeaveDates) paidLeaveDates.delete(date);
+
+  const workingDayNumbers = employee.shiftId?.workingDays?.length
+    ? employee.shiftId.workingDays
+    : [1, 2, 3, 4, 5];
   let workingDays = 0;
   const cur = new Date(start);
-  while (cur <= end) { if (cur.getDay() !== 0 && cur.getDay() !== 6) workingDays++; cur.setDate(cur.getDate() + 1); }
-  return { present, absent, late, workingDays };
+  while (cur <= end) {
+    if (workingDayNumbers.includes(cur.getUTCDay())) workingDays++;
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return {
+    present, absent, late, halfDay, holiday, weekend, workingDays,
+    paidLeave: paidLeaveDates.size,
+    unpaidLeave: unpaidLeaveDates.size,
+    workedMinutes,
+  };
 }
 
 // ─── Generate / Create ────────────────────────────────────────────────────────
 async function generatePayslip(payload, actor) {
   const { employeeId, month, year, allowanceItems = [], bonus = 0, incentives = 0,
-    overtime = 0, loanDeduction = 0, advanceSalary = 0, notes } = payload;
+    loanDeduction = 0, advanceSalary = 0, notes } = payload;
 
   // Check duplicate
   const existing = await repository.findByEmployeeAndPeriod(employeeId, month, year);
   if (existing) throw createHttpError(409, `Payslip for ${month}/${year} already exists for this employee.`);
 
-  const employee = await Employee.findById(employeeId);
+  const employee = await Employee.findOne({ _id: employeeId, companyId: actor.companyId }).populate('shiftId');
   if (!employee) throw createHttpError(404, 'Employee not found.');
 
   const basicSalary = Number(employee.currentSalary) || 0;
-  const { present, absent, late, workingDays } = await getAttendanceData(employeeId, month, year);
+  if (basicSalary <= 0) throw createHttpError(422, 'Employee salary must be configured before generating payroll.');
+  const attendance = await getAttendanceData(employee, month, year);
+  const {
+    present, absent, late, halfDay, paidLeave, unpaidLeave, holiday, weekend,
+    workingDays, workedMinutes,
+  } = attendance;
 
   // Allowances
   const allowanceTotal = allowanceItems.reduce((s, a) => s + (Number(a.amount) || 0), 0);
 
   // Deductions
-  const absenceDeduction = calcAttendanceDeductions(basicSalary, absent, workingDays);
-  const lateDeduction = Math.round(late * (basicSalary / workingDays / 8) * 1); // 1hr per late
+  const calculation = calculateAttendancePayroll({
+    basicSalary,
+    workingDays,
+    absent,
+    halfDay,
+    late,
+    unpaidLeave,
+    requiredMinutes: employee.shiftId?.requiredMinutes,
+  });
+  const {
+    perDaySalary, perHourSalary, absenceDeduction, halfDayDeduction,
+    lateDeductionDays, lateDeduction, unpaidLeaveDeduction,
+  } = calculation;
   const deductionItems = [
     { label: 'Absence Deduction', amount: absenceDeduction },
-    { label: 'Late Deduction', amount: lateDeduction },
+    { label: 'Half Day Deduction', amount: halfDayDeduction },
+    { label: `Late Deduction (${lateDeductionDays} day)`, amount: lateDeduction },
+    { label: 'Unpaid Leave Deduction', amount: unpaidLeaveDeduction },
     { label: 'Loan', amount: Number(loanDeduction) || 0 },
     { label: 'Advance Salary', amount: Number(advanceSalary) || 0 },
   ].filter(d => d.amount > 0);
 
   const deductionTotal = deductionItems.reduce((s, d) => s + d.amount, 0);
-  const grossSalary = basicSalary + allowanceTotal + Number(bonus) + Number(incentives) + Number(overtime);
+  const grossSalary = basicSalary + allowanceTotal + Number(bonus) + Number(incentives);
   const taxDeduction = calcTaxDeduction(grossSalary);
   const netSalary = Math.max(0, grossSalary - deductionTotal - taxDeduction);
 
@@ -108,13 +194,24 @@ async function generatePayslip(payload, actor) {
     taxDeduction,
     bonus: Number(bonus) || 0,
     incentives: Number(incentives) || 0,
-    overtime: Number(overtime) || 0,
     loanDeduction: Number(loanDeduction) || 0,
     advanceSalary: Number(advanceSalary) || 0,
     presentDays: present,
     absentDays: absent,
     lateDays: late,
+    halfDays: halfDay,
+    paidLeaveDays: paidLeave,
+    unpaidLeaveDays: unpaidLeave,
+    holidayDays: holiday,
+    weekendDays: weekend,
     workingDays,
+    workedMinutes,
+    perDaySalary: Math.round(perDaySalary),
+    perHourSalary: Math.round(perHourSalary),
+    absenceDeduction,
+    halfDayDeduction,
+    lateDeduction,
+    unpaidLeaveDeduction,
     status: 'draft',
     notes: notes || '',
     companyId: actor.companyId,
@@ -180,7 +277,7 @@ async function listPayslips(query, actor) {
   const { page = 1, limit = 20, month, year, status, employeeId, sort = '-year -month' } = query;
   const filter = { companyId: actor.companyId };
 
-  if (!['admin', 'super_admin'].includes(actor.role)) {
+  if (!['admin', 'super_admin', 'hr'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
     filter.employeeId = employeeId;
@@ -192,13 +289,19 @@ async function listPayslips(query, actor) {
   return repository.findAll({ filter, page: Number(page), limit: Math.min(Number(limit), 100), sort });
 }
 
-async function getPayslipById(id) {
+async function getPayslipById(id, actor) {
   const record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Payslip not found.');
+  if (String(record.companyId) !== String(actor.companyId)) throw createHttpError(404, 'Payslip not found.');
+  const employeeId = record.employeeId?._id || record.employeeId;
+  if (!['admin', 'super_admin', 'hr'].includes(actor.role) && String(employeeId) !== String(actor.id)) {
+    throw createHttpError(403, 'You can only view your own payslips.');
+  }
   return record.toObject({ getters: true });
 }
 
 module.exports = {
   generatePayslip, updatePayslip, listPayslips, getPayslipById,
   submitForApproval, approvePayslip, markPaid, lockPayslip,
+  calculateAttendancePayroll,
 };
