@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
+const { leaveEligibilityDate } = require('../src/modules/leaves/leaves.service');
+process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
 const { createSchema, decisionSchema, cancelSchema } = require('../src/modules/leaves/leaves.validation');
 const { calcWorkingDays } = require('../src/modules/leaves/leaves.service');
 
@@ -67,4 +69,8 @@ test('normal date-only leave remains inclusive across genuine multiple days', ()
     dayShift,
     'Asia/Karachi',
   ), 3);
+});
+test('leave eligibility starts after three complete calendar months', () => {
+  assert.equal(leaveEligibilityDate('2026-01-15').toISOString().slice(0, 10), '2026-04-15');
+  assert.equal(leaveEligibilityDate('2026-01-31').toISOString().slice(0, 10), '2026-04-30');
 });

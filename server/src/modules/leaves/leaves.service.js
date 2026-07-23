@@ -9,6 +9,7 @@
  */
 const createHttpError = require('http-errors');
 const mongoose = require('mongoose');
+const Attendance = require('../attendance/attendance.model');
 const repository = require('./leaves.repository');
 const LeaveRequest = require('./leaves.model');
 const Employee = require('../employees/employees.model');
@@ -16,6 +17,15 @@ const notificationService = require('../notifications/notifications.service');
 const settingsService = require('../companySettings/companySettings.service');
 const logger = require('../../utils/logger');
 const { emitToCompany } = require('../../config/socket');
+
+function leaveEligibilityDate(joiningDate) {
+  const joined = new Date(joiningDate);
+  const targetMonthIndex = joined.getUTCMonth() + 3;
+  const targetYear = joined.getUTCFullYear() + Math.floor(targetMonthIndex / 12);
+  const targetMonth = targetMonthIndex % 12;
+  const lastDay = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(targetYear, targetMonth, Math.min(joined.getUTCDate(), lastDay)));
+}
 
 function emitLeaveUpdate(companyId, action, leave) {
   emitToCompany(companyId, 'leave:updated', {
@@ -231,9 +241,19 @@ async function notifyStageApprovers(leave, stage, onlyRecipientId = null) {
 
 // ─── Apply ───────────────────────────────────────────────────────────────────
 async function applyLeave(payload, actor) {
-  const { leaveType, startDate, endDate, reason, emergencyContact } = payload;
-  const employee = await Employee.findOne({ _id: actor.id, companyId: actor.companyId }).populate('shiftId');
+  const { leaveType, startDate, endDate, reason, emergencyContact, employeeId, attendanceId } = payload;
+  const isHrOverride = Boolean(employeeId) && actor.role === 'hr';
+  if (employeeId && !isHrOverride) throw createHttpError(403, 'Only HR can assign leave for another employee.');
+  const targetEmployeeId = isHrOverride ? employeeId : actor.id;
+  const employee = await Employee.findOne({ _id: targetEmployeeId, companyId: actor.companyId }).populate('shiftId');
   if (!employee) throw createHttpError(404, 'Employee not found.');
+  const eligibilityDate = leaveEligibilityDate(employee.joiningDate);
+  if (!isHrOverride && new Date() < eligibilityDate) {
+    throw createHttpError(403, `Leave is available after completing 3 months of service (${eligibilityDate.toISOString().slice(0, 10)}). Contact HR for an absence exception.`);
+  }
+  if (isHrOverride && new Date() >= eligibilityDate) {
+    throw createHttpError(422, 'HR attendance exception is only for employees who have not completed 3 months.');
+  }
 
   if (leaveType !== 'casual' && !String(reason || '').trim()) {
     throw createHttpError(422, `A reason is required for ${leaveType || 'this'} leave.`);
@@ -249,7 +269,20 @@ async function applyLeave(payload, actor) {
   }
 
   // Check for overlapping leaves
-  const overlapping = await repository.countActiveLeaves(actor.id, start, end);
+  let attendanceRecord = null;
+  if (isHrOverride) {
+    if (!attendanceId || start.toISOString().slice(0, 10) !== end.toISOString().slice(0, 10)) {
+      throw createHttpError(422, 'HR exception must reference one fixed attendance date.');
+    }
+    attendanceRecord = await Attendance.findOne({
+      _id: attendanceId,
+      employeeId: targetEmployeeId,
+      companyId: actor.companyId,
+      status: { $in: ['absent', 'half_day'] },
+    });
+    if (!attendanceRecord) throw createHttpError(422, 'HR can only mark leave on this employee’s absent or half-day attendance.');
+  }
+  const overlapping = await repository.countActiveLeaves(targetEmployeeId, start, end);
   if (overlapping > 0) throw createHttpError(409, 'You already have a leave request overlapping these dates.');
 
   const assignedShift = employee.shiftId || {
@@ -278,7 +311,7 @@ async function applyLeave(payload, actor) {
   }
 
   const leave = await repository.create({
-    employeeId: actor.id,
+    employeeId: targetEmployeeId,
     employeeName: employee.fullName,
     employeeCode: employee.employeeCode,
     leaveType,
@@ -288,14 +321,27 @@ async function applyLeave(payload, actor) {
     dutyDates,
     reason: reason || '',
     emergencyContact: emergencyContact || '',
-    status: 'pending',
-    currentStage: 1,
-    approvalChain: buildApprovalChain(),
+    status: isHrOverride ? 'approved' : 'pending',
+    currentStage: isHrOverride ? 3 : 1,
+    approvalChain: isHrOverride ? [] : buildApprovalChain(),
     companyId: actor.companyId,
     branchId: actor.branchId,
   });
 
-  await notifyStageApprovers(leave, 1);
+  if (isHrOverride) {
+    if (LEAVE_BALANCE_KEYS[leaveType]) {
+      const key = LEAVE_BALANCE_KEYS[leaveType];
+      const remaining = Number(employee.leaveBalance[key]?.available || 0) - Number(employee.leaveBalance[key]?.used || 0);
+      if (remaining < totalDays) throw createHttpError(409, `Insufficient ${leaveType} leave balance.`);
+      employee.leaveBalance[key].used = Number(employee.leaveBalance[key].used || 0) + totalDays;
+      await employee.save();
+    }
+    attendanceRecord.status = 'on_leave';
+    attendanceRecord.notes = `${attendanceRecord.notes || ''} [HR leave exception: ${reason || leaveType}]`.trim();
+    await attendanceRecord.save();
+  } else {
+    await notifyStageApprovers(leave, 1);
+  }
 
   emitLeaveUpdate(actor.companyId, 'applied', leave);
 
@@ -509,6 +555,7 @@ async function getPendingApprovals(actor) {
 module.exports = {
   calcWorkingDays,
   calculateLeaveDutyDates,
+  leaveEligibilityDate,
   applyLeave,
   approveLeave,
   rejectLeave,

@@ -11,6 +11,7 @@ const repository = require('./payroll.repository');
 const Employee = require('../employees/employees.model');
 const Attendance = require('../attendance/attendance.model');
 const LeaveRequest = require('../leaves/leaves.model');
+const settingsService = require('../companySettings/companySettings.service');
 const notificationService = require('../notifications/notifications.service');
 
 async function notifyEmployee(record, type, title, message, suffix) {
@@ -31,19 +32,24 @@ async function notifyEmployee(record, type, title, message, suffix) {
 
 function calculateAttendancePayroll({
   basicSalary, workingDays, absent, halfDay, late, unpaidLeave,
-  requiredMinutes = 480,
+  requiredMinutes = 480, lateMinutes = 0, payrollPolicy = {},
 }) {
   const perDaySalary = workingDays ? Number(basicSalary) / workingDays : 0;
   const requiredHours = Number(requiredMinutes || 480) / 60;
   const perHourSalary = requiredHours ? perDaySalary / requiredHours : 0;
-  const lateDeductionDays = Math.floor(Number(late || 0) / 3);
+  const mode = payrollPolicy.lateDeductionMode || 'three_lates_half_day';
+  const lateGroups = Math.floor(Number(late || 0) / Number(payrollPolicy.latesPerHalfDay || 3));
+  const lateDeductionDays = mode === 'per_minute' ? 0 : lateGroups * 0.5;
+  const lateDeduction = mode === 'per_minute'
+    ? Math.round(Number(lateMinutes || 0) * Number(payrollPolicy.perMinuteRate || 0))
+    : Math.round(perDaySalary * lateDeductionDays);
   return {
     perDaySalary,
     perHourSalary,
     absenceDeduction: Math.round(perDaySalary * Number(absent || 0)),
     halfDayDeduction: Math.round(perDaySalary * Number(halfDay || 0) * 0.5),
     lateDeductionDays,
-    lateDeduction: Math.round(perDaySalary * lateDeductionDays),
+    lateDeduction,
     unpaidLeaveDeduction: Math.round(perDaySalary * Number(unpaidLeave || 0)),
   };
 }
@@ -98,6 +104,7 @@ async function getAttendanceData(employee, month, year) {
   const present = records.filter(r => r.status === 'present' || r.status === 'late').length;
   const absent = records.filter(r => r.status === 'absent').length;
   const late = records.filter(r => r.status === 'late').length;
+  const lateMinutes = records.reduce((sum, record) => sum + Number(record.lateMinutes || 0), 0);
   const halfDay = records.filter(r => r.status === 'half_day').length;
   const holiday = records.filter(r => r.status === 'holiday').length;
   const weekend = records.filter(r => r.status === 'weekend').length;
@@ -122,7 +129,7 @@ async function getAttendanceData(employee, month, year) {
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return {
-    present, absent, late, halfDay, holiday, weekend, workingDays,
+    present, absent, late, lateMinutes, halfDay, holiday, weekend, workingDays,
     paidLeave: paidLeaveDates.size,
     unpaidLeave: unpaidLeaveDates.size,
     workedMinutes,
@@ -145,7 +152,7 @@ async function generatePayslip(payload, actor) {
   if (basicSalary <= 0) throw createHttpError(422, 'Employee salary must be configured before generating payroll.');
   const attendance = await getAttendanceData(employee, month, year);
   const {
-    present, absent, late, halfDay, paidLeave, unpaidLeave, holiday, weekend,
+    present, absent, late, lateMinutes, halfDay, paidLeave, unpaidLeave, holiday, weekend,
     workingDays, workedMinutes,
   } = attendance;
 
@@ -153,6 +160,7 @@ async function generatePayslip(payload, actor) {
   const allowanceTotal = allowanceItems.reduce((s, a) => s + (Number(a.amount) || 0), 0);
 
   // Deductions
+  const settings = await settingsService.getPolicy(actor.companyId);
   const calculation = calculateAttendancePayroll({
     basicSalary,
     workingDays,
@@ -161,6 +169,8 @@ async function generatePayslip(payload, actor) {
     late,
     unpaidLeave,
     requiredMinutes: employee.shiftId?.requiredMinutes,
+    lateMinutes,
+    payrollPolicy: settings.payrollPolicy,
   });
   const {
     perDaySalary, perHourSalary, absenceDeduction, halfDayDeduction,
@@ -300,8 +310,63 @@ async function getPayslipById(id, actor) {
   return record.toObject({ getters: true });
 }
 
+async function getLivePayroll(query, actor) {
+  const now = new Date();
+  const month = Number(query.month || now.getMonth() + 1);
+  const year = Number(query.year || now.getFullYear());
+  const employeeFilter = { companyId: actor.companyId, status: { $in: ['active', 'on_leave'] } };
+  if (actor.role === 'manager') {
+    employeeFilter.$or = [{ _id: actor.id }, { managerId: actor.id }];
+  } else if (actor.role === 'team_lead') {
+    employeeFilter.$or = [{ _id: actor.id }, { teamLeadId: actor.id }];
+  } else if (!['admin', 'super_admin', 'hr'].includes(actor.role)) {
+    employeeFilter._id = actor.id;
+  }
+  const [employees, settings] = await Promise.all([
+    Employee.find(employeeFilter).populate('shiftId').sort({ fullName: 1 }),
+    settingsService.getPolicy(actor.companyId),
+  ]);
+  const items = await Promise.all(employees.map(async (employee) => {
+    const attendance = await getAttendanceData(employee, month, year);
+    const basicSalary = Number(employee.currentSalary) || 0;
+    const calculation = calculateAttendancePayroll({
+      basicSalary,
+      workingDays: attendance.workingDays,
+      absent: attendance.absent,
+      halfDay: attendance.halfDay,
+      late: attendance.late,
+      lateMinutes: attendance.lateMinutes,
+      unpaidLeave: attendance.unpaidLeave,
+      requiredMinutes: employee.shiftId?.requiredMinutes,
+      payrollPolicy: settings.payrollPolicy,
+    });
+    const deductions = calculation.absenceDeduction + calculation.halfDayDeduction
+      + calculation.lateDeduction + calculation.unpaidLeaveDeduction;
+    const creditedDays = attendance.present + (attendance.halfDay * 0.5)
+      + attendance.paidLeave + attendance.holiday;
+    const earnedSalary = Math.min(basicSalary, Math.round(calculation.perDaySalary * creditedDays));
+    return {
+      employeeId: employee._id,
+      employeeName: employee.fullName,
+      employeeCode: employee.employeeCode,
+      designation: employee.designation,
+      department: employee.department,
+      monthlySalary: basicSalary,
+      dailySalary: Math.round(calculation.perDaySalary),
+      earnedSalary,
+      deductions,
+      netPayable: Math.max(0, basicSalary - deductions),
+      month,
+      year,
+      ...attendance,
+      ...calculation,
+    };
+  }));
+  return { items, month, year, total: items.length };
+}
+
 module.exports = {
   generatePayslip, updatePayslip, listPayslips, getPayslipById,
   submitForApproval, approvePayslip, markPaid, lockPayslip,
-  calculateAttendancePayroll,
+  calculateAttendancePayroll, getLivePayroll,
 };

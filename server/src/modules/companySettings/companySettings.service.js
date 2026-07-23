@@ -75,7 +75,7 @@ async function addDepartment(companyId, name, actorId) {
 
 async function updateSettings(payload, actor) {
   const changes = { updatedBy: actor.id };
-  for (const section of ['company', 'holidayPolicy', 'timing', 'leavePolicy', 'notifications', 'security']) {
+  for (const section of ['company', 'holidayPolicy', 'timing', 'leavePolicy', 'payrollPolicy', 'notifications', 'security']) {
     if (payload[section]) changes[section] = payload[section];
   }
 

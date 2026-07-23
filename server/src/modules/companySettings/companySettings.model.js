@@ -56,6 +56,15 @@ const companySettingsSchema = new mongoose.Schema(
       },
       delayedApplicationReminderDays: { type: Number, default: 3, min: 1, max: 30 },
     },
+    payrollPolicy: {
+      lateDeductionMode: {
+        type: String,
+        enum: ['three_lates_half_day', 'per_minute'],
+        default: 'three_lates_half_day',
+      },
+      latesPerHalfDay: { type: Number, default: 3, min: 1, max: 30 },
+      perMinuteRate: { type: Number, default: 0, min: 0 },
+    },
     notifications: {
       inAppEnabled: { type: Boolean, default: true },
       emailEnabled: { type: Boolean, default: false },

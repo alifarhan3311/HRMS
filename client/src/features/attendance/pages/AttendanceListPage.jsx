@@ -29,6 +29,7 @@ import {
   useGetPendingRegularizationsQuery,
 } from '../api/attendance.api';
 import { useListEmployeesQuery } from '../../employees/api/employees.api';
+import { useApplyLeaveMutation } from '../../leaves/api/leaves.api';
 import { toast } from '../../../utils/toast';
 import StatCard from '../../../components/ui/StatCard';
 import Button from '../../../components/ui/Button';
@@ -48,6 +49,17 @@ const STATUS_STYLES = {
   holiday:  { label: 'Holiday',  variant: 'indigo', dot: 'bg-indigo-400' },
   weekend:  { label: 'Weekend',  variant: 'gray',   dot: 'bg-gray-300' },
 };
+
+function isWithinProbation(joiningDate) {
+  if (!joiningDate) return false;
+  const joined = new Date(joiningDate);
+  const eligibleAt = new Date(joined);
+  eligibleAt.setDate(1);
+  eligibleAt.setMonth(eligibleAt.getMonth() + 3);
+  const lastDay = new Date(eligibleAt.getFullYear(), eligibleAt.getMonth() + 1, 0).getDate();
+  eligibleAt.setDate(Math.min(joined.getDate(), lastDay));
+  return new Date() < eligibleAt;
+}
 
 function fmtTime(d, timeZone) {
   if (!d) return '—';
@@ -510,6 +522,28 @@ export default function AttendanceListPage() {
   const [manualCorrection, { isLoading: correcting }] = useManualCorrectionMutation();
   const [requestReg, { isLoading: requesting }] = useRequestRegularizationMutation();
   const [reviewReg, { isLoading: reviewing }] = useReviewRegularizationMutation();
+  const [applyLeaveForEmployee] = useApplyLeaveMutation();
+
+  async function markHrLeave(record) {
+    const leaveType = window.prompt('Leave type likhein: casual, sick, paid, annual, ya unpaid', 'unpaid');
+    if (!leaveType) return;
+    const allowed = ['casual', 'sick', 'paid', 'annual', 'unpaid'];
+    if (!allowed.includes(leaveType.toLowerCase())) return toast.error('Invalid leave type');
+    const fixedDate = record.shiftDate || inputDate(record.date);
+    try {
+      await applyLeaveForEmployee({
+        employeeId: record.employeeId?._id || record.employeeId,
+        attendanceId: record._id,
+        leaveType: leaveType.toLowerCase(),
+        startDate: fixedDate,
+        endDate: fixedDate,
+        reason: 'HR attendance exception',
+      }).unwrap();
+      toast.success(`Leave marked for ${fixedDate}`);
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Unable to mark leave');
+    }
+  }
 
   const summary = rangeData?.data?.summary || {};
   const trend = rangeData?.data?.trend || [];
@@ -915,6 +949,7 @@ export default function AttendanceListPage() {
               <div className="divide-y divide-border">
                 {listRecords.map((rec, i) => {
                   const st = STATUS_STYLES[rec.status] || STATUS_STYLES.present;
+                  const recordEmployee = employees.find(employee => employee._id === (rec.employeeId?._id || rec.employeeId));
                   return (
                     <motion.div key={rec._id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                       transition={{ delay: i * 0.02 }}
@@ -937,6 +972,12 @@ export default function AttendanceListPage() {
                           <button onClick={() => setCorrectionRecord(rec)} title="Correct"
                             className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground">
                             <Edit className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {user?.role === 'hr' && isWithinProbation(recordEmployee?.joiningDate) && ['absent', 'half_day'].includes(rec.status) && (
+                          <button onClick={() => markHrLeave(rec)} title="Mark leave for this fixed date"
+                            className="rounded-lg px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50">
+                            Leave
                           </button>
                         )}
                         {!isAdminHR && rec.regularizationStatus === 'none' && (

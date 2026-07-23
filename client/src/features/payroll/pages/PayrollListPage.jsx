@@ -12,9 +12,10 @@ import {
   Wallet, Plus, CheckCircle2, Lock, CreditCard,
   RefreshCw, ChevronLeft, ChevronRight, Eye,
   TrendingUp, TrendingDown, Banknote, FileText,
+  Download, Printer,
 } from 'lucide-react';
 import {
-  useListPayrollQuery, useGeneratePayrollMutation,
+  useListPayrollQuery, useGetLivePayrollQuery, useGeneratePayrollMutation,
   useSubmitPayrollMutation, useApprovePayrollMutation,
   useMarkPayrollPaidMutation, useLockPayrollMutation,
 } from '../api/payroll.api';
@@ -297,6 +298,10 @@ export default function PayrollListPage() {
   const [filters, setFilters] = useState({ month: '', year: String(now.getFullYear()), status: '' });
 
   const { data, isLoading, isFetching, refetch } = useListPayrollQuery({ page, limit: 15, ...filters });
+  const { data: liveData, isLoading: liveLoading, refetch: refetchLive } = useGetLivePayrollQuery({
+    month: filters.month || now.getMonth() + 1,
+    year: filters.year || now.getFullYear(),
+  });
   const { data: employeesData } = useListEmployeesQuery(
     { page: 1, limit: 100, status: 'active' },
     { skip: !canGenerate }
@@ -313,6 +318,23 @@ export default function PayrollListPage() {
   const total      = data?.total || 0;
   const totalPages = data?.totalPages || 1;
   const employees = employeesData?.items || [];
+  const liveRows = liveData?.items || [];
+
+  function exportLiveCsv() {
+    if (!liveRows.length) return toast.error('No live payroll data to export');
+    const headers = ['Employee','Code','Monthly Salary','Daily Salary','Earned Salary','Present','Absent','Half Days','Paid Leave','Unpaid Leave','Late','Deductions','Net Payable'];
+    const rows = liveRows.map(row => [
+      row.employeeName, row.employeeCode, row.monthlySalary, row.dailySalary, row.earnedSalary, row.present,
+      row.absent, row.halfDay, row.paidLeave, row.unpaidLeave, row.late, row.deductions, row.netPayable,
+    ]);
+    const csv = [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
+    const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `payroll-${liveData.month}-${liveData.year}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   // Stats
   const stats = {
@@ -349,8 +371,14 @@ export default function PayrollListPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" size="sm" className="gap-1.5"
-            onClick={() => refetch()} disabled={isFetching}>
+            onClick={() => { refetch(); refetchLive(); }} disabled={isFetching}>
             <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button variant="secondary" size="sm" className="gap-1.5" onClick={exportLiveCsv}>
+            <Download className="h-3.5 w-3.5" /> Excel
+          </Button>
+          <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => window.print()}>
+            <Printer className="h-3.5 w-3.5" /> PDF / Print
           </Button>
           {canGenerate && (
             <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setGenerateOpen(true)}>
@@ -359,6 +387,40 @@ export default function PayrollListPage() {
           )}
         </div>
       </motion.div>
+
+      <div className="glass-card overflow-hidden">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="font-semibold">Live Salary Dashboard</h2>
+          <p className="text-xs text-muted-foreground">Attendance aur leave change hote hi earned salary aur deductions automatically update hotay hain.</p>
+        </div>
+        {liveLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Calculating live payroll...</div> : liveRows.length === 0 ? (
+          <div className="p-10 text-center"><p className="font-medium">No payroll employees available</p><p className="mt-1 text-sm text-muted-foreground">Aapki profile ya reporting team active honi chahiye. Monthly salary missing ho to Employees module se configure karein.</p></div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1150px] text-sm">
+              <thead className="bg-muted/30 text-xs uppercase text-muted-foreground"><tr>
+                {['Employee','Monthly','Daily','Earned','Present','Absent','Half Day','Paid Leave','Unpaid Leave','Late','Attendance Deduction','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
+              </tr></thead>
+              <tbody className="divide-y divide-border">{liveRows.map(row => (
+                <tr key={row.employeeId} className="hover:bg-accent/30">
+                  <td className="px-4 py-3"><p className="font-medium">{row.employeeName}</p><p className="text-xs text-muted-foreground">{row.employeeCode} · {row.designation}</p></td>
+                  <td className="px-4 py-3">{fmtPKR(row.monthlySalary)}</td>
+                  <td className="px-4 py-3">{fmtPKR(row.dailySalary)}</td>
+                  <td className="px-4 py-3 font-medium text-emerald-600">{fmtPKR(row.earnedSalary)}</td>
+                  <td className="px-4 py-3 text-emerald-600">{row.present}</td>
+                  <td className="px-4 py-3 text-red-500">{row.absent}</td>
+                  <td className="px-4 py-3 text-orange-500">{row.halfDay}</td>
+                  <td className="px-4 py-3">{row.paidLeave}</td>
+                  <td className="px-4 py-3 text-red-500">{row.unpaidLeave}</td>
+                  <td className="px-4 py-3 text-amber-500">{row.late}</td>
+                  <td className="px-4 py-3 text-red-500">− {fmtPKR(row.deductions)}</td>
+                  <td className="px-4 py-3 font-bold text-primary">{fmtPKR(row.netPayable)}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
 
       {/* Stats */}
       {canViewTeamPayroll && (

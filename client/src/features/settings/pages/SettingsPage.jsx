@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Settings, Building2, Clock, Mail, ShieldCheck, Save, CalendarDays } from 'lucide-react';
+import { Settings, Building2, Clock, Mail, ShieldCheck, Save, CalendarDays, BadgeDollarSign } from 'lucide-react';
 import { toast } from '../../../utils/toast';
 import { Input, Select } from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
@@ -20,6 +20,7 @@ const TABS = [
   { id: 'timing',   label: 'Timing',   icon: Clock },
   { id: 'shifts',   label: 'Shifts',   icon: Clock },
   { id: 'leave',    label: 'Leave Policy', icon: CalendarDays },
+  { id: 'payroll',  label: 'Payroll Rules', icon: BadgeDollarSign },
   { id: 'holidays', label: 'Canada Holidays', icon: CalendarDays },
   { id: 'email',    label: 'Email',    icon: Mail },
   { id: 'security', label: 'Security', icon: ShieldCheck },
@@ -74,6 +75,9 @@ export default function SettingsPage() {
   const [securityForm, setSecurityForm] = useState({
     sessionTimeout: '60', maxLoginAttempts: '5', passwordExpiry: '90', mfaEnabled: false,
   });
+  const [payrollForm, setPayrollForm] = useState({
+    lateDeductionMode: 'three_lates_half_day', latesPerHalfDay: 3, perMinuteRate: 0,
+  });
 
   useEffect(() => {
     const settings = settingsData?.data;
@@ -112,6 +116,11 @@ export default function SettingsPage() {
       passwordExpiry: String(settings.security?.passwordExpiryDays ?? 90),
       mfaEnabled: Boolean(settings.security?.mfaEnabled),
     });
+    setPayrollForm({
+      lateDeductionMode: settings.payrollPolicy?.lateDeductionMode || 'three_lates_half_day',
+      latesPerHalfDay: Number(settings.payrollPolicy?.latesPerHalfDay || 3),
+      perMinuteRate: Number(settings.payrollPolicy?.perMinuteRate || 0),
+    });
   }, [settingsData]);
 
   async function handleSave() {
@@ -130,6 +139,11 @@ export default function SettingsPage() {
           entitlements: Object.fromEntries(Object.entries(leaveForm.entitlements).map(([key, value]) => [key, Number(value)])),
           maxCarryForward: Object.fromEntries(Object.entries(leaveForm.maxCarryForward).map(([key, value]) => [key, Number(value)])),
           delayedApplicationReminderDays: Number(leaveForm.delayedApplicationReminderDays),
+        },
+        payrollPolicy: {
+          lateDeductionMode: payrollForm.lateDeductionMode,
+          latesPerHalfDay: Number(payrollForm.latesPerHalfDay),
+          perMinuteRate: Number(payrollForm.perMinuteRate),
         },
         notifications: {
           inAppEnabled: emailForm.enableInApp,
@@ -401,6 +415,26 @@ export default function SettingsPage() {
                   </div>
                   <span className="text-sm">Enable WhatsApp notifications</span>
                 </label>
+              </SectionCard>
+            </motion.div>
+          )}
+
+          {activeTab === 'payroll' && (
+            <motion.div key="payroll" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
+              <SectionCard title="Late Salary Deduction Rule">
+                <Select label="Deduction Method" value={payrollForm.lateDeductionMode}
+                  onChange={event => setPayrollForm(previous => ({ ...previous, lateDeductionMode: event.target.value }))}>
+                  <option value="three_lates_half_day">Late count converts to half day</option>
+                  <option value="per_minute">Per-minute deduction</option>
+                </Select>
+                {payrollForm.lateDeductionMode === 'three_lates_half_day' ? (
+                  <Input label="Lates Per Half Day" type="number" min="1" max="30" value={payrollForm.latesPerHalfDay}
+                    onChange={event => setPayrollForm(previous => ({ ...previous, latesPerHalfDay: event.target.value }))} />
+                ) : (
+                  <Input label="Deduction Per Late Minute (PKR)" type="number" min="0" value={payrollForm.perMinuteRate}
+                    onChange={event => setPayrollForm(previous => ({ ...previous, perMinuteRate: event.target.value }))} />
+                )}
+                <p className="text-sm text-muted-foreground">Default rule: 3 lates = one half-day salary deduction. Overtime is disabled.</p>
               </SectionCard>
             </motion.div>
           )}

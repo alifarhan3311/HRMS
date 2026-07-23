@@ -17,6 +17,11 @@ const list = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, ...result });
 });
 
+const live = asyncHandler(async (req, res) => {
+  const result = await service.getLivePayroll(req.query, req.user);
+  res.status(200).json({ success: true, ...result });
+});
+
 const getById = asyncHandler(async (req, res) => {
   const record = await service.getPayslipById(req.params.id, req.user);
   res.status(200).json({ success: true, data: record });
@@ -47,4 +52,4 @@ const lock = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: record });
 });
 
-module.exports = { generate, list, getById, update, submit, approve, markPaid, lock };
+module.exports = { generate, list, live, getById, update, submit, approve, markPaid, lock };

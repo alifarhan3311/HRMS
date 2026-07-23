@@ -33,6 +33,11 @@ const updateSchema = Joi.object({
     maxCarryForward: entitlementSchema.required(),
     delayedApplicationReminderDays: Joi.number().integer().min(1).max(30).required(),
   }).optional(),
+  payrollPolicy: Joi.object({
+    lateDeductionMode: Joi.string().valid('three_lates_half_day', 'per_minute').required(),
+    latesPerHalfDay: Joi.number().integer().min(1).max(30).required(),
+    perMinuteRate: Joi.number().min(0).max(100000).required(),
+  }).optional(),
   notifications: Joi.object({
     inAppEnabled: Joi.boolean().required(),
     emailEnabled: Joi.boolean().required(),

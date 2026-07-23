@@ -3,6 +3,8 @@ const Joi = require('joi');
 const leaveTypes = ['paid', 'casual', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'];
 
 const createSchema = Joi.object({
+  employeeId: Joi.string().hex().length(24).optional(),
+  attendanceId: Joi.string().hex().length(24).optional(),
   leaveType: Joi.string().valid(...leaveTypes).required(),
   startDate: Joi.date().iso().required(),
   endDate: Joi.date().iso().min(Joi.ref('startDate')).required(),

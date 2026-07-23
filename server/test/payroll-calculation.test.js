@@ -20,7 +20,7 @@ test('payroll calculates absence, half-day, unpaid leave, and every three lates 
   assert.equal(Math.round(result.perHourSalary), 167);
   assert.equal(result.absenceDeduction, 1000);
   assert.equal(result.halfDayDeduction, 500);
-  assert.equal(result.lateDeductionDays, 1);
-  assert.equal(result.lateDeduction, 1000);
+  assert.equal(result.lateDeductionDays, 0.5);
+  assert.equal(result.lateDeduction, 500);
   assert.equal(result.unpaidLeaveDeduction, 2000);
 });

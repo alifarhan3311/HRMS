@@ -15,6 +15,7 @@ router.use(authenticate);
 
 // List & generate
 router.get('/',    authorize(...ALL),    controller.list);
+router.get('/live', authorize(...ALL), controller.live);
 router.post('/',   authorize(...PAYROLL_ADMINS), controller.generate);
 
 // Per-payslip

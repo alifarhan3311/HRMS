@@ -15,7 +15,7 @@ export const leavesApi = api.injectEndpoints({
     }),
     applyLeave: builder.mutation({
       query: (body) => ({ url: '/leaves', method: 'POST', body }),
-      invalidatesTags: ['Leaves', 'Dashboard'],
+      invalidatesTags: ['Leaves', 'Attendance', 'Payroll', 'Dashboard'],
     }),
     approveLeave: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/leaves/${id}/approve`, method: 'PATCH', body }),
