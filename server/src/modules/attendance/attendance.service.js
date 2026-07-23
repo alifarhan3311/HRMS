@@ -21,7 +21,7 @@ const {
   arrivalStatus: calculateArrivalStatus,
   earlyLeaveMinutes: calculateShiftEarlyLeave,
 } = require('./shiftTime');
-const { findClosure, effectivePolicy } = require('./closurePolicy');
+const { appliesToEmployee, findClosure, effectivePolicy } = require('./closurePolicy');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -104,6 +104,8 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
   const record = existing
     ? await repository.updateById(existing._id, {
         signInTime: now, status, lateMinutes, method, notes,
+        employeeName: employee.fullName,
+        employeeCode: employee.employeeCode,
         shiftDate: schedule.shiftDate,
         shiftId: shift._id || undefined,
         shiftName: shift.name,
@@ -124,6 +126,8 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
       })
     : await repository.create({
         employeeId,
+        employeeName: employee.fullName,
+        employeeCode: employee.employeeCode,
         date: attendanceDate,
         shiftDate: schedule.shiftDate,
         shiftId: shift._id || undefined,
@@ -313,7 +317,7 @@ function recordTiming(record, fallback) {
 
 async function assertCanViewEmployeeAttendance(actor, employeeId) {
   if (String(employeeId) === String(actor.id)) return;
-  if (!['super_admin', 'hr', 'manager'].includes(actor.role)) {
+  if (!['super_admin', 'hr', 'manager', 'team_lead'].includes(actor.role)) {
     throw createHttpError(403, 'You can only view your own attendance.');
   }
   const employee = await Employee.findById(employeeId).select('companyId role managerId teamLeadId');
@@ -325,6 +329,9 @@ async function assertCanViewEmployeeAttendance(actor, employeeId) {
   }
   if (actor.role === 'manager' && String(employee.managerId || '') !== String(actor.id)) {
     throw createHttpError(403, 'You can only view attendance for employees reporting to you.');
+  }
+  if (actor.role === 'team_lead' && String(employee.teamLeadId || '') !== String(actor.id)) {
+    throw createHttpError(403, 'You can only view attendance for your team members.');
   }
 }
 
@@ -361,11 +368,12 @@ function addDateKeyDays(dateKey, amount) {
 }
 
 async function visibleAttendanceEmployeeIds(actor, includeSelf = true) {
-  if (!['super_admin', 'hr', 'manager'].includes(actor.role)) {
+  if (!['super_admin', 'hr', 'manager', 'team_lead'].includes(actor.role)) {
     return includeSelf ? [actor.id] : [];
   }
   const filter = { companyId: actor.companyId };
   if (actor.role === 'manager') filter.managerId = actor.id;
+  else if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
   else if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   const ids = await Employee.find(filter).distinct('_id');
   if (includeSelf && !ids.some((id) => String(id) === String(actor.id))) ids.push(actor.id);
@@ -759,7 +767,8 @@ async function applyClosureToAttendance(closure) {
       await repository.upsertByEmployeeShiftDate(employee._id, schedule.shiftDate, {
         $set: { ...common, status: 'holiday' },
         $setOnInsert: {
-          employeeId: employee._id, companyId: employee.companyId, branchId: employee.branchId,
+          employeeId: employee._id, employeeName: employee.fullName, employeeCode: employee.employeeCode,
+          companyId: employee.companyId, branchId: employee.branchId,
           date: attendanceDate, shiftDate: schedule.shiftDate, shiftId: shift._id,
           shiftName: shift.name, shiftStartTime: shift.startTime, shiftEndTime: shift.endTime,
           shiftGraceMinutes: shift.graceMinutes, shiftRequiredMinutes: policy.requiredMinutes,

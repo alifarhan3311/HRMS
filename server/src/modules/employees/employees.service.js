@@ -8,6 +8,8 @@ const createHttpError = require('http-errors');
 const repository = require('./employees.repository');
 const Session = require('../auth/auth.model');
 const Shift = require('../shifts/shifts.model');
+const Attendance = require('../attendance/attendance.model');
+const LeaveRequest = require('../leaves/leaves.model');
 const settingsService = require('../companySettings/companySettings.service');
 const { emitToUser } = require('../../config/socket');
 
@@ -444,6 +446,14 @@ async function deleteEmployee(id, actor) {
   await Promise.all([
     Session.deleteMany({ employeeId: id }),
     repository.clearReportingReferences(id),
+    Attendance.updateMany(
+      { employeeId: id },
+      { $set: { employeeName: existing.fullName, employeeCode: existing.employeeCode } },
+    ),
+    LeaveRequest.updateMany(
+      { employeeId: id },
+      { $set: { employeeName: existing.fullName, employeeCode: existing.employeeCode } },
+    ),
   ]);
 
   const deleted = await repository.deleteById(id);

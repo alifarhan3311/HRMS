@@ -159,6 +159,10 @@ async function decideHoliday(id, payload, actor) {
   holiday.employeeEmailFailedCount = emailResults.length - emailed;
   const emailRecipientCount = employees.filter(employee => employee.email).length;
   holiday.employeeEmailSentAt = deliveredIds.size >= emailRecipientCount ? new Date() : undefined;
+  // Persist accepted recipients before attendance reconciliation. If a later
+  // attendance adjustment fails, Retry Emails must not resend messages that
+  // the SMTP provider already accepted.
+  await holiday.save();
   holiday.attendanceAdjustedCount = await attendanceService.applyClosureToAttendance(holiday);
   holiday.attendanceAdjustedAt = new Date();
   await holiday.save();

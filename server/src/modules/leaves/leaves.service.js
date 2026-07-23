@@ -8,7 +8,9 @@
  * the decision is final and the leave balance/attendance record is locked.
  */
 const createHttpError = require('http-errors');
+const mongoose = require('mongoose');
 const repository = require('./leaves.repository');
+const LeaveRequest = require('./leaves.model');
 const Employee = require('../employees/employees.model');
 const notificationService = require('../notifications/notifications.service');
 const settingsService = require('../companySettings/companySettings.service');
@@ -30,16 +32,63 @@ const LEAVE_BALANCE_KEYS = {
   paid: 'paid', casual: 'casual', sick: 'sick', annual: 'annual',
 };
 
-function calcWorkingDays(startDate, endDate, weekendDays = [0, 6]) {
-  let count = 0;
-  const cur = new Date(startDate);
-  const end = new Date(endDate);
-  while (cur <= end) {
-    const dow = cur.getDay();
-    if (!weekendDays.includes(dow)) count++;
-    cur.setDate(cur.getDate() + 1);
+function zonedDateTimeParts(value, timeZone = 'Asia/Karachi') {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(new Date(value)).reduce((parts, part) => {
+    if (part.type !== 'literal') parts[part.type] = Number(part.value);
+    return parts;
+  }, {});
+}
+
+function clockMinutes(parts) {
+  return (Number(parts.hour) * 60) + Number(parts.minute);
+}
+
+function shiftClockMinutes(value) {
+  const [hour, minute] = String(value || '00:00').split(':').map(Number);
+  return (hour * 60) + minute;
+}
+
+function previousCalendarDate(parts) {
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day - 1, 12));
+  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() };
+}
+
+function calculateLeaveDutyDates(startDate, endDate, weekendDays = [0, 6], shift = null, timeZone = 'Asia/Karachi') {
+  const startParts = zonedDateTimeParts(startDate, timeZone);
+  let endParts = zonedDateTimeParts(endDate, timeZone);
+  const shiftStart = shiftClockMinutes(shift?.startTime);
+  const shiftEnd = shiftClockMinutes(shift?.endTime);
+  const isOvernightShift = shift?.shiftType !== 'flexible' && shiftEnd <= shiftStart;
+
+  // An overnight shift belongs to the date on which it starts. Therefore an
+  // interval such as 22 Jul 22:00 -> 23 Jul 04:00 consumes one leave day.
+  const sameSubmittedClock = clockMinutes(startParts) === clockMinutes(endParts);
+  const explicitOvernightTimes = clockMinutes(startParts) >= shiftStart
+    && clockMinutes(endParts) <= shiftEnd;
+  if (isOvernightShift && (sameSubmittedClock || explicitOvernightTimes)) {
+    endParts = previousCalendarDate(endParts);
   }
-  return Math.max(count, 1);
+
+  const dutyDates = [];
+  const cur = new Date(Date.UTC(startParts.year, startParts.month - 1, startParts.day, 12));
+  const end = new Date(Date.UTC(endParts.year, endParts.month - 1, endParts.day, 12));
+  while (cur <= end) {
+    const dow = cur.getUTCDay();
+    if (!weekendDays.includes(dow)) dutyDates.push(cur.toISOString().slice(0, 10));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  if (!dutyDates.length) {
+    dutyDates.push(`${startParts.year}-${String(startParts.month).padStart(2, '0')}-${String(startParts.day).padStart(2, '0')}`);
+  }
+  return dutyDates;
+}
+
+function calcWorkingDays(startDate, endDate, weekendDays = [0, 6], shift = null, timeZone = 'Asia/Karachi') {
+  return calculateLeaveDutyDates(startDate, endDate, weekendDays, shift, timeZone).length;
 }
 
 function buildApprovalChain() {
@@ -183,6 +232,8 @@ async function notifyStageApprovers(leave, stage, onlyRecipientId = null) {
 // ─── Apply ───────────────────────────────────────────────────────────────────
 async function applyLeave(payload, actor) {
   const { leaveType, startDate, endDate, reason, emergencyContact } = payload;
+  const employee = await Employee.findOne({ _id: actor.id, companyId: actor.companyId }).populate('shiftId');
+  if (!employee) throw createHttpError(404, 'Employee not found.');
 
   if (leaveType !== 'casual' && !String(reason || '').trim()) {
     throw createHttpError(422, `A reason is required for ${leaveType || 'this'} leave.`);
@@ -201,13 +252,24 @@ async function applyLeave(payload, actor) {
   const overlapping = await repository.countActiveLeaves(actor.id, start, end);
   if (overlapping > 0) throw createHttpError(409, 'You already have a leave request overlapping these dates.');
 
-  const totalDays = calcWorkingDays(start, end, settings.timing.weekendDays);
+  const assignedShift = employee.shiftId || {
+    shiftType: 'fixed',
+    startTime: settings.timing.officeStart,
+    endTime: settings.timing.officeEnd,
+  };
+  const dutyDates = calculateLeaveDutyDates(
+    start,
+    end,
+    settings.timing.weekendDays,
+    assignedShift,
+    settings.company?.timezone || 'Asia/Karachi',
+  );
+  const totalDays = dutyDates.length;
 
   // Check balance for paid leave types
   if (LEAVE_BALANCE_KEYS[leaveType]) {
-    const emp = await Employee.findById(actor.id);
-    if (emp?.leaveBalance?.[leaveType]) {
-      const bal = emp.leaveBalance[leaveType];
+    if (employee.leaveBalance?.[leaveType]) {
+      const bal = employee.leaveBalance[leaveType];
       const remaining = (bal.available || 0) - (bal.used || 0);
       if (totalDays > remaining) {
         throw createHttpError(400, `Insufficient ${leaveType} leave balance. Available: ${remaining} days.`);
@@ -217,10 +279,13 @@ async function applyLeave(payload, actor) {
 
   const leave = await repository.create({
     employeeId: actor.id,
+    employeeName: employee.fullName,
+    employeeCode: employee.employeeCode,
     leaveType,
     startDate: start,
     endDate: end,
     totalDays,
+    dutyDates,
     reason: reason || '',
     emergencyContact: emergencyContact || '',
     status: 'pending',
@@ -253,10 +318,11 @@ async function approveLeave(id, { remarks }, actor) {
 
   // Update chain
   const chain = leave.approvalChain.map((step) => {
+    const plainStep = step.toObject ? step.toObject() : step;
     if (step.stage === actorStage) {
-      return { ...step, status: 'approved', approvedBy: actor.id, actionAt: new Date(), remarks: remarks || '' };
+      return { ...plainStep, status: 'approved', approvedBy: actor.id, actionAt: new Date(), remarks: remarks || '' };
     }
-    return step;
+    return plainStep;
   });
 
   const isLastStage = actorStage === 3;
@@ -268,15 +334,35 @@ async function approveLeave(id, { remarks }, actor) {
     status: isLastStage ? 'approved' : 'pending',
   };
 
-  // Deduct leave balance on final approval
-  if (isLastStage && LEAVE_BALANCE_KEYS[leave.leaveType]) {
-    const key = LEAVE_BALANCE_KEYS[leave.leaveType];
-    await Employee.findByIdAndUpdate(leave.employeeId, {
-      $inc: { [`leaveBalance.${key}.used`]: leave.totalDays },
-    });
-  }
+  let updated;
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      updated = await LeaveRequest.findOneAndUpdate(
+        { _id: id, status: 'pending', currentStage: actorStage },
+        { $set: update },
+        { new: true, runValidators: true, session },
+      );
+      if (!updated) {
+        throw createHttpError(409, 'This leave stage was already processed by another approver.');
+      }
 
-  const updated = await repository.updateById(id, update);
+      if (isLastStage && LEAVE_BALANCE_KEYS[leave.leaveType]) {
+        const key = LEAVE_BALANCE_KEYS[leave.leaveType];
+        const employee = await Employee.findById(leave.employeeId).session(session);
+        const balance = employee?.leaveBalance?.[key];
+        const remaining = Number(balance?.available || 0) - Number(balance?.used || 0);
+        if (!employee || remaining < Number(leave.totalDays)) {
+          throw createHttpError(409, `Insufficient ${leave.leaveType} leave balance at final approval.`);
+        }
+        employee.leaveBalance[key].used = Number(balance.used || 0) + Number(leave.totalDays);
+        await employee.save({ session });
+      }
+    });
+  } finally {
+    await session.endSession();
+  }
+  updated = await repository.findById(id);
   if (isLastStage) {
     await notifyEmployee(leave, {
       type: 'leave_approved',
@@ -307,13 +393,19 @@ async function rejectLeave(id, { remarks }, actor) {
   }
 
   const chain = leave.approvalChain.map((step) => {
+    const plainStep = step.toObject ? step.toObject() : step;
     if (step.stage === actorStage) {
-      return { ...step, status: 'rejected', approvedBy: actor.id, actionAt: new Date(), remarks: remarks || '' };
+      return { ...plainStep, status: 'rejected', approvedBy: actor.id, actionAt: new Date(), remarks: remarks || '' };
     }
-    return step;
+    return plainStep;
   });
 
-  const updated = await repository.updateById(id, { approvalChain: chain, status: 'rejected' });
+  const updated = await LeaveRequest.findOneAndUpdate(
+    { _id: id, status: 'pending', currentStage: actorStage },
+    { $set: { approvalChain: chain, status: 'rejected' } },
+    { new: true, runValidators: true },
+  ).populate('employeeId', 'fullName employeeCode department');
+  if (!updated) throw createHttpError(409, 'This leave stage was already processed by another approver.');
   await notifyEmployee(leave, {
     type: 'leave_rejected',
     title: 'Leave rejected',
@@ -382,7 +474,10 @@ async function listLeaves(query, actor) {
     const end = numericMonth
       ? new Date(Date.UTC(numericYear, numericMonth, 1))
       : new Date(Date.UTC(numericYear + 1, 0, 1));
-    filter.startDate = { $gte: start, $lt: end };
+    // Include every leave overlapping the selected period, even when it
+    // started in the previous month and continues into this one.
+    filter.startDate = { $lt: end };
+    filter.endDate = { $gte: start };
   }
 
   return repository.findAll({ filter, page: Number(page), limit: Math.min(Number(limit), 100), sort });
@@ -411,4 +506,14 @@ async function getPendingApprovals(actor) {
   return records;
 }
 
-module.exports = { applyLeave, approveLeave, rejectLeave, cancelLeave, listLeaves, getLeaveById, getPendingApprovals };
+module.exports = {
+  calcWorkingDays,
+  calculateLeaveDutyDates,
+  applyLeave,
+  approveLeave,
+  rejectLeave,
+  cancelLeave,
+  listLeaves,
+  getLeaveById,
+  getPendingApprovals,
+};

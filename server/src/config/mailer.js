@@ -8,10 +8,16 @@ const nodemailer = require('nodemailer');
 const logger = require('../utils/logger');
 const CompanySettings = require('../modules/companySettings/companySettings.model');
 
+function smtpSecure(port, configuredSecure) {
+  // Port 465 is implicit TLS. Allowing `secure: false` on this port causes
+  // providers such as Zoho to close the connection before authentication.
+  return Number(port) === 465 || Boolean(configuredSecure);
+}
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT) || 587,
-  secure: process.env.SMTP_SECURE === 'true',
+  secure: smtpSecure(process.env.SMTP_PORT || 587, process.env.SMTP_SECURE === 'true'),
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -39,7 +45,7 @@ async function sendCompanyMail(companyId, { to, subject, html }) {
     ? nodemailer.createTransport({
       host: smtp.host,
       port: Number(smtp.port) || 587,
-      secure: Boolean(smtp.secure),
+      secure: smtpSecure(smtp.port, smtp.secure),
       auth: { user: smtp.user, pass: smtp.password },
     })
     : transporter;
@@ -57,4 +63,4 @@ async function sendCompanyMail(companyId, { to, subject, html }) {
   }
 }
 
-module.exports = { transporter, sendMail, sendCompanyMail };
+module.exports = { transporter, smtpSecure, sendMail, sendCompanyMail };

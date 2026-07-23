@@ -589,7 +589,7 @@ export default function EmployeeForm({
                   </option>
                   {shifts.map((shift) => (
                     <option key={shift._id} value={shift._id}>
-                      {shift.name} ({shift.shiftType === 'flexible' ? 'Flexible 8 hours' : `${shift.startTime} - ${shift.endTime}`})
+                      {shift.name} ({shift.shiftType === 'flexible' ? `Flexible ${(shift.requiredMinutes || 480) / 60} hours` : `${shift.startTime} - ${shift.endTime}`})
                     </option>
                   ))}
                 </Select>

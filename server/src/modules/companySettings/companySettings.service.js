@@ -86,6 +86,7 @@ async function updateSettings(payload, actor) {
       ...currentSmtp,
       ...payload.smtp,
     };
+    if (Number(changes.smtp.port) === 465) changes.smtp.secure = true;
     if (!payload.smtp.password && currentSmtp.password) {
       changes.smtp.password = currentSmtp.password;
     } else if (!payload.smtp.password) {

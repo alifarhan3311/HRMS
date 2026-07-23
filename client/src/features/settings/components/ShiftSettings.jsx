@@ -36,7 +36,18 @@ export default function ShiftSettings() {
 
   function applyPolicy(next) {
     if (next.shiftType === 'flexible') {
-      return { ...next, graceMinutes: 0, lateHalfDayAfterMinutes: 0, requiredMinutes: 480, halfDayMinutes: 240, overtimeAfterMinutes: 480 };
+      const requiredMinutes = Number(next.requiredMinutes) === 360 ? 360 : 480;
+      return {
+        ...next,
+        startTime: '00:00',
+        endTime: requiredMinutes === 360 ? '06:00' : '08:00',
+        breakMinutes: 0,
+        graceMinutes: 0,
+        lateHalfDayAfterMinutes: 0,
+        requiredMinutes,
+        halfDayMinutes: requiredMinutes / 2,
+        overtimeAfterMinutes: requiredMinutes,
+      };
     }
     const windowMinutes = durationMinutes(next.startTime, next.endTime);
     const requiredMinutes = Math.max(60, windowMinutes - Number(next.breakMinutes || 0));
@@ -54,8 +65,12 @@ export default function ShiftSettings() {
     setForm(previous => applyPolicy({
       ...previous,
       shiftType: value,
-      ...(value === 'flexible' && { startTime: '00:00', endTime: '08:00', breakMinutes: 0 }),
+      ...(value === 'flexible' && { requiredMinutes: 480, startTime: '00:00', endTime: '08:00', breakMinutes: 0 }),
     }));
+  }
+
+  function setFlexibleDuration(value) {
+    setForm(previous => applyPolicy({ ...previous, requiredMinutes: Number(value) }));
   }
 
   function setTime(field, value) {
@@ -99,12 +114,13 @@ export default function ShiftSettings() {
       <form onSubmit={save} className="glass-card space-y-5 p-6">
         <div className="border-b border-border pb-3">
           <h3 className="flex items-center gap-2 font-semibold"><Clock3 className="h-5 w-5 text-primary" /> {editingId ? 'Edit Shift' : 'Create Shift'}</h3>
-          <p className="mt-1 text-sm text-muted-foreground">Fixed shifts follow their exact start time. Flexible shifts may complete 8 hours from any start time.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Fixed shifts follow their exact start time. Flexible shifts may complete their selected 6 or 8 hours from any start time.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <Input label="Shift Name" required value={form.name} onChange={event => set('name', event.target.value)} placeholder="Night Shift" />
           <Input label="Code" required value={form.code} onChange={event => set('code', event.target.value.toUpperCase())} placeholder="NIGHT" />
-          <label className="space-y-1.5 text-sm"><span className="font-medium">Shift Type</span><select value={form.shiftType} onChange={event => setShiftType(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3"><option value="fixed">Fixed timing</option><option value="flexible">Flexible 8 hours</option></select></label>
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Shift Type</span><select value={form.shiftType} onChange={event => setShiftType(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3"><option value="fixed">Fixed timing</option><option value="flexible">Flexible timing</option></select></label>
+          <label className="space-y-1.5 text-sm"><span className="font-medium">Flexible Duration</span><select value={form.requiredMinutes} disabled={form.shiftType !== 'flexible'} onChange={event => setFlexibleDuration(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 disabled:cursor-not-allowed disabled:opacity-60"><option value={480}>Flexible 8 Hours</option><option value={360}>Flexible 6 Hours</option></select></label>
           <Input label="Start" type="time" required disabled={form.shiftType === 'flexible'} value={form.startTime} onChange={event => setTime('startTime', event.target.value)} />
           <Input label="End" type="time" required disabled={form.shiftType === 'flexible'} value={form.endTime} onChange={event => setTime('endTime', event.target.value)} />
           <Input label="Grace (automatic)" type="number" readOnly value={form.graceMinutes} />
@@ -117,7 +133,7 @@ export default function ShiftSettings() {
         <div className="flex flex-wrap items-center gap-2">
           <span className="mr-2 text-sm text-muted-foreground">Working days:</span>
           {DAYS.map((day, index) => <button type="button" key={day} onClick={() => toggleDay(index)} className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${form.workingDays.includes(index) ? 'border-primary bg-primary text-primary-foreground' : 'border-border text-muted-foreground'}`}>{day}</button>)}
-          <span className="ml-auto rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">{form.shiftType === 'flexible' ? 'Any start time · 8h required' : `Duration: ${duration(form.startTime, form.endTime)}`}</span>
+          <span className="ml-auto rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">{form.shiftType === 'flexible' ? `Any start time · ${form.requiredMinutes / 60}h required` : `Duration: ${duration(form.startTime, form.endTime)}`}</span>
         </div>
         <div className="flex justify-end gap-2">
           {editingId && <Button type="button" variant="ghost" onClick={() => { setEditingId(null); setForm(EMPTY); }}>Cancel</Button>}

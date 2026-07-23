@@ -919,9 +919,9 @@ export default function AttendanceListPage() {
                     <motion.div key={rec._id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                       transition={{ delay: i * 0.02 }}
                       className="grid grid-cols-[auto_1fr_auto_auto_auto_auto] items-center gap-4 px-4 py-3 hover:bg-accent/30 transition-colors group">
-                      <Avatar name={rec.employeeId?.fullName || user?.fullName} size="sm" />
+                      <Avatar name={rec.employeeId?.fullName || rec.employeeName || user?.fullName} size="sm" />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{rec.employeeId?.fullName || 'You'}</p>
+                        <p className="text-sm font-medium truncate">{rec.employeeId?.fullName || rec.employeeName || 'You'}</p>
                         <p className="text-xs text-muted-foreground">{fmtDate(rec.date)}</p>
                       </div>
                       <Badge variant={st.variant}>{st.label}</Badge>
@@ -989,7 +989,7 @@ export default function AttendanceListPage() {
                 {pendingRegs.slice(0, 5).map((r) => (
                   <div key={r._id} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border text-sm">
                     <div className="min-w-0">
-                      <p className="font-medium truncate">{r.employeeId?.fullName}</p>
+                      <p className="font-medium truncate">{r.employeeId?.fullName || r.employeeName || 'Former employee'}</p>
                       <p className="text-xs text-muted-foreground">{fmtDate(r.date)}</p>
                       <p className="text-xs text-muted-foreground capitalize">
                         {(r.regularization?.requestType || 'time_correction').replace('_', ' ')}
@@ -1023,7 +1023,7 @@ export default function AttendanceListPage() {
         {reviewRecord && (
           <div className="px-6 py-5 space-y-4">
             <div className="text-sm">
-              <p className="font-medium">{reviewRecord.employeeId?.fullName}</p>
+              <p className="font-medium">{reviewRecord.employeeId?.fullName || reviewRecord.employeeName || 'Former employee'}</p>
               <p className="text-muted-foreground">{fmtDate(reviewRecord.date)}</p>
               <p className="mt-1 text-xs capitalize text-muted-foreground">
                 {(reviewRecord.regularization?.requestType || 'time_correction').replace('_', ' ')}

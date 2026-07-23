@@ -14,15 +14,20 @@ function shiftWindowMinutes(startTime, endTime) {
 
 function normalizeDurationPolicy(payload, existing = {}) {
   const shiftType = payload.shiftType || existing.shiftType || 'fixed';
-  const startTime = payload.startTime || existing.startTime;
-  const endTime = payload.endTime || existing.endTime;
-  const windowMinutes = shiftWindowMinutes(startTime, endTime);
   const breakMinutes = Number(payload.breakMinutes ?? existing.breakMinutes ?? 0);
   const isFlexible = shiftType === 'flexible';
-  const requiredMinutes = isFlexible ? 480 : Math.max(60, windowMinutes - breakMinutes);
+  const requestedFlexibleMinutes = Number(payload.requiredMinutes ?? existing.requiredMinutes ?? 480);
+  if (isFlexible && payload.requiredMinutes !== undefined && ![360, 480].includes(requestedFlexibleMinutes)) {
+    throw createHttpError(422, 'Flexible shifts can only require 6 or 8 hours.');
+  }
+  const flexibleMinutes = [360, 480].includes(requestedFlexibleMinutes) ? requestedFlexibleMinutes : 480;
+  const startTime = isFlexible ? '00:00' : (payload.startTime || existing.startTime);
+  const endTime = isFlexible ? (flexibleMinutes === 360 ? '06:00' : '08:00') : (payload.endTime || existing.endTime);
+  const windowMinutes = shiftWindowMinutes(startTime, endTime);
+  const requiredMinutes = isFlexible ? flexibleMinutes : Math.max(60, windowMinutes - breakMinutes);
   const graceMinutes = isFlexible ? 0 : (windowMinutes > 420 ? 15 : 0);
   const lateHalfDayAfterMinutes = isFlexible ? 0 : (windowMinutes > 420 ? 150 : 120);
-  const halfDayMinutes = isFlexible ? 240 : Math.ceil(requiredMinutes / 2);
+  const halfDayMinutes = Math.ceil(requiredMinutes / 2);
   const overtimeAfterMinutes = requiredMinutes;
   if (!isFlexible && requiredMinutes + breakMinutes > windowMinutes) {
     throw createHttpError(422, 'Required duty plus break time cannot exceed the shift window.');
@@ -30,8 +35,10 @@ function normalizeDurationPolicy(payload, existing = {}) {
   return {
     ...payload,
     shiftType,
+    startTime,
+    endTime,
     requiredMinutes,
-    breakMinutes,
+    breakMinutes: isFlexible ? 0 : breakMinutes,
     graceMinutes,
     lateHalfDayAfterMinutes,
     halfDayMinutes,

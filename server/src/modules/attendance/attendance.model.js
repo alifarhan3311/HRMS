@@ -24,6 +24,8 @@ const regularizationSchema = new mongoose.Schema({
 const attendanceSchema = new mongoose.Schema(
   {
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    employeeName: { type: String },
+    employeeCode: { type: String },
     date: { type: Date, required: true },
     shiftDate: { type: String },
     shiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift' },

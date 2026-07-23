@@ -1,24 +1,21 @@
-/**
- * modules/leaves/leaves.validation.js
- * Joi request-body schemas. Wired into the route via a validate() middleware
- * (see middlewares/validate.middleware.js) — fill in precise per-field rules
- * as business requirements for leaves are finalized.
- */
 const Joi = require('joi');
 
+const leaveTypes = ['paid', 'casual', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'];
+
 const createSchema = Joi.object({
-  employeeId: Joi.any(),
-  leaveType: Joi.any(),
-  startDate: Joi.any(),
-  endDate: Joi.any(),
-  reason: Joi.any(),
-  status: Joi.any(),
-  approvalChain: Joi.any(),
+  leaveType: Joi.string().valid(...leaveTypes).required(),
+  startDate: Joi.date().iso().required(),
+  endDate: Joi.date().iso().min(Joi.ref('startDate')).required(),
+  reason: Joi.string().trim().max(1000).allow('').default(''),
+  emergencyContact: Joi.string().trim().max(200).allow('').default(''),
 });
 
-const updateSchema = createSchema.fork(
-  Object.keys(createSchema.describe().keys),
-  (schema) => schema.optional()
-);
+const decisionSchema = Joi.object({
+  remarks: Joi.string().trim().max(500).allow('').default(''),
+});
 
-module.exports = { createSchema, updateSchema };
+const cancelSchema = Joi.object({
+  reason: Joi.string().trim().max(500).allow('').default(''),
+});
+
+module.exports = { createSchema, decisionSchema, cancelSchema };

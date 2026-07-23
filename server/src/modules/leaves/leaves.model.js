@@ -17,6 +17,8 @@ const approvalStepSchema = new mongoose.Schema({
 const leavesSchema = new mongoose.Schema(
   {
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    employeeName: { type: String },
+    employeeCode: { type: String },
     leaveType: {
       type: String,
       enum: ['paid', 'casual', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'],
@@ -25,6 +27,7 @@ const leavesSchema = new mongoose.Schema(
     startDate: { type: Date, required: true },
     endDate: { type: Date, required: true },
     totalDays: { type: Number, required: true },
+    dutyDates: { type: [String], default: [] },
     reason: { type: String },
     emergencyContact: { type: String },
     status: {

@@ -202,7 +202,7 @@ function ApprovalTimeline({ chain = [], currentStage }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function LeavesListPage() {
   const { user } = useSelector((s) => s.auth);
-  const isApprover = ['hr', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
+  const isApprover = ['hr', 'admin', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
 
   const [applyOpen, setApplyOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);
@@ -359,9 +359,9 @@ export default function LeavesListPage() {
             {pending.map((leave) => (
               <div key={leave._id} className="flex items-center justify-between gap-4 p-3 rounded-xl border border-border hover:bg-accent/30 transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
-                  <Avatar name={leave.employeeId?.fullName} size="sm" />
+                  <Avatar name={leave.employeeId?.fullName || leave.employeeName} size="sm" />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{leave.employeeId?.fullName}</p>
+                    <p className="text-sm font-medium truncate">{leave.employeeId?.fullName || leave.employeeName || 'Former employee'}</p>
                     <p className="text-xs text-muted-foreground">
                       {capitalize(leave.leaveType)} · {fmtDate(leave.startDate)} – {fmtDate(leave.endDate)} ({leave.totalDays}d)
                     </p>
@@ -422,10 +422,10 @@ export default function LeavesListPage() {
                   className="px-5 py-4 hover:bg-accent/30 transition-colors">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3 min-w-0">
-                      <Avatar name={leave.employeeId?.fullName || user?.fullName} size="sm" className="mt-0.5" />
+                      <Avatar name={leave.employeeId?.fullName || leave.employeeName || user?.fullName} size="sm" className="mt-0.5" />
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium">{leave.employeeId?.fullName || 'You'}</span>
+                          <span className="text-sm font-medium">{leave.employeeId?.fullName || leave.employeeName || 'You'}</span>
                           <Badge variant={st.variant}>{st.label}</Badge>
                           <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
                             {capitalize(leave.leaveType)}
@@ -490,9 +490,9 @@ export default function LeavesListPage() {
         {reviewTarget && (
           <div className="px-6 py-5 space-y-4">
             <div className="flex items-start gap-3 p-3 rounded-xl bg-muted/40">
-              <Avatar name={reviewTarget.employeeId?.fullName} size="sm" />
+              <Avatar name={reviewTarget.employeeId?.fullName || reviewTarget.employeeName} size="sm" />
               <div>
-                <p className="font-medium text-sm">{reviewTarget.employeeId?.fullName}</p>
+                <p className="font-medium text-sm">{reviewTarget.employeeId?.fullName || reviewTarget.employeeName || 'Former employee'}</p>
                 <p className="text-xs text-muted-foreground">{capitalize(reviewTarget.leaveType)} · {reviewTarget.totalDays} days</p>
                 <p className="text-xs text-muted-foreground">{fmtDate(reviewTarget.startDate)} – {fmtDate(reviewTarget.endDate)}</p>
               </div>
