@@ -8,7 +8,7 @@ const { calcWorkingDays } = require('../src/modules/leaves/leaves.service');
 
 test('leave application requires a supported type and a valid ordered ISO date range', () => {
   const valid = createSchema.validate({
-    leaveType: 'casual',
+    leaveType: 'annual',
     startDate: '2026-07-22',
     endDate: '2026-07-24',
     reason: '',
@@ -30,12 +30,19 @@ test('leave application requires a supported type and a valid ordered ISO date r
 
 test('single-day leave only requires one selected date', () => {
   const result = createSchema.validate({
-    leaveType: 'casual',
+    leaveType: 'annual',
     startDate: '2026-07-24',
     reason: '',
   });
   assert.equal(result.error, undefined);
   assert.equal(result.value.endDate, undefined);
+});
+
+test('legacy casual leave can no longer be submitted', () => {
+  assert.ok(createSchema.validate({
+    leaveType: 'casual',
+    startDate: '2026-07-24',
+  }).error);
 });
 
 test('leave decision and cancellation payloads reject unknown workflow fields', () => {

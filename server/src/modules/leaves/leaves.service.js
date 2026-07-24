@@ -39,7 +39,7 @@ function emitLeaveUpdate(companyId, action, leave) {
 
 // Map leave types to Employee.leaveBalance field keys
 const LEAVE_BALANCE_KEYS = {
-  paid: 'paid', casual: 'casual', sick: 'sick', annual: 'annual',
+  paid: 'paid', sick: 'sick', annual: 'annual',
 };
 
 function zonedDateTimeParts(value, timeZone = 'Asia/Karachi') {
@@ -247,7 +247,7 @@ async function applyLeave(payload, actor) {
     throw createHttpError(422, 'HR attendance exception is only for employees who have not completed 3 months.');
   }
 
-  if (leaveType !== 'casual' && !String(reason || '').trim()) {
+  if (leaveType !== 'annual' && !String(reason || '').trim()) {
     throw createHttpError(422, `A reason is required for ${leaveType || 'this'} leave.`);
   }
 

@@ -1,7 +1,7 @@
 const repository = require('./companySettings.repository');
 const Employee = require('../employees/employees.model');
 
-const BALANCE_TYPES = ['paid', 'casual', 'sick', 'annual'];
+const BALANCE_TYPES = ['paid', 'sick', 'annual'];
 
 async function syncEmployeeEntitlements(companyId, entitlements) {
   const availableFields = Object.fromEntries(BALANCE_TYPES.map((type) => [

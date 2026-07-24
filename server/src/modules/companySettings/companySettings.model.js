@@ -35,22 +35,22 @@ const companySettingsSchema = new mongoose.Schema(
     leavePolicy: {
       enabledTypes: {
         type: [String],
-        enum: ['paid', 'casual', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'],
-        default: ['paid', 'casual', 'sick', 'annual'],
+        enum: ['paid', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'],
+        default: ['paid', 'sick', 'annual'],
       },
       entitlements: {
         paid: { type: Number, default: 12, min: 0 },
-        casual: { type: Number, default: 10, min: 0 },
+        casual: { type: Number, default: 0, min: 0 },
         sick: { type: Number, default: 8, min: 0 },
         annual: { type: Number, default: 14, min: 0 },
       },
       carryForwardTypes: {
         type: [String],
-        default: ['paid', 'casual', 'sick', 'annual'],
+        default: ['paid', 'sick', 'annual'],
       },
       maxCarryForward: {
         paid: { type: Number, default: 365, min: 0 },
-        casual: { type: Number, default: 365, min: 0 },
+        casual: { type: Number, default: 0, min: 0 },
         sick: { type: Number, default: 365, min: 0 },
         annual: { type: Number, default: 365, min: 0 },
       },

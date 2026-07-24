@@ -14,7 +14,7 @@ const AUTOMATION_INTERVAL_MS = Number(process.env.HR_AUTOMATION_INTERVAL_MS)
 const LOOKBACK_DAYS = Math.min(Number(process.env.ATTENDANCE_RECONCILIATION_DAYS) || 7, 31);
 const BIRTHDAY_CHECK_INTERVAL_MS = 60 * 1000;
 
-const BALANCE_TYPES = ['paid', 'casual', 'sick', 'annual'];
+const BALANCE_TYPES = ['paid', 'sick', 'annual'];
 
 function startOfDay(value = new Date()) {
   const date = new Date(value);

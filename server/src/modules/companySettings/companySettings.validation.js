@@ -1,7 +1,7 @@
 const Joi = require('joi');
 
 const time = Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d$/);
-const balanceTypes = ['paid', 'casual', 'sick', 'annual'];
+const balanceTypes = ['paid', 'sick', 'annual'];
 const leaveTypes = [...balanceTypes, 'maternity', 'paternity', 'unpaid'];
 const entitlementSchema = Joi.object(Object.fromEntries(
   balanceTypes.map((type) => [type, Joi.number().integer().min(0).max(365).required()])

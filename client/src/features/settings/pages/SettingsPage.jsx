@@ -13,7 +13,7 @@ import { useGetCompanySettingsQuery, useUpdateCompanySettingsMutation } from '..
 import HolidaySettings from '../components/HolidaySettings';
 import ShiftSettings from '../components/ShiftSettings';
 
-const ALL_LEAVE_TYPES = ['paid', 'casual', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'];
+const ALL_LEAVE_TYPES = ['paid', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'];
 
 const TABS = [
   { id: 'company',  label: 'Company',  icon: Building2 },
@@ -66,10 +66,10 @@ export default function SettingsPage() {
     enableNotifications: false, enableInApp: true, enableWhatsapp: false,
   });
   const [leaveForm, setLeaveForm] = useState({
-    enabledTypes: ['paid', 'casual', 'sick', 'annual'],
-    entitlements: { paid: 12, casual: 10, sick: 8, annual: 14 },
-    carryForwardTypes: ['paid', 'casual', 'sick', 'annual'],
-    maxCarryForward: { paid: 365, casual: 365, sick: 365, annual: 365 },
+    enabledTypes: ['paid', 'sick', 'annual'],
+    entitlements: { paid: 12, sick: 8, annual: 14 },
+    carryForwardTypes: ['paid', 'sick', 'annual'],
+    maxCarryForward: { paid: 365, sick: 365, annual: 365 },
     delayedApplicationReminderDays: 3,
   });
   const [securityForm, setSecurityForm] = useState({
@@ -93,9 +93,15 @@ export default function SettingsPage() {
       ...settings.leavePolicy,
       enabledTypes: settings.leavePolicy?.enabledTypes?.length
         ? settings.leavePolicy.enabledTypes
-        : ['paid', 'casual', 'sick', 'annual'],
-      entitlements: { ...previous.entitlements, ...settings.leavePolicy?.entitlements },
-      maxCarryForward: { ...previous.maxCarryForward, ...settings.leavePolicy?.maxCarryForward },
+        : ['paid', 'sick', 'annual'],
+      entitlements: Object.fromEntries(['paid', 'sick', 'annual'].map((type) => [
+        type, settings.leavePolicy?.entitlements?.[type] ?? previous.entitlements[type],
+      ])),
+      carryForwardTypes: (settings.leavePolicy?.carryForwardTypes || [])
+        .filter((type) => ['paid', 'sick', 'annual'].includes(type)),
+      maxCarryForward: Object.fromEntries(['paid', 'sick', 'annual'].map((type) => [
+        type, settings.leavePolicy?.maxCarryForward?.[type] ?? previous.maxCarryForward[type],
+      ])),
     }));
     setEmailForm({
       smtpHost: settings.smtp?.host || '',

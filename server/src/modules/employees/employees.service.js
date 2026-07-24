@@ -14,7 +14,7 @@ const settingsService = require('../companySettings/companySettings.service');
 const { emitToUser } = require('../../config/socket');
 
 const PASSWORD_SALT_ROUNDS = 12;
-const LEAVE_BALANCE_TYPES = ['paid', 'casual', 'sick', 'annual'];
+const LEAVE_BALANCE_TYPES = ['paid', 'sick', 'annual'];
 const MANAGEABLE_ROLES = {
   super_admin: ['admin', 'hr', 'manager', 'team_lead', 'employee'],
   hr: ['manager', 'team_lead', 'employee'],
@@ -164,7 +164,6 @@ function enforceLeaveBalanceVisibility(employee, actor) {
   if (['manager', 'hr', 'super_admin'].includes(actor.role)) return employee;
   const visible = { ...employee };
   delete visible.leaveBalance;
-  delete visible.enabledLeaveTypes;
   return visible;
 }
 

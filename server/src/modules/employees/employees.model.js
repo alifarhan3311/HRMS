@@ -43,7 +43,7 @@ const employeesSchema = new mongoose.Schema(
   lastIncrementDate: { type: Date },
   leaveBalance: {
     paid: { available: { type: Number, default: 12 }, used: { type: Number, default: 0 } },
-    casual: { available: { type: Number, default: 10 }, used: { type: Number, default: 0 } },
+    casual: { available: { type: Number, default: 0 }, used: { type: Number, default: 0 } },
     sick: { available: { type: Number, default: 8 }, used: { type: Number, default: 0 } },
     annual: { available: { type: Number, default: 14 }, used: { type: Number, default: 0 } },
   },

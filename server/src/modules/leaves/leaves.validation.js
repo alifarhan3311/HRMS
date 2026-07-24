@@ -1,6 +1,6 @@
 const Joi = require('joi');
 
-const leaveTypes = ['paid', 'casual', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'];
+const leaveTypes = ['paid', 'sick', 'annual', 'maternity', 'paternity', 'unpaid'];
 
 const createSchema = Joi.object({
   employeeId: Joi.string().hex().length(24).optional(),

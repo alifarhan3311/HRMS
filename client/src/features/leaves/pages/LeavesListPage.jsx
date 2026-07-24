@@ -35,7 +35,7 @@ import { Avatar } from '../../../components/ui/Avatar';
 import { Skeleton } from '../../../components/ui/Skeleton';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const DEFAULT_LEAVE_TYPES = ['paid', 'casual', 'sick', 'annual'];
+const DEFAULT_LEAVE_TYPES = ['paid', 'sick', 'annual'];
 const CHART_COLORS = ['#C9971F', '#10b981', '#ef4444', '#64748b', '#8b5cf6', '#0ea5e9', '#f97316'];
 const STATUS_STYLES = {
   pending:   { label: 'Pending',   variant: 'yellow' },
@@ -105,7 +105,7 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
     if (!form.startDate) e.startDate = 'Start date required';
     if (form.durationMode === 'multiple' && !form.endDate) e.endDate = 'End date required';
     if (form.durationMode === 'multiple' && form.endDate && form.startDate && form.endDate < form.startDate) e.endDate = 'End must be after start';
-    if (form.leaveType !== 'casual' && !form.reason.trim()) e.reason = 'Please provide a reason';
+    if (form.leaveType !== 'annual' && !form.reason.trim()) e.reason = 'Please provide a reason';
     setErrors(e);
     return !Object.keys(e).length;
   }
@@ -158,9 +158,9 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
             <span className="text-muted-foreground ml-1">will be applied for this period.</span>
           </div>
         )}
-        <Textarea label={form.leaveType === 'casual' ? 'Reason (optional)' : 'Reason'} required={form.leaveType !== 'casual'} value={form.reason}
+        <Textarea label={form.leaveType === 'annual' ? 'Reason (optional)' : 'Reason'} required={form.leaveType !== 'annual'} value={form.reason}
           onChange={(e) => set('reason', e.target.value)} error={errors.reason}
-          placeholder={form.leaveType === 'casual' ? 'Add a reason if you want...' : 'Please explain why you need this leave...'} />
+          placeholder={form.leaveType === 'annual' ? 'Add a reason if you want...' : 'Please explain why you need this leave...'} />
         <Input label="Emergency Contact (optional)" value={form.emergencyContact}
           onChange={(e) => set('emergencyContact', e.target.value)}
           placeholder="+92 300 1234567" />

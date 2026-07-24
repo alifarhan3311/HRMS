@@ -99,7 +99,7 @@ async function getEmployeeDashboard(user) {
       getUpcomingHolidays(user.companyId, 5),
     ]);
 
-  const enabledTypes = settings.leavePolicy?.enabledTypes || ['paid', 'casual', 'sick', 'annual'];
+  const enabledTypes = settings.leavePolicy?.enabledTypes || ['paid', 'sick', 'annual'];
   const leaveSummary = enabledTypes
     .filter((type) => settings.leavePolicy?.entitlements?.[type] !== undefined)
     .map((type) => {
@@ -256,7 +256,7 @@ async function getHRDashboard(user) {
     settingsService.getPolicy(user.companyId),
   ]);
 
-  const enabledLeaveTypes = settings.leavePolicy?.enabledTypes || ['paid', 'casual', 'sick', 'annual'];
+  const enabledLeaveTypes = settings.leavePolicy?.enabledTypes || ['paid', 'sick', 'annual'];
   const leaveEntitlements = Object.fromEntries(enabledLeaveTypes
     .filter((type) => settings.leavePolicy?.entitlements?.[type] !== undefined)
     .map((type) => [type, Number(settings.leavePolicy.entitlements[type] || 0)]));

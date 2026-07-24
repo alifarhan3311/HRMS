@@ -525,9 +525,9 @@ export default function AttendanceListPage() {
   const [applyLeaveForEmployee] = useApplyLeaveMutation();
 
   async function markHrLeave(record) {
-    const leaveType = window.prompt('Leave type likhein: casual, sick, paid, annual, ya unpaid', 'unpaid');
+    const leaveType = window.prompt('Leave type likhein: annual, sick, paid, ya unpaid', 'unpaid');
     if (!leaveType) return;
-    const allowed = ['casual', 'sick', 'paid', 'annual', 'unpaid'];
+    const allowed = ['sick', 'paid', 'annual', 'unpaid'];
     if (!allowed.includes(leaveType.toLowerCase())) return toast.error('Invalid leave type');
     const fixedDate = record.shiftDate || inputDate(record.date);
     try {
@@ -767,7 +767,7 @@ export default function AttendanceListPage() {
       {canViewLeaveBalances && viewedEmployee && (
         <div className="grid gap-4 md:grid-cols-2">
           {[
-            ['Casual Leave', 'casual', 'bg-sky-500/10 text-sky-600'],
+            ['Annual Leave', 'annual', 'bg-sky-500/10 text-sky-600'],
             ['Sick Leave', 'sick', 'bg-rose-500/10 text-rose-600'],
           ].map(([label, type, accent]) => {
             const balance = viewedEmployee.leaveBalance?.[type] || {};
