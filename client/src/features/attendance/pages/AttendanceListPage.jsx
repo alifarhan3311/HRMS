@@ -44,6 +44,7 @@ const STATUS_STYLES = {
   present:  { label: 'Present',  variant: 'green',  dot: 'bg-emerald-500' },
   late:     { label: 'Late',     variant: 'yellow', dot: 'bg-amber-500' },
   absent:   { label: 'Absent',   variant: 'red',    dot: 'bg-red-500' },
+  incomplete: { label: 'Missing Sign-out', variant: 'yellow', dot: 'bg-amber-500' },
   half_day: { label: 'Half Day', variant: 'blue',   dot: 'bg-blue-400' },
   on_leave: { label: 'On Leave', variant: 'purple', dot: 'bg-purple-400' },
   holiday:  { label: 'Holiday',  variant: 'indigo', dot: 'bg-indigo-400' },
@@ -293,7 +294,7 @@ function MonthlyCalendar({ year, month, records = [] }) {
       </div>
       {/* Legend */}
       <div className="mt-3 flex flex-wrap gap-3">
-        {['present','late','absent','half_day','on_leave','holiday'].map((s) => (
+        {['present','late','absent','half_day','incomplete','on_leave','holiday'].map((s) => (
           <div key={s} className="flex items-center gap-1 text-[11px] text-muted-foreground">
             <div className={`h-2 w-2 rounded-full ${STATUS_STYLES[s].dot}`} />
             {STATUS_STYLES[s].label}

@@ -46,12 +46,13 @@ const attendanceSchema = new mongoose.Schema(
     shiftTimezone: { type: String },
     signInTime: { type: Date },
     signOutTime: { type: Date },
+    autoClosedAt: { type: Date },
     totalHours: { type: Number, default: 0 }, // calculated on signout
     workedMinutes: { type: Number, default: 0 },
     overtimeMinutes: { type: Number, default: 0 },
     status: {
       type: String,
-      enum: ['present', 'absent', 'half_day', 'late', 'on_leave', 'holiday', 'weekend'],
+      enum: ['present', 'absent', 'half_day', 'late', 'incomplete', 'on_leave', 'holiday', 'weekend'],
       default: 'present',
     },
     lateMinutes: { type: Number, default: 0 },
@@ -66,6 +67,9 @@ const attendanceSchema = new mongoose.Schema(
       enum: ['manual', 'qr', 'face', 'biometric'],
       default: 'manual',
     },
+    biometricDeviceId: String,
+    biometricDeviceUserId: String,
+    biometricPunchKeys: { type: [String], default: [] },
     // Regularization / correction request
     regularizationStatus: {
       type: String,

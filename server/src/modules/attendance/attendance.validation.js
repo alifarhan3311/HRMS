@@ -4,7 +4,7 @@
 const Joi = require('joi');
 
 const objectId = Joi.string().hex().length(24);
-const statuses = ['present', 'absent', 'half_day', 'late', 'on_leave', 'holiday', 'weekend'];
+const statuses = ['present', 'absent', 'half_day', 'late', 'incomplete', 'on_leave', 'holiday', 'weekend'];
 
 const idParamsSchema = Joi.object({
   id: objectId.required(),

@@ -66,11 +66,24 @@ function calcTotalHours(signIn, signOut) {
   return Math.round((ms / 3600000) * 100) / 100; // round to 2 decimal places
 }
 
+function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0) {
+  const clockMinutes = Math.max(0, Math.round((new Date(signOut) - new Date(signIn)) / 60000));
+  const workedMinutes = Math.max(0, clockMinutes - Number(record.shiftBreakMinutes || 0));
+  const requiredMinutes = Number(record.effectiveRequiredMinutes || record.shiftRequiredMinutes || 480);
+  const halfDayMinutes = Number(record.shiftHalfDayMinutes || Math.ceil(requiredMinutes / 2));
+  return {
+    totalHours: Number((clockMinutes / 60).toFixed(2)),
+    workedMinutes,
+    overtimeMinutes: Math.max(0, workedMinutes - Number(record.shiftOvertimeAfterMinutes || requiredMinutes)),
+    status: attendanceStatus(lateMinutes > 0 ? 'late' : 'present', workedMinutes, requiredMinutes, halfDayMinutes),
+  };
+}
+
 // -------------------------------------------------------------------------
 // Sign In
 // -------------------------------------------------------------------------
-async function signIn({ employeeId, method = 'manual', notes }, actor) {
-  const now = new Date();
+async function signIn({ employeeId, method = 'manual', notes, punchTime }, actor) {
+  const now = punchTime ? new Date(punchTime) : new Date();
   const { employee, shift, schedule } = await resolveShiftContext(employeeId, actor.companyId, now);
   const attendanceExempt = employee.role === 'super_admin';
   const closure = await findClosure(employee, actor.companyId, schedule.shiftDate);
@@ -83,7 +96,7 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
   const isFlexible = shift.shiftType === 'flexible';
   const signInWindowStart = new Date(schedule.scheduledStart.getTime() - (4 * 60 * 60 * 1000));
   const signInWindowEnd = new Date(schedule.scheduledEnd.getTime() + (4 * 60 * 60 * 1000));
-  if (!attendanceExempt && !isFlexible && (now < signInWindowStart || now > signInWindowEnd)) {
+  if (method !== 'biometric' && !attendanceExempt && !isFlexible && (now < signInWindowStart || now > signInWindowEnd)) {
     throw createHttpError(422, `Sign-in is outside your ${shift.name} window (${shift.startTime} - ${shift.endTime}).`);
   }
   const [year, month, day] = schedule.shiftDate.split('-').map(Number);
@@ -178,12 +191,12 @@ async function signIn({ employeeId, method = 'manual', notes }, actor) {
 // -------------------------------------------------------------------------
 // Sign Out
 // -------------------------------------------------------------------------
-async function signOut({ employeeId, notes }, actor) {
-  const record = await repository.findOpenByEmployee(employeeId);
+async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
+  const record = recordId ? await repository.findById(recordId) : await repository.findOpenByEmployee(employeeId);
   if (!record) throw createHttpError(400, 'No open shift sign-in record was found.');
   if (record.signOutTime) throw createHttpError(409, 'You have already signed out today.');
 
-  const now = new Date();
+  const now = punchTime ? new Date(punchTime) : new Date();
   const attendanceExempt = actor.role === 'super_admin';
   // Use the policy snapshot captured at sign-in. Editing an assigned shift
   // while somebody is clocked in must not change that open attendance day.
@@ -230,6 +243,8 @@ async function signOut({ employeeId, notes }, actor) {
     workedMinutes,
     overtimeMinutes,
     status,
+    autoClosedAt: null,
+    missedPunchType: null,
     effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
     ...(closure && {
       closureId: closure._id,
@@ -240,6 +255,48 @@ async function signOut({ employeeId, notes }, actor) {
   });
 
   return updated;
+}
+
+async function ingestBiometricPunch({ employee, punchTime, punchKey, deviceId, deviceUserId }) {
+  const actor = {
+    id: employee._id,
+    role: employee.role,
+    companyId: employee.companyId,
+    branchId: employee.branchId,
+  };
+  const { schedule } = await resolveShiftContext(employee._id, employee.companyId, new Date(punchTime));
+  const existing = await repository.findByEmployeeAndShiftDate(employee._id, schedule.shiftDate);
+  let record;
+  let action;
+
+  if (!existing?.signInTime) {
+    record = await signIn({
+      employeeId: employee._id,
+      method: 'biometric',
+      punchTime,
+      notes: `Biometric sign-in from ${deviceId}.`,
+    }, actor);
+    action = 'sign_in';
+  } else if (!existing.signOutTime) {
+    record = await signOut({
+      employeeId: employee._id,
+      punchTime,
+      recordId: existing._id,
+      notes: `Biometric sign-out from ${deviceId}.`,
+    }, actor);
+    action = 'sign_out';
+  } else {
+    return { record: existing, action: 'extra_punch_ignored' };
+  }
+
+  record = await repository.updateById(record._id, {
+    $set: {
+      biometricDeviceId: deviceId,
+      biometricDeviceUserId: String(deviceUserId),
+    },
+    $addToSet: { biometricPunchKeys: punchKey },
+  });
+  return { record, action };
 }
 
 // -------------------------------------------------------------------------
@@ -394,7 +451,7 @@ async function getMonthlySummary(employeeId, year, month, actor) {
   await assertCanViewEmployeeAttendance(actor, employeeId);
 
   const records = await repository.getMonthlySummary(employeeId, year, month);
-  const summary = { present: 0, absent: 0, late: 0, half_day: 0, on_leave: 0, holiday: 0 };
+  const summary = { present: 0, absent: 0, late: 0, half_day: 0, incomplete: 0, on_leave: 0, holiday: 0 };
   records.forEach((r) => { if (summary[r.status] !== undefined) summary[r.status]++; });
   return { records, summary };
 }
@@ -499,7 +556,13 @@ async function manualCorrection(id, payload, actor) {
     update.earlyLeaveMinutes = calcEarlyLeaveMinutes(signOutTime, recordTiming(record, settings.timing));
   }
   if ((signInTime || signOutTime) && correctedSignIn && correctedSignOut) {
-    update.totalHours = calcTotalHours(correctedSignIn, correctedSignOut);
+    Object.assign(update, correctedWorkMetrics(
+      record,
+      correctedSignIn,
+      correctedSignOut,
+      update.lateMinutes ?? Number(record.lateMinutes || 0),
+    ));
+    update.autoClosedAt = null;
   }
   if (status) update.status = status;
 
@@ -528,7 +591,7 @@ async function getRangeSummary(employeeId, dateFrom, dateTo, actor) {
   const records = await repository.getRangeSummary(employeeId, dateFrom, dateTo);
   const summary = {
     totalRecords: records.length,
-    present: 0, late: 0, absent: 0, half_day: 0, on_leave: 0, holiday: 0, weekend: 0,
+    present: 0, late: 0, absent: 0, half_day: 0, incomplete: 0, on_leave: 0, holiday: 0, weekend: 0,
     workedHours: 0, overtimeHours: 0, lateMinutes: 0, earlyLeaveMinutes: 0,
     attendanceRate: 0, averageHours: 0,
   };
@@ -544,14 +607,14 @@ async function getRangeSummary(employeeId, dateFrom, dateTo, actor) {
     const date = new Date(record.date);
     const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
     if (!trendMap.has(key)) trendMap.set(key, {
-      month: key, present: 0, late: 0, absent: 0, half_day: 0, on_leave: 0, workedHours: 0,
+      month: key, present: 0, late: 0, absent: 0, half_day: 0, incomplete: 0, on_leave: 0, workedHours: 0,
     });
     const row = trendMap.get(key);
     if (Object.prototype.hasOwnProperty.call(row, record.status)) row[record.status] += 1;
     row.workedHours += Number(record.totalHours || (record.workedMinutes || 0) / 60);
   });
 
-  const scheduledDays = summary.present + summary.late + summary.absent + summary.half_day + summary.on_leave;
+  const scheduledDays = summary.present + summary.late + summary.absent + summary.half_day + summary.incomplete + summary.on_leave;
   const attendedDays = summary.present + summary.late + (summary.half_day * 0.5);
   const daysWithHours = records.filter((record) => Number(record.totalHours || record.workedMinutes) > 0).length;
   summary.attendanceRate = scheduledDays ? Number(((attendedDays / scheduledDays) * 100).toFixed(1)) : 0;
@@ -691,7 +754,13 @@ async function reviewRegularization(id, { action, remarks }, actor) {
         if (new Date(correctedSignOut) <= new Date(correctedSignIn)) {
           throw createHttpError(422, 'Corrected sign-out time must be after sign-in time.');
         }
-        update.totalHours = calcTotalHours(correctedSignIn, correctedSignOut);
+        Object.assign(update, correctedWorkMetrics(
+          record,
+          correctedSignIn,
+          correctedSignOut,
+          update.lateMinutes ?? Number(record.lateMinutes || 0),
+        ));
+        update.autoClosedAt = null;
       }
     }
   }
@@ -856,4 +925,6 @@ module.exports = {
   getPendingRegularizations,
   applyClosureToAttendance,
   removeClosureFromAttendance,
+  correctedWorkMetrics,
+  ingestBiometricPunch,
 };

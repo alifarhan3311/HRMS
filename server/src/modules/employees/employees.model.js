@@ -85,6 +85,7 @@ const employeesSchema = new mongoose.Schema(
   },
   // Card details
   employeeCardNumber: { type: String, immutable: true },
+  biometricDeviceUserId: { type: String, trim: true },
   insuranceCardNumber: { type: String },
 
   // Exit / resignation
@@ -129,6 +130,10 @@ employeesSchema.index({ teamLeadId: 1, status: 1 });
 employeesSchema.index(
   { employeeCardNumber: 1 },
   { unique: true, partialFilterExpression: { employeeCardNumber: { $gt: '' } } }
+);
+employeesSchema.index(
+  { companyId: 1, biometricDeviceUserId: 1 },
+  { unique: true, partialFilterExpression: { biometricDeviceUserId: { $type: 'string', $gt: '' } } }
 );
 
 module.exports = mongoose.model('Employee', employeesSchema);

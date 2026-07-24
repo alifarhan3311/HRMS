@@ -26,7 +26,12 @@ async function findByEmployeeAndShiftDate(employeeId, shiftDate) {
 }
 
 async function findOpenByEmployee(employeeId) {
-  return Attendance.findOne({ employeeId, signInTime: { $exists: true }, signOutTime: { $exists: false } })
+  return Attendance.findOne({
+    employeeId,
+    signInTime: { $exists: true },
+    signOutTime: { $exists: false },
+    autoClosedAt: { $exists: false },
+  })
     .sort({ signInTime: -1 });
 }
 

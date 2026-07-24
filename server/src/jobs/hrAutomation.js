@@ -53,6 +53,18 @@ function isAttendanceDateAfterReset(attendanceDate, resetAt, timeZone = 'Asia/Ka
   return zonedDateKey(attendanceDate, timeZone) > zonedDateKey(resetAt, timeZone);
 }
 
+function missedSignOutClosure(now = new Date()) {
+  return {
+    autoClosedAt: now,
+    totalHours: 0,
+    workedMinutes: 0,
+    overtimeMinutes: 0,
+    status: 'incomplete',
+    missedPunchType: 'sign_out',
+    notes: 'Missing sign-out: attendance is incomplete and no worked hours were assumed. Submit a time correction request.',
+  };
+}
+
 function addCalendarDay(parts) {
   const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + 1, 12));
   return {
@@ -447,6 +459,7 @@ async function reconcileAttendance(now = new Date()) {
       date: { $gte: date, $lte: dayEnd },
       signInTime: { $exists: true },
       signOutTime: { $exists: false },
+      autoClosedAt: { $exists: false },
       // Overnight and late shifts can still be legitimately open when the
       // calendar-day automation runs. Do not flag a missed sign-out until the
       // employee's own scheduled shift end has actually passed.
@@ -457,18 +470,10 @@ async function reconcileAttendance(now = new Date()) {
       status: { $nin: ['on_leave', 'holiday', 'weekend'] },
     });
     for (const record of expiredOpenRecords) {
-      const automaticSignOut = record.scheduledEnd && new Date(record.scheduledEnd) > new Date(record.signInTime)
-        ? new Date(record.scheduledEnd)
-        : new Date(new Date(record.signInTime).getTime() + Number(record.shiftRequiredMinutes || 480) * 60000);
-      const clockMinutes = Math.max(0, Math.round((automaticSignOut - new Date(record.signInTime)) / 60000));
-      const workedMinutes = Math.max(0, clockMinutes - Number(record.shiftBreakMinutes || 0));
-      record.signOutTime = automaticSignOut;
-      record.totalHours = Number((clockMinutes / 60).toFixed(2));
-      record.workedMinutes = workedMinutes;
-      record.overtimeMinutes = Math.max(0, workedMinutes - Number(record.shiftOvertimeAfterMinutes || record.shiftRequiredMinutes || 480));
-      record.status = Number(record.lateMinutes || 0) > 0 ? 'late' : 'present';
-      record.missedPunchType = 'sign_out';
-      record.notes = 'Missed sign-out: shift was automatically closed at its scheduled end. Submit a regularization request if needed.';
+      // A scheduled shift end is not evidence that the employee remained at
+      // work until that time. Close the open punch without inventing worked
+      // hours; actual status is calculated after regularization/HR correction.
+      Object.assign(record, missedSignOutClosure(now));
       await record.save();
     }
 
@@ -611,6 +616,7 @@ module.exports = {
   sendMissingLeaveApplicationReminders,
   birthdayDateContext,
   isAttendanceDateAfterReset,
+  missedSignOutClosure,
   processBirthdayNotifications,
   runHrAutomation,
   startHrAutomation,

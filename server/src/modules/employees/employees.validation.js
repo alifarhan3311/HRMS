@@ -60,6 +60,7 @@ const createSchema = Joi.object({
 
   // Cards
   insuranceCardNumber: Joi.string().trim().max(50).optional().allow(''),
+  biometricDeviceUserId: Joi.string().trim().max(32).pattern(/^[A-Za-z0-9_-]+$/).optional().allow(''),
 
   // Initial password (for account creation)
   password: Joi.string()
@@ -92,6 +93,7 @@ const updateSchema = Joi.object({
   qualification: Joi.string().trim().max(200).optional().allow(''),
   experience: Joi.string().trim().max(500).optional().allow(''),
   insuranceCardNumber: Joi.string().trim().max(50).optional().allow(''),
+  biometricDeviceUserId: Joi.string().trim().max(32).pattern(/^[A-Za-z0-9_-]+$/).optional().allow(''),
   profilePicture: Joi.string().uri().optional().allow(''),
 }).min(1);
 

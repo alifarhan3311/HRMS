@@ -4,6 +4,7 @@ process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
 const { normalizeDurationPolicy } = require('../src/modules/shifts/shifts.service');
 const { arrivalStatus } = require('../src/modules/attendance/shiftTime');
 const { appliesToEmployee } = require('../src/modules/attendance/closurePolicy');
+const { correctedWorkMetrics } = require('../src/modules/attendance/attendance.service');
 
 const start = new Date('2026-07-23T20:00:00.000Z');
 const schedule = { scheduledStart: start };
@@ -30,6 +31,17 @@ test('fixed shifts of seven hours or less have no grace and use a 120 minute hal
   assert.equal(arrivalStatus(new Date(start.getTime() + 59 * 1000), schedule, shift).status, 'present');
   assert.equal(arrivalStatus(new Date(start.getTime() + 1 * 60000), schedule, shift).status, 'late');
   assert.equal(arrivalStatus(new Date(start.getTime() + 121 * 60000), schedule, shift).status, 'half_day');
+});
+
+test('approved missing sign-out correction derives half-day from actual corrected time', () => {
+  const metrics = correctedWorkMetrics(
+    { shiftRequiredMinutes: 480, shiftHalfDayMinutes: 240, shiftBreakMinutes: 0 },
+    new Date('2026-07-24T13:00:00.000Z'),
+    new Date('2026-07-24T17:00:00.000Z'),
+    0,
+  );
+  assert.equal(metrics.workedMinutes, 240);
+  assert.equal(metrics.status, 'half_day');
 });
 
 test('flexible 8-hour shifts have no late status and reach worked half-day at four hours', () => {

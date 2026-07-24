@@ -136,7 +136,9 @@ async function getAttendanceData(employee, month, year) {
     }).select('leaveType startDate endDate dutyDates'),
   ]);
   const present = records.filter(r => r.status === 'present' || r.status === 'late').length;
-  const absent = records.filter(r => r.status === 'absent').length;
+  // Incomplete attendance has no verified sign-out/work duration. Treat it as
+  // absent for payroll until HR approves the employee's time correction.
+  const absent = records.filter(r => ['absent', 'incomplete'].includes(r.status)).length;
   const late = records.filter(r => r.status === 'late').length;
   const lateMinutes = records.reduce((sum, record) => sum + Number(record.lateMinutes || 0), 0);
   const halfDay = records.filter(r => r.status === 'half_day').length;

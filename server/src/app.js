@@ -168,6 +168,10 @@ app.get('/health', (req, res) => {
 app.use('/api/v1', (req, res, next) => {
   connectDatabase().then(() => next()).catch(next);
 });
+app.use('/api/device', (req, res, next) => {
+  connectDatabase().then(() => next()).catch(next);
+});
+app.use('/api/device', require('./integrations/zkteco/device.routes'));
 
 // -------------------------------------------------------------------------
 // Feature module routers.

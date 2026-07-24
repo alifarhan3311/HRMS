@@ -93,6 +93,7 @@ const EMPTY_FORM = {
   teamLeadId: '',
   shiftId: '',
   employeeCardNumber: '',
+  biometricDeviceUserId: '',
   insuranceCardNumber: '',
   currentSalary: '',
   // Professional
@@ -666,6 +667,12 @@ export default function EmployeeForm({
                   label="Employee Card Number"
                   value={isEdit ? (form.employeeCardNumber || 'Not assigned') : 'Generated automatically after save'}
                   disabled
+                />
+                <Input
+                  label="Biometric Device User ID"
+                  placeholder="Exact user ID shown on ZKTeco device"
+                  value={form.biometricDeviceUserId || ''}
+                  onChange={(e) => set('biometricDeviceUserId', e.target.value.trim())}
                 />
                 <Input
                   label="Insurance Card Number"

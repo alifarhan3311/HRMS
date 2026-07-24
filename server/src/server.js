@@ -9,6 +9,7 @@ const app = require('./app');
 const { connectDatabase, disconnectDatabase, ensureDatabaseIndexes } = require('./database/db');
 const { initSocket } = require('./config/socket');
 const { startHrAutomation } = require('./jobs/hrAutomation');
+const { startBiometricService } = require('./integrations/zkteco/zkteco.service');
 const logger = require('./utils/logger');
 
 const PORT = process.env.PORT || 5000;
@@ -18,6 +19,7 @@ async function start() {
   const io = initSocket(httpServer);
   app.set('io', io); // controllers can emit via req.app.get('io')
   let stopHrAutomation = () => {};
+  let stopBiometric = async () => {};
 
   httpServer.listen(PORT, () => {
     logger.info(`[server] HRMS API listening on port ${PORT}`);
@@ -32,6 +34,7 @@ async function start() {
         await ensureDatabaseIndexes();
       }
       stopHrAutomation = startHrAutomation();
+      stopBiometric = await startBiometricService();
     })
     .catch((err) => {
       // API requests use the cached connection gate in app.js and can retry
@@ -44,6 +47,7 @@ async function start() {
   const shutdown = async (signal) => {
     logger.info(`[server] Received ${signal}, shutting down gracefully...`);
     stopHrAutomation();
+    await stopBiometric();
     httpServer.close(async () => {
       await disconnectDatabase();
       process.exit(0);
