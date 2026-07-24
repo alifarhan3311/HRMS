@@ -4,6 +4,7 @@
 const Expense = require('./expenses.model');
 
 async function create(data) { return Expense.create(data); }
+async function createMany(data) { return Expense.insertMany(data, { ordered: true }); }
 
 async function findById(id) {
   return Expense.findById(id)
@@ -21,4 +22,4 @@ async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' 
   return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-module.exports = { create, findById, findAll };
+module.exports = { create, createMany, findById, findAll };

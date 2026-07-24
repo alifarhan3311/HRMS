@@ -16,4 +16,13 @@ const createSchema = Joi.object({
   remarks: Joi.string().trim().max(1000).allow('').default(''),
 });
 
-module.exports = { createSchema };
+const bulkCreateSchema = Joi.object({
+  rows: Joi.array().items(Joi.object({
+    expenseDate: Joi.date().iso().max('now').required(),
+    productName: Joi.string().trim().min(1).max(200).required(),
+    quantity: Joi.number().positive().precision(3).required(),
+    unitPrice: Joi.number().positive().precision(2).required(),
+  })).min(1).max(500).required(),
+});
+
+module.exports = { createSchema, bulkCreateSchema };

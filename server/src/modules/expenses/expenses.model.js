@@ -11,6 +11,10 @@ const expensesSchema = new mongoose.Schema(
   {
   category: { type: String, required: true },
   vendorName: { type: String },
+  productName: { type: String },
+  quantity: { type: Number, min: 0 },
+  unitPrice: { type: Number, min: 0 },
+  batchId: { type: mongoose.Schema.Types.ObjectId },
   invoiceUrl: { type: String },
   amount: { type: Number, required: true },
   paymentMethod: { type: String },
@@ -38,5 +42,6 @@ const expensesSchema = new mongoose.Schema(
 
 expensesSchema.index({ companyId: 1 });
 expensesSchema.index({ companyId: 1, status: 1, expenseDate: -1 });
+expensesSchema.index({ companyId: 1, batchId: 1 });
 
 module.exports = mongoose.model('Expense', expensesSchema);

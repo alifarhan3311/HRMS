@@ -3,8 +3,9 @@ import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
   Receipt, Plus, RefreshCw, ChevronLeft, ChevronRight, Eye,
-  BarChart3, Settings2, Pencil, Trash2, ListChecks, Tags,
+  BarChart3, Settings2, Pencil, Trash2, ListChecks, Tags, Upload,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -15,6 +16,7 @@ import {
   useCreateExpenseCategoryMutation,
   useUpdateExpenseCategoryMutation,
   useDeleteExpenseCategoryMutation,
+  useSubmitBulkExpensesMutation,
 } from '../api/expenses.api';
 import { toast } from '../../../utils/toast';
 import StatCard from '../../../components/ui/StatCard';
@@ -123,6 +125,132 @@ function SubmitExpenseForm({ onSubmit, onClose, isLoading, categories, draftKey 
   );
 }
 
+function BulkExpenseForm({ onSubmit, onClose, isLoading }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const emptyRow = () => ({ expenseDate: today, productName: '', quantity: 1, unitPrice: '' });
+  const [rows, setRows] = useState([emptyRow()]);
+  const [importError, setImportError] = useState('');
+
+  function updateRow(index, field, value) {
+    setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
+  }
+
+  function excelDate(value) {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+    if (typeof value === 'number') {
+      const parsed = XLSX.SSF.parse_date_code(value);
+      if (parsed) return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
+  }
+
+  async function importExcel(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setImportError('');
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const data = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+      const normalized = data.map((source) => {
+        const values = Object.fromEntries(Object.entries(source).map(([key, value]) => [
+          String(key).trim().toLowerCase().replace(/[^a-z]/g, ''), value,
+        ]));
+        return {
+          expenseDate: excelDate(values.date || values.expensedate),
+          productName: String(values.product || values.productname || '').trim(),
+          quantity: Number(values.quantity || values.qty || 0),
+          unitPrice: Number(values.price || values.unitprice || 0),
+        };
+      }).filter((row) => row.expenseDate || row.productName || row.quantity || row.unitPrice);
+      if (!normalized.length) throw new Error('No expense rows found in the first sheet.');
+      const invalidIndex = normalized.findIndex((row) => (
+        !row.expenseDate || !row.productName || row.quantity <= 0 || row.unitPrice <= 0
+      ));
+      if (invalidIndex >= 0) throw new Error(`Excel row ${invalidIndex + 2} has an invalid Date, Product, Quantity or Price.`);
+      setRows(normalized);
+      toast.success(`${normalized.length} Excel rows imported`);
+    } catch (error) {
+      setImportError(error.message || 'Unable to read Excel file');
+    }
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    const normalized = rows.map((row) => ({
+      expenseDate: row.expenseDate,
+      productName: String(row.productName || '').trim(),
+      quantity: Number(row.quantity),
+      unitPrice: Number(row.unitPrice),
+    }));
+    if (normalized.some((row) => !row.expenseDate || !row.productName || row.quantity <= 0 || row.unitPrice <= 0)) {
+      return toast.error('Complete every row with a valid date, product, quantity and price');
+    }
+    await onSubmit(normalized);
+  }
+
+  const grandTotal = rows.reduce((sum, row) => sum + (Number(row.quantity || 0) * Number(row.unitPrice || 0)), 0);
+  return (
+    <form onSubmit={submit}>
+      <div className="space-y-4 px-5 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
+          <div>
+            <p className="text-sm font-semibold">Import from Excel</p>
+            <p className="text-xs text-muted-foreground">First sheet headers: Date, Product, Quantity, Price. Total is calculated automatically.</p>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-background px-3 py-2 text-sm font-medium shadow-sm ring-1 ring-border hover:bg-accent">
+            <Upload className="h-4 w-4" /> Select Excel
+            <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={importExcel} />
+          </label>
+        </div>
+        {importError && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{importError}</p>}
+
+        <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
+          <div className="hidden grid-cols-[145px_minmax(180px,1fr)_100px_130px_120px_36px] gap-2 px-2 text-[11px] font-semibold uppercase text-muted-foreground lg:grid">
+            <span>Date</span><span>Product</span><span>Quantity</span><span>Price</span><span>Total</span><span />
+          </div>
+          {rows.map((row, index) => {
+            const total = Number(row.quantity || 0) * Number(row.unitPrice || 0);
+            return (
+              <div key={index} className="grid gap-2 rounded-xl border border-border p-3 lg:grid-cols-[145px_minmax(180px,1fr)_100px_130px_120px_36px] lg:items-center lg:border-0 lg:p-0">
+                <Input aria-label={`Date row ${index + 1}`} type="date" max={today} required value={row.expenseDate}
+                  onChange={(e) => updateRow(index, 'expenseDate', e.target.value)} />
+                <Input aria-label={`Product row ${index + 1}`} placeholder="Product / item" required value={row.productName}
+                  onChange={(e) => updateRow(index, 'productName', e.target.value)} />
+                <Input aria-label={`Quantity row ${index + 1}`} type="number" min="0.001" step="0.001" required value={row.quantity}
+                  onChange={(e) => updateRow(index, 'quantity', e.target.value)} />
+                <Input aria-label={`Price row ${index + 1}`} type="number" min="0.01" step="0.01" required value={row.unitPrice}
+                  onChange={(e) => updateRow(index, 'unitPrice', e.target.value)} />
+                <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm font-semibold">{fmtPKR(total)}</div>
+                <button type="button" aria-label={`Remove row ${index + 1}`} disabled={rows.length === 1}
+                  className="rounded-lg p-2 text-destructive hover:bg-destructive/10 disabled:opacity-30"
+                  onClick={() => setRows((current) => current.filter((_, rowIndex) => rowIndex !== index))}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+          <Button type="button" variant="secondary" size="sm" className="gap-1.5"
+            onClick={() => setRows((current) => [...current, emptyRow()])}>
+            <Plus className="h-4 w-4" /> Add Row
+          </Button>
+          <div className="text-right"><p className="text-xs text-muted-foreground">{rows.length} items</p><p className="text-lg font-bold">Grand Total: {fmtPKR(grandTotal)}</p></div>
+        </div>
+      </div>
+      <ModalFooter>
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+        <Button type="submit" variant="primary" size="sm" disabled={isLoading} className="gap-1.5">
+          <Receipt className="h-4 w-4" /> {isLoading ? 'Recording...' : `Submit ${rows.length} Expense${rows.length === 1 ? '' : 's'}`}
+        </Button>
+      </ModalFooter>
+    </form>
+  );
+}
+
 function CategoryManagerModal({ isOpen, onClose, categories }) {
   const [form, setForm] = useState({ name: '', description: '', active: true });
   const [editingId, setEditingId] = useState(null);
@@ -212,8 +340,10 @@ function ExpenseDetailModal({ expense, isOpen, onClose }) {
   const status = STATUS_STYLES[expense.status] || STATUS_STYLES.recorded;
   const details = [
     ['Category', expense.category],
-    ['Vendor', expense.vendorName || '-'],
-    ['Amount', fmtPKR(expense.amount)],
+    ['Product', expense.productName || expense.vendorName || '-'],
+    ['Quantity', expense.quantity ?? '-'],
+    ['Unit Price', expense.unitPrice != null ? fmtPKR(expense.unitPrice) : '-'],
+    ['Total', fmtPKR(expense.amount)],
     ['Payment Method', expense.paymentMethod || '-'],
     ['Expense Date', fmtDate(expense.expenseDate)],
     ['Recorded On', fmtDate(expense.createdAt)],
@@ -262,6 +392,7 @@ export default function ExpensesListPage() {
     skip: !isHR && !isSuperAdmin,
   });
   const [submitExpense, { isLoading: submitting }] = useSubmitExpenseMutation();
+  const [submitBulkExpenses, { isLoading: submittingBulk }] = useSubmitBulkExpensesMutation();
 
   const expenses = data?.items || [];
   const categoryRecords = categoriesData?.data || [];
@@ -290,6 +421,18 @@ export default function ExpensesListPage() {
     }
   }
 
+  async function handleBulkSubmit(rows) {
+    try {
+      const result = await submitBulkExpenses(rows).unwrap();
+      toast.success(`${result.data.count} expenses recorded — ${fmtPKR(result.data.total)}`);
+      setSubmitOpen(false);
+      return true;
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Unable to record expenses');
+      return false;
+    }
+  }
+
   if (isHR) {
     return (
       <div className="space-y-6">
@@ -304,7 +447,7 @@ export default function ExpensesListPage() {
               <Settings2 className="h-4 w-4" /> Categories
             </Button>
             <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setSubmitOpen(true)}>
-              <Plus className="h-4 w-4" /> Record Expense
+              <Plus className="h-4 w-4" /> Add Expenses
             </Button>
           </div>
         </motion.div>
@@ -313,20 +456,19 @@ export default function ExpensesListPage() {
           <div className="flex items-start gap-4">
             <div className="rounded-xl bg-primary/10 p-3 text-primary"><Receipt className="h-6 w-6" /></div>
             <div>
-              <h2 className="font-semibold">Simple expense entry</h2>
+              <h2 className="font-semibold">Bulk expense entry</h2>
               <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Record the category, vendor, amount, date and payment method. The entry is saved immediately
-                and becomes visible to Super Admin; there is no approval or payment-status workflow.
+                Add multiple product rows manually or import Date, Product, Quantity and Price from Excel.
+                Row totals and the grand total are calculated automatically.
               </p>
               <p className="mt-3 text-sm"><span className="font-medium">Active categories:</span> {categories.length}</p>
             </div>
           </div>
         </div>
 
-        <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Record New Expense" size="md">
-          <SubmitExpenseForm onSubmit={handleSubmit} onClose={() => setSubmitOpen(false)}
-            isLoading={submitting} categories={categories}
-            draftKey={`hrms:draft:expense:create:${user?.id || 'user'}`} />
+        <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Add Expenses" size="full">
+          <BulkExpenseForm onSubmit={handleBulkSubmit} onClose={() => setSubmitOpen(false)}
+            isLoading={submittingBulk} />
         </Modal>
         <CategoryManagerModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)}
           categories={categoryRecords} />

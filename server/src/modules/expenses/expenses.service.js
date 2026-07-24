@@ -7,6 +7,7 @@ const repository = require('./expenses.repository');
 const categoryService = require('./expenseCategories.service');
 const Employee = require('../employees/employees.model');
 const notificationService = require('../notifications/notifications.service');
+const mongoose = require('mongoose');
 
 async function notifySuperAdmins(companyId, notification) {
   const recipients = await Employee.find({
@@ -61,6 +62,45 @@ async function submitExpense(payload, actor) {
   return expense;
 }
 
+async function submitBulkExpenses(rows, actor) {
+  await categoryService.assertActiveCategory('Miscellaneous Expenses', actor.companyId);
+  const batchId = new mongoose.Types.ObjectId();
+  const documents = rows.map((row) => {
+    const quantity = Number(row.quantity);
+    const unitPrice = Number(row.unitPrice);
+    return {
+      category: 'Miscellaneous Expenses',
+      vendorName: row.productName,
+      productName: row.productName,
+      quantity,
+      unitPrice,
+      amount: Math.round(quantity * unitPrice * 100) / 100,
+      expenseDate: new Date(row.expenseDate),
+      paymentMethod: 'Cash',
+      remarks: `Bulk expense entry: ${row.productName}`,
+      submittedBy: actor.id,
+      status: 'recorded',
+      approvalChain: [],
+      companyId: actor.companyId,
+      branchId: actor.branchId,
+      batchId,
+    };
+  });
+  const expenses = await repository.createMany(documents);
+  const total = expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const submitter = await Employee.findById(actor.id).select('fullName');
+  await notifySuperAdmins(actor.companyId, {
+    companyId: actor.companyId,
+    type: 'expense_recorded',
+    title: 'Bulk expenses recorded',
+    message: `${submitter?.fullName || 'HR'} recorded ${expenses.length} expense items totalling PKR ${total.toLocaleString()}.`,
+    link: '/expenses',
+    metadata: { batchId, count: expenses.length, total },
+    dedupeKey: `expense-batch-recorded:${batchId}`,
+  });
+  return { batchId, count: expenses.length, total, items: expenses };
+}
+
 async function listExpenses(query, actor) {
   assertSuperAdmin(actor);
   const { page = 1, limit = 20, status, category, dateFrom, dateTo, sort = '-createdAt' } = query;
@@ -91,4 +131,4 @@ async function getExpenseById(id, actor) {
   return expense;
 }
 
-module.exports = { submitExpense, listExpenses, getExpenseById };
+module.exports = { submitExpense, submitBulkExpenses, listExpenses, getExpenseById };

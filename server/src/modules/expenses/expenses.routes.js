@@ -7,7 +7,7 @@ const repository = require('./expenses.repository');
 const { authenticate, authorize, enforceTenantScope } = require('../../middlewares/auth.middleware');
 const validate = require('../../middlewares/validate.middleware');
 const categoryController = require('./expenseCategories.controller');
-const { createSchema } = require('./expenses.validation');
+const { createSchema, bulkCreateSchema } = require('./expenses.validation');
 const {
   categoryIdSchema,
   createCategorySchema,
@@ -27,6 +27,7 @@ router.delete('/categories/:categoryId', authorize('hr'),
   validate(categoryIdSchema, 'params'), categoryController.remove);
 
 router.post('/', authorize('hr'), validate(createSchema), controller.submit);
+router.post('/bulk', authorize('hr'), validate(bulkCreateSchema), controller.submitBulk);
 router.get('/', authorize('super_admin'), controller.list);
 
 router.get('/:id', authorize('super_admin'),
