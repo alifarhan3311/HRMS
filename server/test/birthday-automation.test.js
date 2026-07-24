@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
-const { birthdayDateContext } = require('../src/jobs/hrAutomation');
+const { birthdayDateContext, isAttendanceDateAfterReset } = require('../src/jobs/hrAutomation');
 const { smtpSecure } = require('../src/config/mailer');
 
 test('birthday automation identifies exact company-local midnight and tomorrow', () => {
@@ -21,6 +21,13 @@ test('birthday date context handles year rollover and does not run outside midni
   const twoHoursBefore = birthdayDateContext(new Date('2026-12-31T17:00:00.000Z'), 'Asia/Karachi');
   assert.equal(twoHoursBefore.isTwoHourReminderMinute, true);
   assert.deepEqual(twoHoursBefore.tomorrow, { year: 2027, month: 1, day: 1 });
+});
+
+test('attendance reset prevents historical absences from being regenerated', () => {
+  const resetAt = new Date('2026-07-24T17:30:57.380Z');
+  assert.equal(isAttendanceDateAfterReset(new Date('2026-07-23T12:00:00.000Z'), resetAt, 'Asia/Karachi'), false);
+  assert.equal(isAttendanceDateAfterReset(new Date('2026-07-24T12:00:00.000Z'), resetAt, 'Asia/Karachi'), false);
+  assert.equal(isAttendanceDateAfterReset(new Date('2026-07-25T12:00:00.000Z'), resetAt, 'Asia/Karachi'), true);
 });
 
 test('SMTP port 465 always enables implicit TLS', () => {

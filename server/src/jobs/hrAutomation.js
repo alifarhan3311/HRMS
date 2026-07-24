@@ -43,6 +43,16 @@ function zonedCalendarParts(value, timeZone = 'Asia/Karachi') {
   }, {});
 }
 
+function zonedDateKey(value, timeZone = 'Asia/Karachi') {
+  const parts = zonedCalendarParts(value, timeZone);
+  return `${parts.year}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+}
+
+function isAttendanceDateAfterReset(attendanceDate, resetAt, timeZone = 'Asia/Karachi') {
+  if (!resetAt) return true;
+  return zonedDateKey(attendanceDate, timeZone) > zonedDateKey(resetAt, timeZone);
+}
+
 function addCalendarDay(parts) {
   const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + 1, 12));
   return {
@@ -385,8 +395,12 @@ async function reconcileAttendance(now = new Date()) {
     const operations = employees
       .filter((employee) => new Date(employee.joiningDate) <= dayEnd)
       .filter((employee) => {
-        const resetAt = policyCache.get(String(employee.companyId))?.attendanceResetAt;
-        return !resetAt || dayEnd > new Date(resetAt);
+        const policy = policyCache.get(String(employee.companyId));
+        return isAttendanceDateAfterReset(
+          date,
+          policy?.attendanceResetAt,
+          policy?.company?.timezone || 'Asia/Karachi',
+        );
       })
       .filter((employee) => !holidays.some((holiday) => (
         String(holiday.companyId) === String(employee.companyId)
@@ -596,6 +610,7 @@ module.exports = {
   reconcileAttendance,
   sendMissingLeaveApplicationReminders,
   birthdayDateContext,
+  isAttendanceDateAfterReset,
   processBirthdayNotifications,
   runHrAutomation,
   startHrAutomation,
