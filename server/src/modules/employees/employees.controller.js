@@ -10,6 +10,7 @@ const {
   promotionSchema,
   resetPasswordSchema,
   departmentSchema,
+  leaveBalanceInitializationSchema,
 } = require('./employees.validation');
 
 function asyncHandler(fn) {
@@ -110,6 +111,14 @@ const hierarchy = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: result });
 });
 
+const initializeLeaveBalance = [
+  validate(leaveBalanceInitializationSchema),
+  asyncHandler(async (req, res) => {
+    const record = await service.initializeLeaveBalance(req.params.id, req.body, req.user);
+    res.status(200).json({ success: true, data: record });
+  }),
+];
+
 module.exports = {
   create,
   getById,
@@ -123,4 +132,5 @@ module.exports = {
   createDepartment,
   stats,
   hierarchy,
+  initializeLeaveBalance,
 };

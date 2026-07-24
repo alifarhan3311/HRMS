@@ -10,6 +10,7 @@ const { authenticate, authorize, enforceTenantScope } = require('../../middlewar
 const router = express.Router();
 const HR_MANAGEMENT = ['hr', 'super_admin'];
 const MANAGER_UP = ['team_lead', 'manager', 'hr', 'super_admin'];
+const SELF_SERVICE_AND_MANAGEMENT = ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'];
 
 router.use(authenticate);
 
@@ -26,7 +27,7 @@ router.post('/', authorize(...HR_MANAGEMENT), controller.create);
 // Single employee operations
 router.get(
   '/:id',
-  authorize(...MANAGER_UP),
+  authorize(...SELF_SERVICE_AND_MANAGEMENT),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.getById
 );
@@ -36,6 +37,13 @@ router.put(
   authorize(...HR_MANAGEMENT),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.update
+);
+
+router.put(
+  '/:id/leave-balance',
+  authorize('hr'),
+  enforceTenantScope(async (req) => repository.findById(req.params.id)),
+  controller.initializeLeaveBalance
 );
 
 router.patch(

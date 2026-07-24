@@ -144,6 +144,9 @@ function assertCanAssignRole(actor, role) {
 
 function teamLeaderCanView(actor, employee) {
   if (actor.role !== 'super_admin' && employee.role === 'super_admin') return false;
+  if (['employee', 'admin'].includes(actor.role)) {
+    return String(employee._id) === String(actor.id);
+  }
   if (!['manager', 'team_lead'].includes(actor.role)) return true;
   const actorId = String(actor.id);
   if (String(employee._id) === actorId) return true;
@@ -161,6 +164,7 @@ function redactManagerPrivateFields(employee) {
 }
 
 function enforceLeaveBalanceVisibility(employee, actor) {
+  if (String(employee._id) === String(actor.id)) return employee;
   if (['manager', 'hr', 'super_admin'].includes(actor.role)) return employee;
   const visible = { ...employee };
   delete visible.leaveBalance;
@@ -190,8 +194,8 @@ function visibleLeaveBalance(balance, enabledTypes = LEAVE_BALANCE_TYPES, entitl
       const carried = Number(carriedForward?.[type] || 0);
       return [type, {
         ...values,
-        available: entitlement + carried,
-        entitlement,
+        available: Number(values?.available ?? (entitlement + carried)),
+        entitlement: Number(values?.available ?? entitlement),
         carriedForward: carried,
       }];
     }));
@@ -199,12 +203,13 @@ function visibleLeaveBalance(balance, enabledTypes = LEAVE_BALANCE_TYPES, entitl
 
 async function reconcileLeaveBalance(employee) {
   const settings = await settingsService.getPolicy(employee.companyId);
+  const initializedForCurrentYear = Number(employee.leaveBalanceInitialization?.year) === new Date().getFullYear();
   const expected = balanceFromPolicy(
     settings.leavePolicy?.entitlements,
     employee.leaveBalance,
     validCarriedForward(employee)
   );
-  const needsUpdate = LEAVE_BALANCE_TYPES.some((type) => (
+  const needsUpdate = !initializedForCurrentYear && LEAVE_BALANCE_TYPES.some((type) => (
     Number(employee.leaveBalance?.[type]?.available || 0) !== expected[type].available
   ));
 
@@ -217,6 +222,53 @@ async function reconcileLeaveBalance(employee) {
     enabledTypes: settings.leavePolicy?.enabledTypes || LEAVE_BALANCE_TYPES,
     entitlements: settings.leavePolicy?.entitlements || {},
   };
+}
+
+async function initializeLeaveBalance(id, payload, actor) {
+  const employee = await repository.findById(id);
+  if (!employee || String(employee.companyId) !== String(actor.companyId)) {
+    throw createHttpError(404, 'Employee not found.');
+  }
+  const effectiveDate = new Date(payload.effectiveDate);
+  const year = effectiveDate.getFullYear();
+  const existingYear = Number(employee.leaveBalanceInitialization?.year || 0);
+  const isReinitialization = existingYear === year;
+  if (isReinitialization && !payload.confirmAdjustment) {
+    throw createHttpError(409, 'This employee already has an opening leave balance for this year. Confirm the adjustment to continue.');
+  }
+
+  const balances = {};
+  for (const type of ['annual', 'sick']) {
+    const entitlement = Number(payload.balances[type].entitlement);
+    const used = Number(payload.balances[type].used);
+    if (used > entitlement) {
+      throw createHttpError(422, `${type} leave used cannot exceed its entitlement.`);
+    }
+    employee.leaveBalance[type] = { available: entitlement, used };
+    balances[type] = { entitlement, used, remaining: entitlement - used };
+  }
+  employee.leaveBalance.casual = { available: 0, used: 0 };
+  employee.leaveBalanceInitialization = {
+    year,
+    mode: payload.mode,
+    effectiveDate,
+    initializedAt: new Date(),
+    initializedBy: actor.id,
+    notes: payload.reason,
+  };
+  employee.leaveBalanceAdjustments.push({
+    year,
+    mode: payload.mode,
+    effectiveDate,
+    balances,
+    reason: payload.reason,
+    adjustedBy: actor.id,
+    adjustedAt: new Date(),
+    wasReinitialization: isReinitialization,
+  });
+  await employee.save();
+  emitToUser(employee._id, 'employee:updated', { id: String(employee._id), action: 'leave_balance_adjusted' });
+  return getEmployeeById(id, actor);
 }
 
 // -------------------------------------------------------------------------
@@ -650,6 +702,7 @@ module.exports = {
   listEmployees,
   getEmployeeHierarchy,
   updateEmployee,
+  initializeLeaveBalance,
   resetEmployeePassword,
   deleteEmployee,
   changeStatus,

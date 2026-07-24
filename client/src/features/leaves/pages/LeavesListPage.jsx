@@ -65,9 +65,19 @@ function LeaveBalanceCards({ balance }) {
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
               {capitalize(type)} Leave
             </p>
-            <div className="flex items-end justify-between mb-2">
-              <span className="text-2xl font-bold">{remaining}</span>
-              <span className="text-xs text-muted-foreground">Remaining</span>
+            <div className="mb-3 grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-lg bg-muted/60 px-2 py-2">
+                <p className="text-lg font-bold">{bal.available || 0}</p>
+                <p className="text-[10px] uppercase text-muted-foreground">Total</p>
+              </div>
+              <div className="rounded-lg bg-amber-500/10 px-2 py-2">
+                <p className="text-lg font-bold text-amber-600">{bal.used || 0}</p>
+                <p className="text-[10px] uppercase text-muted-foreground">Used</p>
+              </div>
+              <div className="rounded-lg bg-emerald-500/10 px-2 py-2">
+                <p className="text-lg font-bold text-emerald-600">{remaining}</p>
+                <p className="text-[10px] uppercase text-muted-foreground">Remaining</p>
+              </div>
             </div>
             <div className="h-1.5 bg-muted rounded-full overflow-hidden">
               <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${pct}%` }} />

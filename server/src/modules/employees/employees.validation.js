@@ -131,6 +131,23 @@ const departmentSchema = Joi.object({
     }),
 });
 
+const leaveBalanceInitializationSchema = Joi.object({
+  mode: Joi.string().valid('full_year', 'prorated', 'manual').required(),
+  effectiveDate: Joi.date().required(),
+  reason: Joi.string().trim().min(3).max(500).required(),
+  balances: Joi.object({
+    annual: Joi.object({
+      entitlement: Joi.number().min(0).max(365).required(),
+      used: Joi.number().min(0).max(365).required(),
+    }).required(),
+    sick: Joi.object({
+      entitlement: Joi.number().min(0).max(365).required(),
+      used: Joi.number().min(0).max(365).required(),
+    }).required(),
+  }).required(),
+  confirmAdjustment: Joi.boolean().default(false),
+});
+
 module.exports = {
   createSchema,
   updateSchema,
@@ -138,4 +155,5 @@ module.exports = {
   promotionSchema,
   resetPasswordSchema,
   departmentSchema,
+  leaveBalanceInitializationSchema,
 };

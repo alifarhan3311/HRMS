@@ -20,6 +20,7 @@ import {
   useListEmployeesQuery,
   useCreateEmployeeMutation,
   useUpdateEmployeeMutation,
+  useInitializeEmployeeLeaveBalanceMutation,
   useResetEmployeePasswordMutation,
   useDeleteEmployeeMutation,
   useChangeEmployeeStatusMutation,
@@ -84,6 +85,110 @@ function ResetPasswordModal({ employee, isOpen, onClose, onSubmit, isLoading }) 
           <Button type="submit" variant="primary" size="sm" disabled={isLoading}>
             {isLoading ? 'Resetting...' : 'Reset Password'}
           </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+function LeaveBalanceModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [form, setForm] = useState({
+    mode: 'prorated', effectiveDate: today, reason: '',
+    annualEntitlement: 0, annualUsed: 0, sickEntitlement: 0, sickUsed: 0,
+    confirmAdjustment: false,
+  });
+
+  useEffect(() => {
+    if (!isOpen || !employee) return;
+    setForm({
+      mode: 'prorated',
+      effectiveDate: today,
+      reason: '',
+      annualEntitlement: Number(employee.leaveBalance?.annual?.available || 0),
+      annualUsed: Number(employee.leaveBalance?.annual?.used || 0),
+      sickEntitlement: Number(employee.leaveBalance?.sick?.available || 0),
+      sickUsed: Number(employee.leaveBalance?.sick?.used || 0),
+      confirmAdjustment: Number(employee.leaveBalanceInitialization?.year) === new Date().getFullYear(),
+    });
+  }, [employee, isOpen, today]);
+
+  function prorated(value) {
+    if (form.mode !== 'prorated' || !form.effectiveDate) return Number(value || 0);
+    const start = new Date(`${form.effectiveDate}T00:00:00`);
+    const yearEnd = new Date(start.getFullYear(), 11, 31);
+    const yearStart = new Date(start.getFullYear(), 0, 1);
+    const totalDays = Math.round((new Date(start.getFullYear() + 1, 0, 1) - yearStart) / 86400000);
+    const remainingDays = Math.max(0, Math.floor((yearEnd - start) / 86400000) + 1);
+    return Math.round((Number(value || 0) * remainingDays / totalDays) * 100) / 100;
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    const annual = prorated(form.annualEntitlement);
+    const sick = prorated(form.sickEntitlement);
+    if (!form.reason.trim()) return toast.error('Adjustment reason is required');
+    if (Number(form.annualUsed) > annual || Number(form.sickUsed) > sick) {
+      return toast.error('Used leave cannot exceed the calculated entitlement');
+    }
+    onSubmit({
+      mode: form.mode,
+      effectiveDate: form.effectiveDate,
+      reason: form.reason,
+      confirmAdjustment: form.confirmAdjustment,
+      balances: {
+        annual: { entitlement: annual, used: Number(form.annualUsed) },
+        sick: { entitlement: sick, used: Number(form.sickUsed) },
+      },
+    });
+  }
+
+  const annualFinal = prorated(form.annualEntitlement);
+  const sickFinal = prorated(form.sickEntitlement);
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Leave Balance Initialization" size="md">
+      <form onSubmit={submit}>
+        <div className="space-y-4 px-6 py-5">
+          <div className="rounded-xl bg-primary/5 p-3 text-sm">
+            <span className="font-semibold">{employee?.fullName}</span>
+            <p className="mt-1 text-xs text-muted-foreground">Set opening entitlement and leaves already used. Remaining balance is calculated automatically.</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="text-sm font-medium">Calculation mode
+              <select className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
+                value={form.mode} onChange={(e) => setForm((v) => ({ ...v, mode: e.target.value }))}>
+                <option value="prorated">Prorated from effective date</option>
+                <option value="full_year">Full yearly balance</option>
+                <option value="manual">Manual opening balance</option>
+              </select>
+            </label>
+            <Input label="Effective date" type="date" required value={form.effectiveDate}
+              onChange={(e) => setForm((v) => ({ ...v, effectiveDate: e.target.value }))} />
+          </div>
+          <div className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-2">
+            <Input label={form.mode === 'prorated' ? 'Annual yearly entitlement' : 'Annual entitlement'} type="number" min="0" step="0.01"
+              value={form.annualEntitlement} onChange={(e) => setForm((v) => ({ ...v, annualEntitlement: e.target.value }))} />
+            <Input label="Annual already used" type="number" min="0" step="0.01"
+              value={form.annualUsed} onChange={(e) => setForm((v) => ({ ...v, annualUsed: e.target.value }))} />
+            <Input label={form.mode === 'prorated' ? 'Sick yearly entitlement' : 'Sick entitlement'} type="number" min="0" step="0.01"
+              value={form.sickEntitlement} onChange={(e) => setForm((v) => ({ ...v, sickEntitlement: e.target.value }))} />
+            <Input label="Sick already used" type="number" min="0" step="0.01"
+              value={form.sickUsed} onChange={(e) => setForm((v) => ({ ...v, sickUsed: e.target.value }))} />
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="rounded-lg bg-emerald-500/10 p-3">Annual: <b>{annualFinal}</b> total · <b>{Math.max(0, annualFinal - Number(form.annualUsed || 0))}</b> remaining</div>
+            <div className="rounded-lg bg-rose-500/10 p-3">Sick: <b>{sickFinal}</b> total · <b>{Math.max(0, sickFinal - Number(form.sickUsed || 0))}</b> remaining</div>
+          </div>
+          <label className="block text-sm font-medium">HR reason / notes
+            <textarea className="mt-1.5 min-h-20 w-full rounded-lg border border-border bg-background p-3 text-sm" required
+              value={form.reason} onChange={(e) => setForm((v) => ({ ...v, reason: e.target.value }))}
+              placeholder="Opening balance source or adjustment reason..." />
+          </label>
+          {form.confirmAdjustment && <p className="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-700">This employee is already initialized for this year. Saving will create a new audited adjustment.</p>}
+        </div>
+        <ModalFooter>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" size="sm" disabled={isLoading}>{isLoading ? 'Saving...' : 'Save Opening Balance'}</Button>
         </ModalFooter>
       </form>
     </Modal>
@@ -202,6 +307,7 @@ export default function EmployeesListPage() {
   const [detailEmployee, setDetailEmployee] = useState(null);
   const [promoteEmployee, setPromoteEmployee] = useState(null);
   const [resetPasswordTarget, setResetPasswordTarget] = useState(null);
+  const [leaveBalanceTarget, setLeaveBalanceTarget] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [statusTarget, setStatusTarget] = useState(null); // { employee, newStatus }
   const [actionMenuId, setActionMenuId] = useState(null);
@@ -224,6 +330,7 @@ export default function EmployeesListPage() {
 
   const [createEmployee, { isLoading: isCreating }] = useCreateEmployeeMutation();
   const [updateEmployee, { isLoading: isUpdating }] = useUpdateEmployeeMutation();
+  const [initializeLeaveBalance, { isLoading: isInitializingLeave }] = useInitializeEmployeeLeaveBalanceMutation();
   const [resetEmployeePassword, { isLoading: isResettingPassword }] = useResetEmployeePasswordMutation();
   const [deleteEmployee, { isLoading: isDeleting }] = useDeleteEmployeeMutation();
   const [changeStatus, { isLoading: isChangingStatus }] = useChangeEmployeeStatusMutation();
@@ -334,6 +441,16 @@ export default function EmployeesListPage() {
       setResetPasswordTarget(null);
     } catch (err) {
       toast.error(err?.data?.error?.message || 'Failed to reset employee password');
+    }
+  }
+
+  async function handleLeaveBalance(payload) {
+    try {
+      await initializeLeaveBalance({ id: leaveBalanceTarget._id, ...payload }).unwrap();
+      toast.success(`${leaveBalanceTarget.fullName}'s leave balance updated`);
+      setLeaveBalanceTarget(null);
+    } catch (err) {
+      toast.error(err?.data?.error?.message || 'Failed to update leave balance');
     }
   }
 
@@ -724,7 +841,17 @@ export default function EmployeesListPage() {
         onStatusChange={(emp, status) => { setStatusTarget({ employee: emp, newStatus: status }); setDetailEmployee(null); }}
         onPromote={(emp) => { setPromoteEmployee(emp); setDetailEmployee(null); }}
         onResetPassword={(emp) => { setResetPasswordTarget(emp); setDetailEmployee(null); }}
+        onLeaveBalance={(emp) => { setLeaveBalanceTarget(emp); setDetailEmployee(null); }}
         canManage={canManageEmployee(detailEmployee)}
+        canInitializeLeaveBalance={user?.role === 'hr'}
+      />
+
+      <LeaveBalanceModal
+        employee={leaveBalanceTarget}
+        isOpen={Boolean(leaveBalanceTarget)}
+        onClose={() => setLeaveBalanceTarget(null)}
+        onSubmit={handleLeaveBalance}
+        isLoading={isInitializingLeave}
       />
 
       <ResetPasswordModal

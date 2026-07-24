@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Mail, Phone, MapPin, Briefcase, Calendar, User, Heart,
   Droplets, GraduationCap, Banknote, TrendingUp, Clock, Shield,
-  CreditCard, Award, Edit, UserX, UserCheck, ArrowUpRight, KeyRound,
+  CreditCard, Award, Edit, UserX, UserCheck, ArrowUpRight, KeyRound, CalendarRange,
 } from 'lucide-react';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge, RoleBadge, Badge } from '../../../components/ui/Badge';
@@ -48,7 +48,9 @@ export default function EmployeeDetailPanel({
   onStatusChange,
   onPromote,
   onResetPassword,
+  onLeaveBalance,
   canManage = false,
+  canInitializeLeaveBalance = false,
 }) {
   if (!employee) return null;
 
@@ -166,6 +168,15 @@ export default function EmployeeDetailPanel({
                     </Button>
                   )}
                 </div>
+              )}
+              {canInitializeLeaveBalance && (
+                <Button
+                  variant="secondary" size="sm"
+                  className="mb-2 w-full gap-1.5"
+                  onClick={() => onLeaveBalance(employee)}
+                >
+                  <CalendarRange className="h-3.5 w-3.5" /> Initialize / Adjust Leave Balance
+                </Button>
               )}
 
               {/* Personal Info */}

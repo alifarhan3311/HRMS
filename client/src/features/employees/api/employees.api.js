@@ -22,6 +22,12 @@ export const employeesApi = api.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/employees/${id}`, method: 'PUT', body }),
       invalidatesTags: (result, error, { id }) => [{ type: 'Employees', id }, 'Employees', 'Auth'],
     }),
+    initializeEmployeeLeaveBalance: builder.mutation({
+      query: ({ id, ...body }) => ({ url: `/employees/${id}/leave-balance`, method: 'PUT', body }),
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'Employees', id }, 'Employees', 'Leaves', 'Attendance', 'Payroll', 'Dashboard',
+      ],
+    }),
     resetEmployeePassword: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/employees/${id}/reset-password`, method: 'PATCH', body }),
       invalidatesTags: (result, error, { id }) => [{ type: 'Employees', id }, 'Employees'],
@@ -63,6 +69,7 @@ export const {
   useGetEmployeeByIdQuery,
   useCreateEmployeeMutation,
   useUpdateEmployeeMutation,
+  useInitializeEmployeeLeaveBalanceMutation,
   useResetEmployeePasswordMutation,
   useDeleteEmployeeMutation,
   useChangeEmployeeStatusMutation,

@@ -56,6 +56,27 @@ const employeesSchema = new mongoose.Schema(
     nextAnniversary: Date,
     carriedForward: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
+  leaveBalanceInitialization: {
+    year: Number,
+    mode: { type: String, enum: ['full_year', 'prorated', 'manual'] },
+    effectiveDate: Date,
+    initializedAt: Date,
+    initializedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+    notes: String,
+  },
+  leaveBalanceAdjustments: {
+    type: [{
+      year: Number,
+      mode: { type: String, enum: ['full_year', 'prorated', 'manual'] },
+      effectiveDate: Date,
+      balances: mongoose.Schema.Types.Mixed,
+      reason: String,
+      adjustedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+      adjustedAt: { type: Date, default: Date.now },
+      wasReinitialization: { type: Boolean, default: false },
+    }],
+    default: [],
+  },
   lateCount: { type: Number, default: 0 },
   role: {
     type: String,
