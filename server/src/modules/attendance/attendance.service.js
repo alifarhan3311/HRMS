@@ -411,7 +411,7 @@ async function listAttendances(query, actor) {
   const filter = { companyId: actor.companyId };
 
   // Users without HR/team authority only see their own records.
-  if (!['hr', 'super_admin', 'manager'].includes(actor.role)) {
+  if (!['hr', 'super_admin', 'manager', 'team_lead'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
     await assertCanViewEmployeeAttendance(actor, employeeId);

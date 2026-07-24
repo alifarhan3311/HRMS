@@ -1,12 +1,12 @@
 /**
  * modules/leaves/leaves.model.js
  * Leave request with multi-stage approval chain.
- * Workflow: Employee → Team Lead → HR → Final Approver (Admin/Super Admin)
+ * Workflow: Employee -> Team Lead/Manager -> HR (final)
  */
 const mongoose = require('mongoose');
 
 const approvalStepSchema = new mongoose.Schema({
-  stage: { type: Number, required: true }, // 1=TeamLead, 2=HR, 3=Admin
+  stage: { type: Number, required: true }, // 1=Team Lead/Manager, 2=HR final
   approverRole: { type: String },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },

@@ -34,7 +34,7 @@ function calculateAttendancePayroll({
   basicSalary, workingDays, absent, halfDay, late, unpaidLeave,
   requiredMinutes = 480, lateMinutes = 0, payrollPolicy = {},
 }) {
-  const perDaySalary = workingDays ? Number(basicSalary) / workingDays : 0;
+  const perDaySalary = Number(basicSalary) / 30;
   const requiredHours = Number(requiredMinutes || 480) / 60;
   const perHourSalary = requiredHours ? perDaySalary / requiredHours : 0;
   const mode = payrollPolicy.lateDeductionMode || 'three_lates_half_day';
@@ -90,6 +90,40 @@ function leaveDutyDates(leave) {
   return dates;
 }
 
+function calculateSandwichDates({ start, end, workingDayNumbers, records, unpaidLeaveDates }) {
+  const statusByDate = new Map(records.map(record => [record.shiftDate || dateKey(record.date), record.status]));
+  const deductionDates = new Set(unpaidLeaveDates);
+  for (const record of records) {
+    if (record.status === 'absent') deductionDates.add(record.shiftDate || dateKey(record.date));
+  }
+  const offDates = new Set();
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const key = dateKey(cursor);
+    const status = statusByDate.get(key);
+    if (!workingDayNumbers.includes(cursor.getUTCDay()) || ['holiday', 'weekend'].includes(status)) offDates.add(key);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  const ordered = [...offDates].sort();
+  const sandwich = new Set();
+  for (let index = 0; index < ordered.length;) {
+    const block = [ordered[index]];
+    while (ordered[index + 1] && new Date(`${ordered[index + 1]}T00:00:00Z`) - new Date(`${ordered[index]}T00:00:00Z`) === 86400000) {
+      index += 1;
+      block.push(ordered[index]);
+    }
+    const before = new Date(`${block[0]}T00:00:00Z`);
+    const after = new Date(`${block[block.length - 1]}T00:00:00Z`);
+    before.setUTCDate(before.getUTCDate() - 1);
+    after.setUTCDate(after.getUTCDate() + 1);
+    if (deductionDates.has(dateKey(before)) && deductionDates.has(dateKey(after))) {
+      block.forEach(key => sandwich.add(key));
+    }
+    index += 1;
+  }
+  return sandwich;
+}
+
 async function getAttendanceData(employee, month, year) {
   const { start, end } = monthBounds(month, year);
   const [records, approvedLeaves] = await Promise.all([
@@ -122,6 +156,9 @@ async function getAttendanceData(employee, month, year) {
   const workingDayNumbers = employee.shiftId?.workingDays?.length
     ? employee.shiftId.workingDays
     : [1, 2, 3, 4, 5];
+  const sandwichDates = calculateSandwichDates({
+    start, end, workingDayNumbers, records, unpaidLeaveDates,
+  });
   let workingDays = 0;
   const cur = new Date(start);
   while (cur <= end) {
@@ -132,6 +169,7 @@ async function getAttendanceData(employee, month, year) {
     present, absent, late, lateMinutes, halfDay, holiday, weekend, workingDays,
     paidLeave: paidLeaveDates.size,
     unpaidLeave: unpaidLeaveDates.size,
+    sandwichLeave: sandwichDates.size,
     workedMinutes,
   };
 }
@@ -152,7 +190,7 @@ async function generatePayslip(payload, actor) {
   if (basicSalary <= 0) throw createHttpError(422, 'Employee salary must be configured before generating payroll.');
   const attendance = await getAttendanceData(employee, month, year);
   const {
-    present, absent, late, lateMinutes, halfDay, paidLeave, unpaidLeave, holiday, weekend,
+    present, absent, late, lateMinutes, halfDay, paidLeave, unpaidLeave, sandwichLeave, holiday, weekend,
     workingDays, workedMinutes,
   } = attendance;
 
@@ -167,7 +205,7 @@ async function generatePayslip(payload, actor) {
     absent,
     halfDay,
     late,
-    unpaidLeave,
+    unpaidLeave: unpaidLeave + sandwichLeave,
     requiredMinutes: employee.shiftId?.requiredMinutes,
     lateMinutes,
     payrollPolicy: settings.payrollPolicy,
@@ -212,6 +250,7 @@ async function generatePayslip(payload, actor) {
     halfDays: halfDay,
     paidLeaveDays: paidLeave,
     unpaidLeaveDays: unpaidLeave,
+    sandwichLeaveDays: sandwichLeave,
     holidayDays: holiday,
     weekendDays: weekend,
     workingDays,
@@ -315,11 +354,7 @@ async function getLivePayroll(query, actor) {
   const month = Number(query.month || now.getMonth() + 1);
   const year = Number(query.year || now.getFullYear());
   const employeeFilter = { companyId: actor.companyId, status: { $in: ['active', 'on_leave'] } };
-  if (actor.role === 'manager') {
-    employeeFilter.$or = [{ _id: actor.id }, { managerId: actor.id }];
-  } else if (actor.role === 'team_lead') {
-    employeeFilter.$or = [{ _id: actor.id }, { teamLeadId: actor.id }];
-  } else if (!['admin', 'super_admin', 'hr'].includes(actor.role)) {
+  if (!['admin', 'super_admin', 'hr'].includes(actor.role)) {
     employeeFilter._id = actor.id;
   }
   const [employees, settings] = await Promise.all([
@@ -336,7 +371,7 @@ async function getLivePayroll(query, actor) {
       halfDay: attendance.halfDay,
       late: attendance.late,
       lateMinutes: attendance.lateMinutes,
-      unpaidLeave: attendance.unpaidLeave,
+      unpaidLeave: attendance.unpaidLeave + attendance.sandwichLeave,
       requiredMinutes: employee.shiftId?.requiredMinutes,
       payrollPolicy: settings.payrollPolicy,
     });
@@ -368,5 +403,5 @@ async function getLivePayroll(query, actor) {
 module.exports = {
   generatePayslip, updatePayslip, listPayslips, getPayslipById,
   submitForApproval, approvePayslip, markPaid, lockPayslip,
-  calculateAttendancePayroll, getLivePayroll,
+  calculateAttendancePayroll, calculateSandwichDates, getLivePayroll,
 };

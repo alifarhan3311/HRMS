@@ -65,6 +65,7 @@ const companySettingsSchema = new mongoose.Schema(
       latesPerHalfDay: { type: Number, default: 3, min: 1, max: 30 },
       perMinuteRate: { type: Number, default: 0, min: 0 },
     },
+    attendanceResetAt: { type: Date },
     notifications: {
       inAppEnabled: { type: Boolean, default: true },
       emailEnabled: { type: Boolean, default: false },

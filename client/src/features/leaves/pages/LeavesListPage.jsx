@@ -43,7 +43,7 @@ const STATUS_STYLES = {
   rejected:  { label: 'Rejected',  variant: 'red'    },
   cancelled: { label: 'Cancelled', variant: 'gray'   },
 };
-const STAGE_ROLES = { 1: 'Team Lead / Manager', 2: 'HR', 3: 'Admin' };
+const STAGE_ROLES = { 1: 'Team Lead / Manager', 2: 'HR (Final)' };
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -88,7 +88,7 @@ function LeaveBalanceCards({ balance }) {
 // ─── Apply Leave Form ────────────────────────────────────────────────────────
 function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) {
   const [form, setForm, clearDraft] = useFormDraft(draftKey, {
-    leaveType: leaveTypes[0] || '', startDate: '', endDate: '', reason: '', emergencyContact: '',
+    leaveType: leaveTypes[0] || '', durationMode: 'single', startDate: '', endDate: '', reason: '', emergencyContact: '',
   });
   const [errors, setErrors] = useState({});
   useEffect(() => {
@@ -103,8 +103,8 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
     const e = {};
     if (!form.leaveType) e.leaveType = 'Leave type required';
     if (!form.startDate) e.startDate = 'Start date required';
-    if (!form.endDate) e.endDate = 'End date required';
-    if (form.endDate && form.startDate && form.endDate < form.startDate) e.endDate = 'End must be after start';
+    if (form.durationMode === 'multiple' && !form.endDate) e.endDate = 'End date required';
+    if (form.durationMode === 'multiple' && form.endDate && form.startDate && form.endDate < form.startDate) e.endDate = 'End must be after start';
     if (form.leaveType !== 'casual' && !form.reason.trim()) e.reason = 'Please provide a reason';
     setErrors(e);
     return !Object.keys(e).length;
@@ -112,10 +112,11 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
 
   // Calculate working days preview
   function workingDays() {
-    if (!form.startDate || !form.endDate) return 0;
+    if (!form.startDate) return 0;
     let count = 0;
     const cur = new Date(form.startDate);
-    const end = new Date(form.endDate);
+    const end = new Date(form.durationMode === 'multiple' ? form.endDate : form.startDate);
+    if (Number.isNaN(end.getTime())) return 0;
     while (cur <= end) { if (cur.getDay() !== 0 && cur.getDay() !== 6) count++; cur.setDate(cur.getDate() + 1); }
     return count;
   }
@@ -123,7 +124,9 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!validate()) return;
-    const saved = await onSubmit(form);
+    const { durationMode, ...payload } = form;
+    payload.endDate = durationMode === 'multiple' ? form.endDate : form.startDate;
+    const saved = await onSubmit(payload);
     if (saved !== false) clearDraft();
   }
   const days = workingDays();
@@ -135,11 +138,19 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
           error={errors.leaveType}>
           {leaveTypes.map(t => <option key={t} value={t}>{capitalize(t)} Leave</option>)}
         </Select>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input label="Start Date" required type="date" value={form.startDate}
+        <Select label="Leave Duration" value={form.durationMode || 'single'}
+          onChange={(e) => setForm(previous => ({ ...previous, durationMode: e.target.value, endDate: e.target.value === 'single' ? '' : previous.endDate }))}>
+          <option value="single">Single Day</option>
+          <option value="multiple">Multiple Days</option>
+        </Select>
+        <div className={`grid grid-cols-1 gap-4 ${form.durationMode === 'multiple' ? 'sm:grid-cols-2' : ''}`}>
+          <Input label={form.durationMode === 'multiple' ? 'From Date' : 'Leave Date'} required type="date" value={form.startDate}
             onChange={(e) => set('startDate', e.target.value)} error={errors.startDate} />
-          <Input label="End Date" required type="date" value={form.endDate}
-            onChange={(e) => set('endDate', e.target.value)} error={errors.endDate} />
+          {form.durationMode === 'multiple' && (
+            <Input label="To Date" required type="date" value={form.endDate}
+              min={form.startDate || undefined}
+              onChange={(e) => set('endDate', e.target.value)} error={errors.endDate} />
+          )}
         </div>
         {days > 0 && (
           <div className="rounded-lg bg-primary/5 border border-primary/10 px-3 py-2 text-sm">
@@ -154,7 +165,7 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
           onChange={(e) => set('emergencyContact', e.target.value)}
           placeholder="+92 300 1234567" />
         <div className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-          Approval Flow: <span className="text-foreground font-medium">You → Team Lead → HR → Admin</span>
+          Approval Flow: <span className="text-foreground font-medium">You → Team Lead / Manager → HR</span>
         </div>
       </div>
       <ModalFooter>
@@ -202,7 +213,7 @@ function ApprovalTimeline({ chain = [], currentStage }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function LeavesListPage() {
   const { user } = useSelector((s) => s.auth);
-  const isApprover = ['hr', 'admin', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
+  const isApprover = ['hr', 'manager', 'team_lead'].includes(user?.role);
 
   const [applyOpen, setApplyOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState(null);

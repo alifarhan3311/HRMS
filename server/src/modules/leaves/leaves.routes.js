@@ -10,7 +10,7 @@ const validation = require('./leaves.validation');
 
 const router = express.Router();
 const ALL = ['super_admin', 'admin', 'hr', 'manager', 'team_lead', 'employee'];
-const APPROVERS = ['super_admin', 'admin', 'hr', 'manager', 'team_lead'];
+const APPROVERS = ['hr', 'manager', 'team_lead'];
 
 router.use(authenticate);
 

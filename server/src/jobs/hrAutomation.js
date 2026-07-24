@@ -60,6 +60,7 @@ function birthdayDateContext(now, timeZone) {
     tomorrow,
     todayKey: `${today.year}-${String(today.month).padStart(2, '0')}-${String(today.day).padStart(2, '0')}`,
     isMidnightMinute: today.hour === 0 && today.minute === 0,
+    isTwoHourReminderMinute: today.hour === 22 && today.minute === 0,
   };
 }
 
@@ -111,7 +112,7 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
     const settings = await settingsService.getPolicy(companyId);
     const timeZone = settings.company?.timezone || 'Asia/Karachi';
     const context = birthdayDateContext(now, timeZone);
-    if (!force && !context.isMidnightMinute) continue;
+    if (!force && !context.isMidnightMinute && !context.isTwoHourReminderMinute) continue;
 
     const employees = await Employee.find({
       companyId,
@@ -127,7 +128,7 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
       return dob.month === context.tomorrow.month && dob.day === context.tomorrow.day;
     });
 
-    for (const employee of todaysBirthdays) {
+    for (const employee of context.isMidnightMinute || force ? todaysBirthdays : []) {
       const wish = `Wishing you a beautiful birthday filled with happiness, success, and wonderful moments. May the year ahead bring you endless reasons to smile. Have an amazing day!`;
       await createBirthdayNotification({
         data: {
@@ -148,7 +149,7 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
       employeeWishes += 1;
     }
 
-    if (tomorrowsBirthdays.length) {
+    if ((context.isMidnightMinute || force) && tomorrowsBirthdays.length) {
       let hrRecipients = await Employee.find({
         companyId,
         role: 'hr',
@@ -183,6 +184,43 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
             email: hr.email,
             subject: `Birthday reminder: ${birthdayEmployee.fullName} 🎂`,
             html: `<div style="font-family:Arial,sans-serif;line-height:1.7;color:#2f2a24"><h2 style="color:#d49a16">Birthday reminder for tomorrow 🎈</h2><p>Hello ${escapeHtml(hr.fullName || 'HR Team')},</p><p><strong>${escapeHtml(birthdayEmployee.fullName)}</strong>'s birthday is tomorrow.</p><p>A thoughtful wish or a small celebration would make their day extra special. 🎂</p><p>Regards,<br><strong>HRMS</strong></p></div>`,
+          });
+          hrAlerts += 1;
+        }
+      }
+    }
+
+    if ((context.isTwoHourReminderMinute || force) && tomorrowsBirthdays.length) {
+      let hrRecipients = await Employee.find({
+        companyId,
+        role: 'hr',
+        status: 'active',
+      }).select('_id fullName email');
+      if (!hrRecipients.length) {
+        hrRecipients = await Employee.find({
+          companyId,
+          role: 'super_admin',
+          status: 'active',
+        }).select('_id fullName email');
+      }
+      for (const birthdayEmployee of tomorrowsBirthdays) {
+        for (const hr of hrRecipients) {
+          const reminder = `${birthdayEmployee.fullName}'s birthday starts in 2 hours.`;
+          await createBirthdayNotification({
+            data: {
+              recipientId: hr._id,
+              companyId,
+              type: 'birthday_upcoming',
+              title: 'Birthday in 2 hours',
+              message: `${reminder} Please prepare their birthday wish.`,
+              link: '/employees',
+              metadata: { employeeId: birthdayEmployee._id, reminderHours: 2 },
+              dedupeKey: `birthday-hr-two-hour:${birthdayEmployee._id}:${hr._id}:${context.tomorrow.year}`,
+            },
+            emailEnabled: true,
+            email: hr.email,
+            subject: `2-hour birthday reminder: ${birthdayEmployee.fullName}`,
+            html: `<div style="font-family:Arial,sans-serif;line-height:1.7;color:#2f2a24"><h2 style="color:#d49a16">Birthday starts in 2 hours</h2><p>Hello ${escapeHtml(hr.fullName || 'HR Team')},</p><p><strong>${escapeHtml(birthdayEmployee.fullName)}</strong>'s birthday starts in 2 hours.</p><p>Please prepare their birthday wish or celebration.</p><p>Regards,<br><strong>HRMS</strong></p></div>`,
           });
           hrAlerts += 1;
         }
@@ -346,6 +384,10 @@ async function reconcileAttendance(now = new Date()) {
 
     const operations = employees
       .filter((employee) => new Date(employee.joiningDate) <= dayEnd)
+      .filter((employee) => {
+        const resetAt = policyCache.get(String(employee.companyId))?.attendanceResetAt;
+        return !resetAt || dayEnd > new Date(resetAt);
+      })
       .filter((employee) => !holidays.some((holiday) => (
         String(holiday.companyId) === String(employee.companyId)
         && (!holiday.eventType || holiday.eventType === 'full_day')

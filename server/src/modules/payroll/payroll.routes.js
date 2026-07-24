@@ -7,19 +7,19 @@ const repository = require('./payroll.repository');
 const { authenticate, authorize, enforceTenantScope } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
-const ALL      = ['super_admin','admin','hr','manager','team_lead','employee'];
+const PAYROLL_VIEWERS = ['super_admin','admin','hr','manager','team_lead','employee'];
 const PAYROLL_ADMINS = ['super_admin','admin'];
 const ADMIN_HR = ['super_admin','admin','hr'];
 
 router.use(authenticate);
 
 // List & generate
-router.get('/',    authorize(...ALL),    controller.list);
-router.get('/live', authorize(...ALL), controller.live);
+router.get('/',    authorize(...PAYROLL_VIEWERS), controller.list);
+router.get('/live', authorize(...PAYROLL_VIEWERS), controller.live);
 router.post('/',   authorize(...PAYROLL_ADMINS), controller.generate);
 
 // Per-payslip
-router.get('/:id',  authorize(...ALL),
+router.get('/:id',  authorize(...PAYROLL_VIEWERS),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.getById);
 

@@ -1,7 +1,7 @@
 /**
  * modules/leaves/leaves.service.js
  * Leave management with multi-stage approval:
- *  Employee → Team Lead/Manager (Stage 1) → HR (Stage 2) → Admin (Stage 3/Final)
+ *  Employee -> Team Lead/Manager (Stage 1) -> HR (Stage 2/Final)
  *
  * Leave balance is deducted from Employee when fully approved.
  * Employees may cancel only while a request is pending. Once approved,
@@ -105,7 +105,6 @@ function buildApprovalChain() {
   return [
     { stage: 1, approverRole: 'team_lead/manager', status: 'pending' },
     { stage: 2, approverRole: 'hr', status: 'pending' },
-    { stage: 3, approverRole: 'admin', status: 'pending' },
   ];
 }
 
@@ -192,13 +191,6 @@ async function stageApproverIds(leave, stage) {
       status: 'active',
       _id: { $ne: employeeId },
     }).distinct('_id');
-  } else if (stage === 3) {
-    recipientIds = await Employee.find({
-      companyId: leave.companyId,
-      role: { $in: ['admin', 'super_admin'] },
-      status: 'active',
-      _id: { $ne: employeeId },
-    }).distinct('_id');
   }
 
   return {
@@ -260,7 +252,7 @@ async function applyLeave(payload, actor) {
   }
 
   const start = new Date(startDate);
-  const end = new Date(endDate);
+  const end = new Date(endDate || startDate);
   if (end < start) throw createHttpError(400, 'End date cannot be before start date.');
   const settings = await settingsService.getPolicy(actor.companyId);
   const enabledTypes = settings.leavePolicy?.enabledTypes || Object.keys(LEAVE_BALANCE_KEYS);
@@ -322,7 +314,7 @@ async function applyLeave(payload, actor) {
     reason: reason || '',
     emergencyContact: emergencyContact || '',
     status: isHrOverride ? 'approved' : 'pending',
-    currentStage: isHrOverride ? 3 : 1,
+    currentStage: isHrOverride ? 2 : 1,
     approvalChain: isHrOverride ? [] : buildApprovalChain(),
     companyId: actor.companyId,
     branchId: actor.branchId,
@@ -340,7 +332,19 @@ async function applyLeave(payload, actor) {
     attendanceRecord.notes = `${attendanceRecord.notes || ''} [HR leave exception: ${reason || leaveType}]`.trim();
     await attendanceRecord.save();
   } else {
-    await notifyStageApprovers(leave, 1);
+    const { recipientIds } = await stageApproverIds(leave, 1);
+    if (recipientIds.length) {
+      await notifyStageApprovers(leave, 1);
+    } else {
+      leave.approvalChain = leave.approvalChain.map(step => (
+        step.stage === 1
+          ? { ...step.toObject(), status: 'approved', remarks: 'No Team Lead/Manager assigned; routed directly to HR.', actionAt: new Date() }
+          : step
+      ));
+      leave.currentStage = 2;
+      await leave.save();
+      await notifyStageApprovers(leave, 2);
+    }
   }
 
   emitLeaveUpdate(actor.companyId, 'applied', leave);
@@ -355,7 +359,7 @@ async function approveLeave(id, { remarks }, actor) {
   await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   if (leave.status !== 'pending') throw createHttpError(400, 'This leave is no longer pending.');
 
-  const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2, admin: 3, super_admin: 3 };
+  const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2 };
   const actorStage = ROLE_STAGE_MAP[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot approve leave requests.');
   if (actorStage !== leave.currentStage) {
@@ -371,7 +375,7 @@ async function approveLeave(id, { remarks }, actor) {
     return plainStep;
   });
 
-  const isLastStage = actorStage === 3;
+  const isLastStage = actorStage === 2;
   const nextStage = actorStage + 1;
 
   const update = {
@@ -431,7 +435,7 @@ async function rejectLeave(id, { remarks }, actor) {
   await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   if (leave.status !== 'pending') throw createHttpError(400, 'This leave is no longer pending.');
 
-  const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2, admin: 3, super_admin: 3 };
+  const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2 };
   const actorStage = ROLE_STAGE_MAP[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot reject leave requests.');
   if (actorStage !== leave.currentStage) {
@@ -537,7 +541,7 @@ async function getLeaveById(id, actor) {
 }
 
 async function getPendingApprovals(actor) {
-  const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2, admin: 3, super_admin: 3 };
+  const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2 };
   const stage = ROLE_STAGE_MAP[actor.role];
   if (!stage) return [];
   const employeeIds = actor.role === 'super_admin'

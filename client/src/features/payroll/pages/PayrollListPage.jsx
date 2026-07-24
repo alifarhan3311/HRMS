@@ -322,10 +322,10 @@ export default function PayrollListPage() {
 
   function exportLiveCsv() {
     if (!liveRows.length) return toast.error('No live payroll data to export');
-    const headers = ['Employee','Code','Monthly Salary','Daily Salary','Earned Salary','Present','Absent','Half Days','Paid Leave','Unpaid Leave','Late','Deductions','Net Payable'];
+    const headers = ['Employee','Code','Monthly Salary','Daily Salary','Earned Salary','Present','Absent','Half Days','Paid Leave','Unpaid Leave','Sandwich Leave','Late','Deductions','Net Payable'];
     const rows = liveRows.map(row => [
       row.employeeName, row.employeeCode, row.monthlySalary, row.dailySalary, row.earnedSalary, row.present,
-      row.absent, row.halfDay, row.paidLeave, row.unpaidLeave, row.late, row.deductions, row.netPayable,
+      row.absent, row.halfDay, row.paidLeave, row.unpaidLeave, row.sandwichLeave, row.late, row.deductions, row.netPayable,
     ]);
     const csv = [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
@@ -399,7 +399,7 @@ export default function PayrollListPage() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1150px] text-sm">
               <thead className="bg-muted/30 text-xs uppercase text-muted-foreground"><tr>
-                {['Employee','Monthly','Daily','Earned','Present','Absent','Half Day','Paid Leave','Unpaid Leave','Late','Attendance Deduction','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
+                {['Employee','Monthly','Daily','Earned','Present','Absent','Half Day','Paid Leave','Unpaid Leave','Sandwich','Late','Attendance Deduction','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
               </tr></thead>
               <tbody className="divide-y divide-border">{liveRows.map(row => (
                 <tr key={row.employeeId} className="hover:bg-accent/30">
@@ -412,6 +412,7 @@ export default function PayrollListPage() {
                   <td className="px-4 py-3 text-orange-500">{row.halfDay}</td>
                   <td className="px-4 py-3">{row.paidLeave}</td>
                   <td className="px-4 py-3 text-red-500">{row.unpaidLeave}</td>
+                  <td className="px-4 py-3 text-red-600">{row.sandwichLeave}</td>
                   <td className="px-4 py-3 text-amber-500">{row.late}</td>
                   <td className="px-4 py-3 text-red-500">− {fmtPKR(row.deductions)}</td>
                   <td className="px-4 py-3 font-bold text-primary">{fmtPKR(row.netPayable)}</td>

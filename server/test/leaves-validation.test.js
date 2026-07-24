@@ -28,6 +28,16 @@ test('leave application requires a supported type and a valid ordered ISO date r
   }).error);
 });
 
+test('single-day leave only requires one selected date', () => {
+  const result = createSchema.validate({
+    leaveType: 'casual',
+    startDate: '2026-07-24',
+    reason: '',
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.value.endDate, undefined);
+});
+
 test('leave decision and cancellation payloads reject unknown workflow fields', () => {
   assert.equal(decisionSchema.validate({ remarks: 'Approved' }).error, undefined);
   assert.equal(cancelSchema.validate({ reason: 'Plans changed' }).error, undefined);

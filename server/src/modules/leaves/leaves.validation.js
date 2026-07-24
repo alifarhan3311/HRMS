@@ -7,7 +7,7 @@ const createSchema = Joi.object({
   attendanceId: Joi.string().hex().length(24).optional(),
   leaveType: Joi.string().valid(...leaveTypes).required(),
   startDate: Joi.date().iso().required(),
-  endDate: Joi.date().iso().min(Joi.ref('startDate')).required(),
+  endDate: Joi.date().iso().min(Joi.ref('startDate')).optional(),
   reason: Joi.string().trim().max(1000).allow('').default(''),
   emergencyContact: Joi.string().trim().max(200).allow('').default(''),
 });

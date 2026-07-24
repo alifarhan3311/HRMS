@@ -18,6 +18,9 @@ test('birthday date context handles year rollover and does not run outside midni
 
   const later = birthdayDateContext(new Date('2026-12-30T19:01:00.000Z'), 'Asia/Karachi');
   assert.equal(later.isMidnightMinute, false);
+  const twoHoursBefore = birthdayDateContext(new Date('2026-12-31T17:00:00.000Z'), 'Asia/Karachi');
+  assert.equal(twoHoursBefore.isTwoHourReminderMinute, true);
+  assert.deepEqual(twoHoursBefore.tomorrow, { year: 2027, month: 1, day: 1 });
 });
 
 test('SMTP port 465 always enables implicit TLS', () => {
