@@ -5,9 +5,10 @@
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
+import * as XLSX from 'xlsx';
 import {
   BarChart3, Download, Calendar, Users, Wallet,
-  Receipt, Clock, TrendingUp, FileText, Filter,
+  Receipt, Clock, TrendingUp, FileText,
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
@@ -17,9 +18,11 @@ import { useListAttendanceQuery } from '../../attendance/api/attendance.api';
 import { useListLeavesQuery } from '../../leaves/api/leaves.api';
 import { useListPayrollQuery } from '../../payroll/api/payroll.api';
 import { useListExpensesQuery } from '../../expenses/api/expenses.api';
+import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import Button from '../../../components/ui/Button';
 import { Input, Select } from '../../../components/ui/Input';
 import StatCard from '../../../components/ui/StatCard';
+import { toast } from '../../../utils/toast';
 
 const COLORS = ['#C9971F','#10b981','#E8B04B','#ef4444','#8B5E34','#B8860B'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -30,8 +33,15 @@ const REPORT_TYPES = [
   { id: 'payroll',    label: 'Payroll Report',       icon: Wallet,     color: 'text-green-500' },
   { id: 'expense',    label: 'Expense Report',       icon: Receipt,    color: 'text-orange-500' },
   { id: 'employee',   label: 'Employee Report',      icon: Users,      color: 'text-indigo-500' },
-  { id: 'sales',      label: 'Sales Report',         icon: TrendingUp, color: 'text-emerald-500' },
 ];
+
+const titleCase = value => String(value || '').replaceAll('_', ' ').replace(/\b\w/g, letter => letter.toUpperCase());
+const dateValue = value => value ? new Date(value).toLocaleDateString('en-PK') : '';
+const timeValue = value => value
+  ? new Date(value).toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit' })
+  : '';
+const employeeName = record => record.employeeId?.fullName || record.employeeName || '';
+const employeeCode = record => record.employeeId?.employeeCode || record.employeeCode || '';
 
 function ReportCard({ report, active, onClick }) {
   const Icon = report.icon;
@@ -52,9 +62,11 @@ function ReportCard({ report, active, onClick }) {
 export default function ReportsPage() {
   const role = useSelector(state => state.auth.user?.role);
   const canViewExpenses = role === 'super_admin';
-  const availableReportTypes = canViewExpenses
-    ? REPORT_TYPES
-    : REPORT_TYPES.filter(report => report.id !== 'expense');
+  const canViewEmployees = ['hr', 'super_admin'].includes(role);
+  const availableReportTypes = REPORT_TYPES.filter(report => (
+    (report.id !== 'expense' || canViewExpenses)
+    && (report.id !== 'employee' || canViewEmployees)
+  ));
   const now = new Date();
   const [activeReport, setActiveReport] = useState('attendance');
   const [filters, setFilters] = useState({
@@ -69,6 +81,10 @@ export default function ReportsPage() {
   const { data: expensesData } = useListExpensesQuery(
     { limit: 200 },
     { skip: !canViewExpenses },
+  );
+  const { data: employeesData } = useListEmployeesQuery(
+    { limit: 100 },
+    { skip: !canViewEmployees },
   );
 
   // ── Attendance chart data ──
@@ -103,6 +119,7 @@ export default function ReportsPage() {
 
   // ── Expense chart data ──
   const expenseRecords = expensesData?.items || [];
+  const employeeRecords = employeesData?.items || [];
   const expByCat = {};
   expenseRecords.forEach(r => { expByCat[r.category] = (expByCat[r.category] || 0) + r.amount; });
   const expChartData = Object.entries(expByCat)
@@ -114,17 +131,107 @@ export default function ReportsPage() {
   const totalExpenses = expenseRecords.reduce((s, r) => s + r.amount, 0);
   const totalLeaves = leaveRecords.filter(r => r.status === 'approved').reduce((s, r) => s + (r.totalDays||0), 0);
 
+  const reportRows = {
+    attendance: attRecords.map(record => ({
+      'Employee Code': employeeCode(record),
+      Employee: employeeName(record),
+      Department: record.employeeId?.department || record.employeeDepartment || '',
+      Date: dateValue(record.date),
+      Status: titleCase(record.status),
+      'Sign In': timeValue(record.signInTime),
+      'Sign Out': timeValue(record.signOutTime),
+      'Worked Hours': Number(record.totalHours || 0),
+      'Late Minutes': Number(record.lateMinutes || 0),
+      Method: titleCase(record.method),
+    })),
+    leave: leaveRecords.map(record => ({
+      'Employee Code': employeeCode(record),
+      Employee: employeeName(record),
+      Department: record.employeeId?.department || '',
+      'Leave Type': titleCase(record.leaveType),
+      'Start Date': dateValue(record.startDate),
+      'End Date': dateValue(record.endDate),
+      'Total Days': Number(record.totalDays || 0),
+      Status: titleCase(record.status),
+      Reason: record.reason || '',
+    })),
+    payroll: payrollRecords.map(record => ({
+      'Employee Code': employeeCode(record),
+      Employee: employeeName(record),
+      Department: record.employeeId?.department || '',
+      Period: `${MONTHS[Number(record.month) - 1] || record.month} ${record.year}`,
+      'Basic Salary': Number(record.basicSalary || 0),
+      'Gross Salary': Number(record.grossSalary || 0),
+      Allowances: Number(record.allowances || 0),
+      Bonus: Number(record.bonus || 0),
+      Deductions: Number(record.deductions || 0),
+      Tax: Number(record.taxDeduction || 0),
+      'Net Salary': Number(record.netSalary || 0),
+      Present: Number(record.presentDays || 0),
+      Absent: Number(record.absentDays || 0),
+      'Half Days': Number(record.halfDays || 0),
+      Late: Number(record.lateDays || 0),
+      'Paid Leaves': Number(record.paidLeaveDays || 0),
+      'Unpaid Leaves': Number(record.unpaidLeaveDays || 0),
+      'Sandwich Leaves': Number(record.sandwichLeaveDays || 0),
+      Status: titleCase(record.status),
+    })),
+    expense: expenseRecords.map(record => ({
+      Date: dateValue(record.expenseDate || record.createdAt),
+      Category: record.category || '',
+      Product: record.productName || '',
+      Vendor: record.vendorName || '',
+      Quantity: Number(record.quantity || 0),
+      'Unit Price': Number(record.unitPrice || 0),
+      Total: Number(record.amount || 0),
+      'Payment Method': titleCase(record.paymentMethod),
+      Status: titleCase(record.status),
+      Remarks: record.remarks || '',
+    })),
+    employee: employeeRecords.map(record => ({
+      'Employee Code': record.employeeCode || '',
+      Name: record.fullName || '',
+      Department: record.department || '',
+      Designation: record.designation || '',
+      Role: titleCase(record.role),
+      Email: record.email || '',
+      'Joining Date': dateValue(record.joiningDate),
+      Shift: record.shiftId?.name || 'General Shift',
+      Status: titleCase(record.status),
+    })),
+  };
+
+  const activeRows = reportRows[activeReport] || [];
+  const activeLabel = REPORT_TYPES.find(report => report.id === activeReport)?.label || 'Report';
+
   function handleExport() {
-    // In production: call backend export endpoint or generate client-side CSV
-    const data = activeReport === 'attendance' ? attRecords :
-                 activeReport === 'leave' ? leaveRecords :
-                 activeReport === 'payroll' ? payrollRecords : expenseRecords;
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${activeReport}-report.json`; a.click();
-    URL.revokeObjectURL(url);
+    if (!activeRows.length) {
+      toast.error(`No ${activeLabel.toLowerCase()} data available to export.`);
+      return;
+    }
+    const heading = [
+      [activeLabel],
+      [`Period: ${MONTHS[Number(filters.month) - 1]} ${filters.year}`],
+      [`Generated: ${new Date().toLocaleString('en-PK')}`],
+      [],
+    ];
+    const sheet = XLSX.utils.aoa_to_sheet(heading);
+    XLSX.utils.sheet_add_json(sheet, activeRows, { origin: 'A5' });
+    const headers = Object.keys(activeRows[0]);
+    sheet['!cols'] = headers.map(header => ({
+      wch: Math.min(40, Math.max(
+        header.length + 2,
+        ...activeRows.map(row => String(row[header] ?? '').length + 2),
+      )),
+    }));
+    sheet['!autofilter'] = { ref: `A5:${XLSX.utils.encode_col(headers.length - 1)}${activeRows.length + 5}` };
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, sheet, activeLabel.slice(0, 31));
+    XLSX.writeFile(
+      workbook,
+      `${activeReport}-report-${filters.year}-${String(filters.month).padStart(2, '0')}.xlsx`,
+    );
+    toast.success(`${activeLabel} exported successfully.`);
   }
 
   return (
@@ -246,7 +353,7 @@ export default function ReportsPage() {
         )}
 
         {/* Payroll trend */}
-        {(activeReport === 'payroll' || activeReport === 'sales') && (
+        {activeReport === 'payroll' && (
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-5">
             <h3 className="font-semibold mb-4 flex items-center gap-2"><Wallet className="h-4 w-4" /> Monthly Payroll</h3>
             {payrollChartData.length === 0 ? (
@@ -286,18 +393,14 @@ export default function ReportsPage() {
         )}
       </div>
 
-      {/* Raw data table */}
+      {/* Formatted data table */}
       <div className="glass-card p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold flex items-center gap-2">
-            <FileText className="h-4 w-4" /> Raw Data Preview
+            <FileText className="h-4 w-4" /> {activeLabel} Preview
           </h3>
           <span className="text-xs text-muted-foreground">
-            Showing latest {Math.min(
-              activeReport === 'attendance' ? attRecords.length :
-              activeReport === 'leave' ? leaveRecords.length :
-              activeReport === 'payroll' ? payrollRecords.length : expenseRecords.length, 10
-            )} records
+            Showing latest {Math.min(activeRows.length, 10)} of {activeRows.length} records
           </span>
         </div>
         <div className="overflow-x-auto">
@@ -314,6 +417,9 @@ export default function ReportsPage() {
                   <th key={h} className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                 ))}
                 {activeReport === 'expense' && ['Category','Vendor','Amount','Date','Status'].map(h => (
+                  <th key={h} className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
+                ))}
+                {activeReport === 'employee' && ['Code','Name','Department','Designation','Role','Joining Date','Shift','Status'].map(h => (
                   <th key={h} className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                 ))}
               </tr>
@@ -355,6 +461,18 @@ export default function ReportsPage() {
                   <td className="py-2 px-3 font-medium">PKR {r.amount?.toLocaleString()}</td>
                   <td className="py-2 px-3 text-muted-foreground">{new Date(r.expenseDate||r.createdAt).toLocaleDateString('en-PK')}</td>
                   <td className="py-2 px-3 capitalize">{r.status}</td>
+                </tr>
+              ))}
+              {activeReport === 'employee' && employeeRecords.slice(0,10).map(r => (
+                <tr key={r._id} className="hover:bg-accent/30 transition-colors">
+                  <td className="py-2 px-3">{r.employeeCode || '—'}</td>
+                  <td className="py-2 px-3">{r.fullName || '—'}</td>
+                  <td className="py-2 px-3 text-muted-foreground">{r.department || '—'}</td>
+                  <td className="py-2 px-3 text-muted-foreground">{r.designation || '—'}</td>
+                  <td className="py-2 px-3">{titleCase(r.role)}</td>
+                  <td className="py-2 px-3 text-muted-foreground">{dateValue(r.joiningDate) || '—'}</td>
+                  <td className="py-2 px-3 text-muted-foreground">{r.shiftId?.name || 'General Shift'}</td>
+                  <td className="py-2 px-3">{titleCase(r.status)}</td>
                 </tr>
               ))}
             </tbody>

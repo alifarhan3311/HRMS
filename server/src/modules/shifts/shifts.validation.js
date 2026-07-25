@@ -10,7 +10,6 @@ const createSchema = Joi.object({
   graceMinutes: Joi.number().integer().min(0).max(180).default(15),
   lateHalfDayAfterMinutes: Joi.number().integer().min(0).max(720).optional(),
   requiredMinutes: Joi.number().integer().min(60).max(1440).optional(),
-  breakMinutes: Joi.number().integer().min(0).max(240).default(0),
   halfDayMinutes: Joi.number().integer().min(30).max(720).optional(),
   overtimeAfterMinutes: Joi.number().integer().min(60).max(1440).optional(),
   workingDays: Joi.array().items(Joi.number().integer().min(0).max(6)).unique().min(1).required(),

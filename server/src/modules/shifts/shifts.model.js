@@ -9,7 +9,6 @@ const shiftSchema = new mongoose.Schema({
   graceMinutes: { type: Number, default: 15, min: 0, max: 180 },
   lateHalfDayAfterMinutes: { type: Number, default: 150, min: 0, max: 720 },
   requiredMinutes: { type: Number, default: 480, min: 60, max: 1440 },
-  breakMinutes: { type: Number, default: 0, min: 0, max: 240 },
   halfDayMinutes: { type: Number, default: 240, min: 30, max: 720 },
   overtimeAfterMinutes: { type: Number, default: 480, min: 60, max: 1440 },
   workingDays: { type: [Number], default: [1, 2, 3, 4, 5] },

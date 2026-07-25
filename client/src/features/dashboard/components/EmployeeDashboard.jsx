@@ -124,7 +124,6 @@ export default function EmployeeDashboard({ data }) {
                 <div><span className="font-medium capitalize">{l.type}</span>: {l.remaining} left / {l.used} used</div>
                 <div className="mt-1 text-[10px] text-muted-foreground">
                   Policy: {l.entitlement ?? l.available} days
-                  {l.carriedForward > 0 ? ` + ${l.carriedForward} carried` : ''}
                 </div>
               </div>
             ))}

@@ -60,7 +60,7 @@ async function getEmployeeDashboard(user) {
 
   const [employee, settings] = await Promise.all([
     Employee.findById(user.id)
-      .populate('shiftId', 'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive')
+      .populate('shiftId', 'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive')
       .lean(),
     settingsService.getPolicy(user.companyId),
   ]);
@@ -104,17 +104,11 @@ async function getEmployeeDashboard(user) {
     .filter((type) => settings.leavePolicy?.entitlements?.[type] !== undefined)
     .map((type) => {
       const entitlement = Number(settings.leavePolicy.entitlements[type] || 0);
-      const joiningYear = employee.joiningDate ? new Date(employee.joiningDate).getFullYear() : Infinity;
-      const processedYear = Number(employee.leaveCycle?.lastProcessedYear || 0);
-      const carriedForward = employee.leaveCycle?.basis === 'calendar_year' && processedYear > joiningYear
-        ? Number(employee.leaveCycle?.carriedForward?.[type] || 0)
-        : 0;
       const used = Number(employee.leaveBalance?.[type]?.used || 0);
-      const available = entitlement + carriedForward;
+      const available = entitlement;
       return {
         type,
         entitlement,
-        carriedForward,
         available,
         used,
         remaining: Math.max(available - used, 0),

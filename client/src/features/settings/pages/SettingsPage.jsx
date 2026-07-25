@@ -68,8 +68,6 @@ export default function SettingsPage() {
   const [leaveForm, setLeaveForm] = useState({
     enabledTypes: ['paid', 'sick', 'annual'],
     entitlements: { paid: 12, sick: 8, annual: 14 },
-    carryForwardTypes: ['paid', 'sick', 'annual'],
-    maxCarryForward: { paid: 365, sick: 365, annual: 365 },
     delayedApplicationReminderDays: 3,
   });
   const [securityForm, setSecurityForm] = useState({
@@ -96,11 +94,6 @@ export default function SettingsPage() {
         : ['paid', 'sick', 'annual'],
       entitlements: Object.fromEntries(['paid', 'sick', 'annual'].map((type) => [
         type, settings.leavePolicy?.entitlements?.[type] ?? previous.entitlements[type],
-      ])),
-      carryForwardTypes: (settings.leavePolicy?.carryForwardTypes || [])
-        .filter((type) => ['paid', 'sick', 'annual'].includes(type)),
-      maxCarryForward: Object.fromEntries(['paid', 'sick', 'annual'].map((type) => [
-        type, settings.leavePolicy?.maxCarryForward?.[type] ?? previous.maxCarryForward[type],
       ])),
     }));
     setEmailForm({
@@ -143,7 +136,6 @@ export default function SettingsPage() {
         leavePolicy: {
           ...leaveForm,
           entitlements: Object.fromEntries(Object.entries(leaveForm.entitlements).map(([key, value]) => [key, Number(value)])),
-          maxCarryForward: Object.fromEntries(Object.entries(leaveForm.maxCarryForward).map(([key, value]) => [key, Number(value)])),
           delayedApplicationReminderDays: Number(leaveForm.delayedApplicationReminderDays),
         },
         payrollPolicy: {
@@ -309,11 +301,7 @@ export default function SettingsPage() {
                         const enabledTypes = selected
                           ? previous.enabledTypes.filter((item) => item !== type)
                           : [...previous.enabledTypes, type];
-                        return {
-                          ...previous,
-                          enabledTypes,
-                          carryForwardTypes: previous.carryForwardTypes.filter((item) => enabledTypes.includes(item)),
-                        };
+                        return { ...previous, enabledTypes };
                       })} className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
                         selected ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'
                       }`}>
@@ -332,38 +320,6 @@ export default function SettingsPage() {
                       value={value} onChange={(event) => setLeaveForm((previous) => ({
                         ...previous,
                         entitlements: { ...previous.entitlements, [type]: event.target.value },
-                      }))} />
-                  ))}
-                </div>
-              </SectionCard>
-
-              <SectionCard title="Carry Forward Policy">
-                <p className="text-sm text-muted-foreground">
-                  Select leave types whose unused balance carries forward for everyone on January 1.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {Object.keys(leaveForm.entitlements).filter((type) => leaveForm.enabledTypes.includes(type)).map((type) => {
-                    const selected = leaveForm.carryForwardTypes.includes(type);
-                    return (
-                      <button key={type} type="button" onClick={() => setLeaveForm((previous) => ({
-                        ...previous,
-                        carryForwardTypes: selected
-                          ? previous.carryForwardTypes.filter((item) => item !== type)
-                          : [...previous.carryForwardTypes, type],
-                      }))} className={`px-4 py-2 rounded-lg text-sm font-medium border transition-all ${
-                        selected ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground'
-                      }`}>
-                        {type[0].toUpperCase()}{type.slice(1)}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {Object.entries(leaveForm.maxCarryForward).filter(([type]) => leaveForm.enabledTypes.includes(type)).map(([type, value]) => (
-                    <Input key={type} label={`Max ${type}`} type="number" value={value}
-                      onChange={(event) => setLeaveForm((previous) => ({
-                        ...previous,
-                        maxCarryForward: { ...previous.maxCarryForward, [type]: event.target.value },
                       }))} />
                   ))}
                 </div>

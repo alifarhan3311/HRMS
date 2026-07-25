@@ -53,11 +53,10 @@ function buildFlexibleSchedule(now, shift, timeZone) {
   const local = zonedParts(now, timeZone);
   const shiftDate = `${local.year}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
   const requiredMinutes = Number(shift.requiredMinutes || 480);
-  const breakMinutes = Number(shift.breakMinutes || 0);
   return {
     shiftDate,
     scheduledStart: new Date(now),
-    scheduledEnd: new Date(now.getTime() + ((requiredMinutes + breakMinutes) * 60000)),
+    scheduledEnd: new Date(now.getTime() + (requiredMinutes * 60000)),
     overnight: false,
     dayOfWeek: new Date(Date.UTC(local.year, local.month - 1, local.day, 12)).getUTCDay(),
     timeZone,

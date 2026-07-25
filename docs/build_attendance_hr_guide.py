@@ -307,7 +307,7 @@ for item in [
     "Assigned shift and whether that shift is active.",
     "Shift type: Fixed or Flexible.",
     "Shift start/end time and whether it crosses midnight.",
-    "Required minutes, break minutes and working days.",
+    "Required minutes and working days.",
     "Employee department when a holiday is department-specific.",
     "Confirmed holiday, half-day, early closure or late opening.",
     "Approved leave status.",
@@ -366,7 +366,7 @@ add_callout(doc, "Configuration limit", "Flexible shifts sirf 6-hour ya 8-hour r
 
 doc.add_heading("5. Worked Hours and Final Status", level=1)
 doc.add_paragraph("Sign-out ke waqt system yeh formula use karta hai:")
-add_callout(doc, "Formula", "Clock Minutes = Sign Out - Sign In. Worked Minutes = Clock Minutes - Break Minutes.")
+add_callout(doc, "Formula", "Worked Minutes = Sign Out - Sign In. Break-time deduction apply nahi hoti.")
 for item in [
     "Required minutes complete: Present; agar arrival late thi to Late.",
     "Half-day minutes complete magar full requirement se kam: Half Day.",
@@ -492,7 +492,7 @@ doc.add_paragraph("Shifts sirf HR ya Super Admin create, edit aur delete kar sak
 for text in [
     "Shift name aur unique code enter karein.",
     "Fixed ya Flexible type select karein.",
-    "Fixed shift ke liye start time, end time aur break configure karein.",
+    "Fixed shift ke liye start time aur end time configure karein; required duty poori shift window hoti hai.",
     "Working days select karein.",
     "Shift ko active rakhein.",
     "Employee profile mein correct shift assign karein.",
@@ -629,6 +629,7 @@ for item in [
     "Paid balance types Annual aur Sick hain; HR opening available/used balances initialize kar sakta hai.",
     "Leave screen available, used aur remaining balance type-wise show karti hai.",
     "Unpaid leave paid balance consume nahi karti magar payroll deduction create karti hai.",
+    "Unused leave next calendar year carry forward nahi hoti; January 1 par balance new annual entitlement par reset hota hai.",
 ]:
     add_bullet(doc, item)
 

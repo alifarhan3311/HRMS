@@ -254,6 +254,32 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
 }
 
 async function processCalendarYearLeaveCycles(now = new Date()) {
+  // One-time legacy cleanup: remove only the amount that was explicitly
+  // recorded as carry-forward, then delete the obsolete audit field. Manual
+  // HR opening balances are not touched because they are not stored here.
+  await Employee.collection.updateMany(
+    { 'leaveCycle.carriedForward': { $exists: true } },
+    [
+      {
+        $set: Object.fromEntries(BALANCE_TYPES.map((type) => [
+          `leaveBalance.${type}.available`,
+          {
+            $max: [
+              0,
+              {
+                $subtract: [
+                  { $ifNull: [`$leaveBalance.${type}.available`, 0] },
+                  { $ifNull: [`$leaveCycle.carriedForward.${type}`, 0] },
+                ],
+              },
+            ],
+          },
+        ])),
+      },
+      { $unset: 'leaveCycle.carriedForward' },
+    ],
+  );
+
   const employees = await Employee.find({
     status: 'active',
     joiningDate: { $lte: now },
@@ -280,7 +306,6 @@ async function processCalendarYearLeaveCycles(now = new Date()) {
         lastProcessedYear: year,
         lastProcessedAt: now,
         nextResetDate: new Date(Date.UTC(year + 1, 0, 1)),
-        carriedForward: {},
       };
       await employee.save();
       updated += 1;
@@ -289,15 +314,9 @@ async function processCalendarYearLeaveCycles(now = new Date()) {
 
     if ((employee.leaveCycle?.lastProcessedYear || 0) >= year) continue;
 
-    const carriedForward = {};
     for (const type of BALANCE_TYPES) {
       const entitlement = policy.entitlements[type] || 0;
-      const balance = employee.leaveBalance?.[type] || {};
-      const remaining = Math.max((balance.available || 0) - (balance.used || 0), 0);
-      const eligible = policy.carryForwardTypes.includes(type);
-      const carried = eligible ? Math.min(remaining, policy.maxCarryForward[type] || 0) : 0;
-      carriedForward[type] = carried;
-      employee.set(`leaveBalance.${type}.available`, entitlement + carried);
+      employee.set(`leaveBalance.${type}.available`, entitlement);
       employee.set(`leaveBalance.${type}.used`, 0);
     }
 
@@ -306,7 +325,6 @@ async function processCalendarYearLeaveCycles(now = new Date()) {
       lastProcessedYear: year,
       lastProcessedAt: now,
       nextResetDate: new Date(Date.UTC(year + 1, 0, 1)),
-      carriedForward,
     };
     await employee.save();
 
@@ -315,9 +333,9 @@ async function processCalendarYearLeaveCycles(now = new Date()) {
       companyId: employee.companyId,
       type: 'leave_balance_updated',
       title: 'Leave balance updated',
-      message: 'Your unused leaves were carried forward and the new calendar-year leave cycle is now active.',
+      message: 'Your leave balance was reset to the new calendar-year entitlement.',
       link: '/leaves',
-      metadata: { cycleYear: year, carriedForward },
+      metadata: { cycleYear: year },
       dedupeKey: `leave-calendar-year:${employee._id}:${year}`,
     });
     updated += 1;

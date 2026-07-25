@@ -29,8 +29,6 @@ const updateSchema = Joi.object({
   leavePolicy: Joi.object({
     enabledTypes: Joi.array().items(Joi.string().valid(...leaveTypes)).unique().min(1).required(),
     entitlements: entitlementSchema.required(),
-    carryForwardTypes: Joi.array().items(Joi.string().valid(...balanceTypes)).unique().required(),
-    maxCarryForward: entitlementSchema.required(),
     delayedApplicationReminderDays: Joi.number().integer().min(1).max(30).required(),
   }).optional(),
   payrollPolicy: Joi.object({

@@ -44,16 +44,6 @@ const companySettingsSchema = new mongoose.Schema(
         sick: { type: Number, default: 8, min: 0 },
         annual: { type: Number, default: 14, min: 0 },
       },
-      carryForwardTypes: {
-        type: [String],
-        default: ['paid', 'sick', 'annual'],
-      },
-      maxCarryForward: {
-        paid: { type: Number, default: 365, min: 0 },
-        casual: { type: Number, default: 0, min: 0 },
-        sick: { type: Number, default: 365, min: 0 },
-        annual: { type: Number, default: 365, min: 0 },
-      },
       delayedApplicationReminderDays: { type: Number, default: 3, min: 1, max: 30 },
     },
     payrollPolicy: {

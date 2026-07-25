@@ -6,32 +6,11 @@ const BALANCE_TYPES = ['paid', 'sick', 'annual'];
 async function syncEmployeeEntitlements(companyId, entitlements) {
   const availableFields = Object.fromEntries(BALANCE_TYPES.map((type) => [
     `leaveBalance.${type}.available`,
-    {
-      $add: [
-        Number(entitlements[type] || 0),
-        {
-          $cond: [
-            {
-              $and: [
-                { $eq: ['$leaveCycle.basis', 'calendar_year'] },
-                {
-                  $gt: [
-                    { $ifNull: ['$leaveCycle.lastProcessedYear', 0] },
-                    { $year: '$joiningDate' },
-                  ],
-                },
-              ],
-            },
-            { $ifNull: [`$leaveCycle.carriedForward.${type}`, 0] },
-            0,
-          ],
-        },
-      ],
-    },
+    Number(entitlements[type] || 0),
   ]));
 
   // A policy change affects the current entitlement of every employee in the
-  // company. Keep used days and valid calendar-year carry-forward untouched.
+  // company. Used days stay intact; unused days never carry into entitlement.
   await Employee.updateMany(
     { companyId },
     [{ $set: availableFields }]

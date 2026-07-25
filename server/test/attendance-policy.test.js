@@ -12,7 +12,7 @@ const schedule = { scheduledStart: start };
 
 test('fixed shifts longer than seven hours receive 15 minute grace and 150 minute half-day arrival threshold', () => {
   const shift = normalizeDurationPolicy({}, {
-    shiftType: 'fixed', startTime: '20:00', endTime: '04:00', breakMinutes: 0,
+    shiftType: 'fixed', startTime: '20:00', endTime: '04:00', breakMinutes: 60,
   });
   assert.equal(shift.requiredMinutes, 480);
   assert.equal(shift.graceMinutes, 15);
@@ -24,7 +24,7 @@ test('fixed shifts longer than seven hours receive 15 minute grace and 150 minut
 
 test('fixed shifts of seven hours or less have no grace and use a 120 minute half-day arrival threshold', () => {
   const shift = normalizeDurationPolicy({}, {
-    shiftType: 'fixed', startTime: '10:00', endTime: '16:30', breakMinutes: 0,
+    shiftType: 'fixed', startTime: '10:00', endTime: '16:30',
   });
   assert.equal(shift.requiredMinutes, 390);
   assert.equal(shift.graceMinutes, 0);
@@ -34,9 +34,9 @@ test('fixed shifts of seven hours or less have no grace and use a 120 minute hal
   assert.equal(arrivalStatus(new Date(start.getTime() + 121 * 60000), schedule, shift).status, 'half_day');
 });
 
-test('approved missing sign-out correction derives half-day from actual corrected time', () => {
+test('approved correction ignores obsolete break snapshots and uses full clock time', () => {
   const metrics = correctedWorkMetrics(
-    { shiftRequiredMinutes: 480, shiftHalfDayMinutes: 240, shiftBreakMinutes: 0 },
+    { shiftRequiredMinutes: 480, shiftHalfDayMinutes: 240, shiftBreakMinutes: 60 },
     new Date('2026-07-24T13:00:00.000Z'),
     new Date('2026-07-24T17:00:00.000Z'),
     0,
@@ -47,7 +47,7 @@ test('approved missing sign-out correction derives half-day from actual correcte
 
 test('flexible 8-hour shifts have no late status and reach worked half-day at four hours', () => {
   const shift = normalizeDurationPolicy({}, {
-    shiftType: 'flexible', startTime: '00:00', endTime: '08:00', breakMinutes: 0,
+    shiftType: 'flexible', startTime: '00:00', endTime: '08:00',
   });
   assert.equal(shift.requiredMinutes, 480);
   assert.equal(shift.halfDayMinutes, 240);
@@ -57,7 +57,7 @@ test('flexible 8-hour shifts have no late status and reach worked half-day at fo
 
 test('flexible 6-hour shifts have no late status and reach worked half-day at three hours', () => {
   const shift = normalizeDurationPolicy({}, {
-    shiftType: 'flexible', startTime: '00:00', endTime: '06:00', requiredMinutes: 360, breakMinutes: 0,
+    shiftType: 'flexible', startTime: '00:00', endTime: '06:00', requiredMinutes: 360,
   });
   assert.equal(shift.requiredMinutes, 360);
   assert.equal(shift.halfDayMinutes, 180);

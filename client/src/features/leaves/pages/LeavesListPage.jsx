@@ -84,7 +84,6 @@ function LeaveBalanceCards({ balance }) {
             </div>
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
               <span>Policy: <strong className="text-foreground">{bal.entitlement ?? bal.available}</strong></span>
-              <span>Carried: <strong className="text-foreground">{bal.carriedForward || 0}</strong></span>
               <span>Used: <strong className="text-foreground">{bal.used || 0}</strong></span>
             </div>
             <p className="text-[11px] text-muted-foreground mt-1">Total balance: {bal.available} · {pct}% used</p>

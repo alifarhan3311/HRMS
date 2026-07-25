@@ -69,7 +69,7 @@ function calcTotalHours(signIn, signOut) {
 
 function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0) {
   const clockMinutes = Math.max(0, Math.round((new Date(signOut) - new Date(signIn)) / 60000));
-  const workedMinutes = Math.max(0, clockMinutes - Number(record.shiftBreakMinutes || 0));
+  const workedMinutes = clockMinutes;
   const requiredMinutes = Number(record.effectiveRequiredMinutes || record.shiftRequiredMinutes || 480);
   const halfDayMinutes = Number(record.shiftHalfDayMinutes || Math.ceil(requiredMinutes / 2));
   return {
@@ -131,7 +131,6 @@ async function signIn({ employeeId, method = 'manual', notes, punchTime }, actor
         shiftGraceMinutes: shift.graceMinutes,
         shiftLateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes,
         shiftRequiredMinutes: policy.requiredMinutes,
-        shiftBreakMinutes: policy.breakMinutes,
         shiftHalfDayMinutes: policy.halfDayMinutes,
         shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
         effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
@@ -154,7 +153,6 @@ async function signIn({ employeeId, method = 'manual', notes, punchTime }, actor
         shiftGraceMinutes: shift.graceMinutes,
         shiftLateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes,
         shiftRequiredMinutes: policy.requiredMinutes,
-        shiftBreakMinutes: policy.breakMinutes,
         shiftHalfDayMinutes: policy.halfDayMinutes,
         shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
         effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
@@ -207,7 +205,6 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
     startTime: record.shiftStartTime,
     endTime: record.shiftEndTime,
     requiredMinutes: record.shiftRequiredMinutes || 480,
-    breakMinutes: record.shiftBreakMinutes || 0,
     halfDayMinutes: record.shiftHalfDayMinutes,
     overtimeAfterMinutes: record.shiftOvertimeAfterMinutes,
   };
@@ -231,7 +228,7 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
     : calcEarlyLeaveMinutes(now, { scheduledEnd: policy.effectiveEnd });
   const totalHours = calcTotalHours(record.signInTime, now);
   const clockMinutes = Math.max(0, Math.round((now - new Date(record.signInTime)) / 60000));
-  const workedMinutes = Math.max(0, clockMinutes - (attendanceExempt ? 0 : policy.breakMinutes));
+  const workedMinutes = clockMinutes;
   const overtimeMinutes = attendanceExempt ? 0 : Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
   const fullDayClosure = closure?.eventType === 'full_day' || (closure && !closure.eventType);
   const status = attendanceExempt
@@ -358,7 +355,6 @@ async function resolveShiftContext(employeeId, companyId, now = new Date()) {
     shiftType: 'fixed',
     lateHalfDayAfterMinutes: 150,
     requiredMinutes: 480,
-    breakMinutes: 0,
     halfDayMinutes: 240,
     overtimeAfterMinutes: 480,
     workingDays: [0, 1, 2, 3, 4, 5, 6].filter(day => !settings.timing.weekendDays.includes(day)),
@@ -830,7 +826,7 @@ async function applyClosureToAttendance(closure) {
       name: 'General Shift', code: 'GENERAL',
       startTime: settings.timing.officeStart, endTime: settings.timing.officeEnd,
       graceMinutes: settings.timing.graceMinutes, requiredMinutes: 480,
-      breakMinutes: 0, halfDayMinutes: 240, overtimeAfterMinutes: 480,
+      halfDayMinutes: 240, overtimeAfterMinutes: 480,
       workingDays: [0, 1, 2, 3, 4, 5, 6].filter(day => !settings.timing.weekendDays.includes(day)),
     };
     const schedule = buildShiftSchedule(new Date(`${shiftDate}T12:00:00.000Z`), shift, settings.company?.timezone || 'Asia/Karachi');
@@ -861,7 +857,7 @@ async function applyClosureToAttendance(closure) {
           date: attendanceDate, shiftDate: schedule.shiftDate, shiftId: shift._id,
           shiftName: shift.name, shiftStartTime: shift.startTime, shiftEndTime: shift.endTime,
           shiftGraceMinutes: shift.graceMinutes, shiftRequiredMinutes: policy.requiredMinutes,
-          shiftBreakMinutes: policy.breakMinutes, shiftHalfDayMinutes: policy.halfDayMinutes,
+          shiftHalfDayMinutes: policy.halfDayMinutes,
           shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
           scheduledStart: schedule.scheduledStart, scheduledEnd: schedule.scheduledEnd,
           shiftTimezone: schedule.timeZone, method: 'manual',
@@ -875,7 +871,7 @@ async function applyClosureToAttendance(closure) {
     const update = { ...common };
     if (record.signInTime && record.signOutTime) {
       const clockMinutes = Math.max(0, Math.round((new Date(record.signOutTime) - new Date(record.signInTime)) / 60000));
-      const workedMinutes = Math.max(0, clockMinutes - policy.breakMinutes);
+      const workedMinutes = clockMinutes;
       update.workedMinutes = workedMinutes;
       update.overtimeMinutes = Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
       update.status = attendanceStatus(record.status, workedMinutes, policy.effectiveRequiredMinutes, policy.effectiveHalfDayMinutes);
@@ -900,7 +896,6 @@ async function removeClosureFromAttendance(closure) {
       startTime: record.shiftStartTime,
       endTime: record.shiftEndTime,
       requiredMinutes: record.shiftRequiredMinutes || 480,
-      breakMinutes: record.shiftBreakMinutes || 0,
       halfDayMinutes: record.shiftHalfDayMinutes,
       overtimeAfterMinutes: record.shiftOvertimeAfterMinutes,
     };
@@ -917,7 +912,7 @@ async function removeClosureFromAttendance(closure) {
     };
     if (record.signOutTime) {
       const clockMinutes = Math.max(0, Math.round((new Date(record.signOutTime) - new Date(record.signInTime)) / 60000));
-      const workedMinutes = Math.max(0, clockMinutes - policy.breakMinutes);
+      const workedMinutes = clockMinutes;
       update.$set.workedMinutes = workedMinutes;
       update.$set.overtimeMinutes = Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
       update.$set.earlyLeaveMinutes = calcEarlyLeaveMinutes(record.signOutTime, { scheduledEnd: policy.effectiveEnd });

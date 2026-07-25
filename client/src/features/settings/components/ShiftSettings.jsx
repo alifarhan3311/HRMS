@@ -6,7 +6,7 @@ import { toast } from '../../../utils/toast';
 import { useCreateShiftMutation, useDeleteShiftMutation, useListShiftsQuery, useUpdateShiftMutation } from '../../shifts/api/shifts.api';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const EMPTY = { name: '', code: '', shiftType: 'fixed', startTime: '09:00', endTime: '17:00', graceMinutes: 15, lateHalfDayAfterMinutes: 150, requiredMinutes: 480, breakMinutes: 0, halfDayMinutes: 240, overtimeAfterMinutes: 480, workingDays: [1, 2, 3, 4, 5], isActive: true };
+const EMPTY = { name: '', code: '', shiftType: 'fixed', startTime: '09:00', endTime: '17:00', graceMinutes: 15, lateHalfDayAfterMinutes: 150, requiredMinutes: 480, halfDayMinutes: 240, overtimeAfterMinutes: 480, workingDays: [1, 2, 3, 4, 5], isActive: true };
 
 function duration(start, end) {
   const [sh, sm] = start.split(':').map(Number);
@@ -41,7 +41,6 @@ export default function ShiftSettings() {
         ...next,
         startTime: '00:00',
         endTime: requiredMinutes === 360 ? '06:00' : '08:00',
-        breakMinutes: 0,
         graceMinutes: 0,
         lateHalfDayAfterMinutes: 0,
         requiredMinutes,
@@ -50,7 +49,7 @@ export default function ShiftSettings() {
       };
     }
     const windowMinutes = durationMinutes(next.startTime, next.endTime);
-    const requiredMinutes = Math.max(60, windowMinutes - Number(next.breakMinutes || 0));
+    const requiredMinutes = Math.max(60, windowMinutes);
     return {
       ...next,
       graceMinutes: windowMinutes > 420 ? 15 : 0,
@@ -65,7 +64,7 @@ export default function ShiftSettings() {
     setForm(previous => applyPolicy({
       ...previous,
       shiftType: value,
-      ...(value === 'flexible' && { requiredMinutes: 480, startTime: '00:00', endTime: '08:00', breakMinutes: 0 }),
+      ...(value === 'flexible' && { requiredMinutes: 480, startTime: '00:00', endTime: '08:00' }),
     }));
   }
 
@@ -77,23 +76,19 @@ export default function ShiftSettings() {
     setForm(previous => applyPolicy({ ...previous, [field]: value }));
   }
 
-  function setBreak(value) {
-    setForm(previous => applyPolicy({ ...previous, breakMinutes: value }));
-  }
-
   function toggleDay(day) {
     set('workingDays', form.workingDays.includes(day) ? form.workingDays.filter(item => item !== day) : [...form.workingDays, day].sort());
   }
 
   function edit(shift) {
     setEditingId(shift._id);
-    setForm({ name: shift.name, code: shift.code, shiftType: shift.shiftType || 'fixed', startTime: shift.startTime, endTime: shift.endTime, graceMinutes: shift.graceMinutes, lateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes ?? 150, requiredMinutes: shift.requiredMinutes || 480, breakMinutes: shift.breakMinutes || 0, halfDayMinutes: shift.halfDayMinutes || Math.ceil((shift.requiredMinutes || 480) / 2), overtimeAfterMinutes: shift.overtimeAfterMinutes || shift.requiredMinutes || 480, workingDays: shift.workingDays, isActive: shift.isActive });
+    setForm({ name: shift.name, code: shift.code, shiftType: shift.shiftType || 'fixed', startTime: shift.startTime, endTime: shift.endTime, graceMinutes: shift.graceMinutes, lateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes ?? 150, requiredMinutes: shift.requiredMinutes || 480, halfDayMinutes: shift.halfDayMinutes || Math.ceil((shift.requiredMinutes || 480) / 2), overtimeAfterMinutes: shift.overtimeAfterMinutes || shift.requiredMinutes || 480, workingDays: shift.workingDays, isActive: shift.isActive });
   }
 
   async function save(event) {
     event.preventDefault();
     try {
-      const numeric = { ...form, graceMinutes: Number(form.graceMinutes), lateHalfDayAfterMinutes: Number(form.lateHalfDayAfterMinutes), requiredMinutes: Number(form.requiredMinutes), breakMinutes: Number(form.breakMinutes), halfDayMinutes: Number(form.halfDayMinutes), overtimeAfterMinutes: Number(form.overtimeAfterMinutes) };
+      const numeric = { ...form, graceMinutes: Number(form.graceMinutes), lateHalfDayAfterMinutes: Number(form.lateHalfDayAfterMinutes), requiredMinutes: Number(form.requiredMinutes), halfDayMinutes: Number(form.halfDayMinutes), overtimeAfterMinutes: Number(form.overtimeAfterMinutes) };
       if (editingId) await updateShift({ id: editingId, ...numeric }).unwrap();
       else await createShift(numeric).unwrap();
       toast.success(editingId ? 'Shift updated.' : 'Shift created.');
@@ -126,7 +121,6 @@ export default function ShiftSettings() {
           <Input label="Grace (automatic)" type="number" readOnly value={form.graceMinutes} />
           <Input label="Late Half Day After" type="number" readOnly value={form.lateHalfDayAfterMinutes} />
           <Input label="Required Duty (automatic)" type="number" readOnly value={form.requiredMinutes} />
-          <Input label="Break (minutes)" type="number" min="0" max="240" disabled={form.shiftType === 'flexible'} value={form.breakMinutes} onChange={event => setBreak(event.target.value)} />
           <Input label="Worked Half Day At" type="number" readOnly value={form.halfDayMinutes} />
         </div>
         <div className="flex flex-wrap items-center gap-2">

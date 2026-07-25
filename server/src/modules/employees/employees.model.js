@@ -54,7 +54,6 @@ const employeesSchema = new mongoose.Schema(
     nextResetDate: Date,
     // Legacy field retained so old documents can be migrated safely.
     nextAnniversary: Date,
-    carriedForward: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   leaveBalanceInitialization: {
     year: Number,

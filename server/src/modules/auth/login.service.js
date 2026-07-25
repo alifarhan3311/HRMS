@@ -41,7 +41,7 @@ function signAccessToken(employee) {
 async function login({ email, password, userAgent, ipAddress }) {
   const employee = await Employee.findOne({ email })
     .select('+passwordHash')
-    .populate('shiftId', 'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive');
+    .populate('shiftId', 'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive');
   if (!employee || employee.status !== 'active') {
     throw createHttpError(401, 'Invalid email or password.');
   }
@@ -205,7 +205,7 @@ async function getCurrentUser(employeeId) {
     safeReference(
       Shift,
       employee.shiftId,
-      'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes breakMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive',
+      'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive',
       'shiftId'
     ),
   ]);

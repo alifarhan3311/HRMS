@@ -171,32 +171,22 @@ function enforceLeaveBalanceVisibility(employee, actor) {
   return visible;
 }
 
-function balanceFromPolicy(entitlements, existingBalance = {}, carriedForward = {}) {
+function balanceFromPolicy(entitlements, existingBalance = {}) {
   return Object.fromEntries(LEAVE_BALANCE_TYPES.map((type) => [type, {
-    available: Number(entitlements?.[type] || 0) + Number(carriedForward?.[type] || 0),
+    available: Number(entitlements?.[type] || 0),
     used: Number(existingBalance?.[type]?.used || 0),
   }]));
 }
 
-function validCarriedForward(employee) {
-  const joiningYear = employee.joiningDate ? new Date(employee.joiningDate).getFullYear() : Infinity;
-  const processedYear = Number(employee.leaveCycle?.lastProcessedYear || 0);
-  return employee.leaveCycle?.basis === 'calendar_year' && processedYear > joiningYear
-    ? (employee.leaveCycle?.carriedForward || {})
-    : {};
-}
-
-function visibleLeaveBalance(balance, enabledTypes = LEAVE_BALANCE_TYPES, entitlements = {}, carriedForward = {}) {
+function visibleLeaveBalance(balance, enabledTypes = LEAVE_BALANCE_TYPES, entitlements = {}) {
   return Object.fromEntries(Object.entries(balance || {})
     .filter(([type]) => enabledTypes.includes(type))
     .map(([type, values]) => {
       const entitlement = Number(entitlements?.[type] || 0);
-      const carried = Number(carriedForward?.[type] || 0);
       return [type, {
         ...values,
-        available: Number(values?.available ?? (entitlement + carried)),
+        available: Number(values?.available ?? entitlement),
         entitlement: Number(values?.available ?? entitlement),
-        carriedForward: carried,
       }];
     }));
 }
@@ -206,8 +196,7 @@ async function reconcileLeaveBalance(employee) {
   const initializedForCurrentYear = Number(employee.leaveBalanceInitialization?.year) === new Date().getFullYear();
   const expected = balanceFromPolicy(
     settings.leavePolicy?.entitlements,
-    employee.leaveBalance,
-    validCarriedForward(employee)
+    employee.leaveBalance
   );
   const needsUpdate = !initializedForCurrentYear && LEAVE_BALANCE_TYPES.some((type) => (
     Number(employee.leaveBalance?.[type]?.available || 0) !== expected[type].available
@@ -311,7 +300,6 @@ async function createEmployee(payload, actor) {
       lastProcessedYear: currentYear,
       lastProcessedAt: new Date(),
       nextResetDate: new Date(Date.UTC(currentYear + 1, 0, 1)),
-      carriedForward: {},
     },
     companyId: actor.companyId,
     branchId: actor.branchId,
@@ -338,8 +326,7 @@ async function getEmployeeById(id, actor) {
   obj.leaveBalance = visibleLeaveBalance(
     obj.leaveBalance,
     reconciled.enabledTypes,
-    reconciled.entitlements,
-    validCarriedForward(record)
+    reconciled.entitlements
   );
   obj.tenure = obj.joiningDate ? calcTenure(obj.joiningDate) : null;
   const visible = ['manager', 'team_lead'].includes(actor.role) && String(actor.id) !== String(obj._id)
@@ -405,15 +392,13 @@ async function listEmployees(query, actor) {
 
   result.items = result.items.map((e) => {
     const obj = e.toObject ? e.toObject({ getters: true }) : e;
-    const carriedForward = validCarriedForward(obj);
     const item = {
       ...obj,
       enabledLeaveTypes: enabledTypes,
       leaveBalance: visibleLeaveBalance(
         obj.leaveBalance,
         enabledTypes,
-        settings.leavePolicy?.entitlements,
-        carriedForward
+        settings.leavePolicy?.entitlements
       ),
       tenure: obj.joiningDate ? calcTenure(obj.joiningDate) : null,
     };

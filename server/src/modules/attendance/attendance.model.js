@@ -37,7 +37,6 @@ const attendanceSchema = new mongoose.Schema(
     shiftGraceMinutes: { type: Number },
     shiftLateHalfDayAfterMinutes: { type: Number },
     shiftRequiredMinutes: { type: Number },
-    shiftBreakMinutes: { type: Number },
     shiftHalfDayMinutes: { type: Number },
     shiftOvertimeAfterMinutes: { type: Number },
     effectiveRequiredMinutes: { type: Number },

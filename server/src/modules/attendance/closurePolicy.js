@@ -33,7 +33,6 @@ function shiftPolicy(shift = {}) {
   const requiredMinutes = Number(shift.requiredMinutes || 480);
   return {
     requiredMinutes,
-    breakMinutes: Number(shift.breakMinutes || 0),
     halfDayMinutes: Number(shift.halfDayMinutes || Math.ceil(requiredMinutes / 2)),
     overtimeAfterMinutes: Number(shift.overtimeAfterMinutes || requiredMinutes),
   };
@@ -59,7 +58,7 @@ function effectivePolicy(closure, shift, schedule) {
   const windowMinutes = Math.max(0, Math.round((effectiveEnd - effectiveStart) / 60000));
   let effectiveRequiredMinutes = closure.eventType === 'half_day'
     ? Math.ceil(base.requiredMinutes / 2)
-    : Math.min(base.requiredMinutes, Math.max(0, windowMinutes - base.breakMinutes));
+    : Math.min(base.requiredMinutes, windowMinutes);
   if (closure.requiredMinutesOverride !== null && closure.requiredMinutesOverride !== undefined) {
     effectiveRequiredMinutes = Number(closure.requiredMinutesOverride);
   }

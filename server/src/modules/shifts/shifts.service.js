@@ -14,7 +14,6 @@ function shiftWindowMinutes(startTime, endTime) {
 
 function normalizeDurationPolicy(payload, existing = {}) {
   const shiftType = payload.shiftType || existing.shiftType || 'fixed';
-  const breakMinutes = Number(payload.breakMinutes ?? existing.breakMinutes ?? 0);
   const isFlexible = shiftType === 'flexible';
   const requestedFlexibleMinutes = Number(payload.requiredMinutes ?? existing.requiredMinutes ?? 480);
   if (isFlexible && payload.requiredMinutes !== undefined && ![360, 480].includes(requestedFlexibleMinutes)) {
@@ -24,21 +23,17 @@ function normalizeDurationPolicy(payload, existing = {}) {
   const startTime = isFlexible ? '00:00' : (payload.startTime || existing.startTime);
   const endTime = isFlexible ? (flexibleMinutes === 360 ? '06:00' : '08:00') : (payload.endTime || existing.endTime);
   const windowMinutes = shiftWindowMinutes(startTime, endTime);
-  const requiredMinutes = isFlexible ? flexibleMinutes : Math.max(60, windowMinutes - breakMinutes);
+  const requiredMinutes = isFlexible ? flexibleMinutes : Math.max(60, windowMinutes);
   const graceMinutes = isFlexible ? 0 : (windowMinutes > 420 ? 15 : 0);
   const lateHalfDayAfterMinutes = isFlexible ? 0 : (windowMinutes > 420 ? 150 : 120);
   const halfDayMinutes = Math.ceil(requiredMinutes / 2);
   const overtimeAfterMinutes = requiredMinutes;
-  if (!isFlexible && requiredMinutes + breakMinutes > windowMinutes) {
-    throw createHttpError(422, 'Required duty plus break time cannot exceed the shift window.');
-  }
   return {
     ...payload,
     shiftType,
     startTime,
     endTime,
     requiredMinutes,
-    breakMinutes: isFlexible ? 0 : breakMinutes,
     graceMinutes,
     lateHalfDayAfterMinutes,
     halfDayMinutes,
@@ -63,7 +58,7 @@ async function listShifts(actor, { active } = {}) {
   if (active !== undefined) filter.isActive = active === true || active === 'true';
   const shifts = await Shift.find(filter).sort({ startTime: 1, name: 1 });
   const policyFields = [
-    'shiftType', 'requiredMinutes', 'breakMinutes', 'graceMinutes',
+    'shiftType', 'requiredMinutes', 'graceMinutes',
     'lateHalfDayAfterMinutes', 'halfDayMinutes', 'overtimeAfterMinutes',
   ];
   const updates = shifts.flatMap((shift) => {
