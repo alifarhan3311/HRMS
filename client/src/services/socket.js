@@ -25,13 +25,13 @@ export function getSocket() {
       autoConnect: false,
       withCredentials: true,
       path: getSocketPath(),
-      // Start with HTTP polling, which works through standard Kubernetes/
-      // cloud ingress, then upgrade to WebSocket when the proxy supports it.
-      // A WebSocket-only first attempt can reconnect forever without ever
-      // reaching the working polling transport.
-      transports: ['polling', 'websocket'],
-      upgrade: true,
-      rememberUpgrade: false,
+      // Use one persistent upstream connection. Engine.IO polling stores its
+      // `sid` in the memory of the pod that created it; without Kubernetes
+      // sticky sessions, the next polling GET/POST can reach another pod and
+      // be rejected with HTTP 400 ("Session ID unknown"). The production
+      // Nginx route already forwards WebSocket Upgrade/Connection headers.
+      transports: ['websocket'],
+      upgrade: false,
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -43,5 +43,7 @@ export function getSocket() {
 }
 
 export function disconnectSocket() {
-  if (socket?.connected) socket.disconnect();
+  // Also close a socket whose Engine.IO handshake is still in progress.
+  // Checking only `connected` leaves an opening/reconnecting manager alive.
+  if (socket) socket.disconnect();
 }
