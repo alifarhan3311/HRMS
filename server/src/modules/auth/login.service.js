@@ -157,7 +157,10 @@ async function getCurrentUser(employeeId) {
   }
 
   const user = { ...employee };
-  for (const field of ['cnic', 'contactNumber', 'address', 'currentSalary', 'emergencyContact']) {
+  for (const field of [
+    'cnic', 'contactNumber', 'address', 'currentSalary', 'emergencyContact',
+    'salaryAccountNumber', 'salaryAccountTitle',
+  ]) {
     const storedValue = employee[field];
     if (storedValue === null || storedValue === undefined || storedValue === '') continue;
 

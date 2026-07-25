@@ -12,6 +12,19 @@ import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge, RoleBadge, Badge } from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
 
+const PAYMENT_METHOD_LABELS = {
+  allied_bank: 'Allied Bank (ABL)', askari_bank: 'Askari Bank', bank_alfalah: 'Bank Alfalah',
+  bank_al_habib: 'Bank AL Habib', bankislami: 'BankIslami Pakistan', bank_of_khyber: 'Bank of Khyber',
+  bank_of_punjab: 'Bank of Punjab', dubai_islamic_bank: 'Dubai Islamic Bank Pakistan',
+  easypaisa: 'Easypaisa', faysal_bank: 'Faysal Bank', first_women_bank: 'First Women Bank',
+  habib_bank: 'Habib Bank (HBL)', habib_metropolitan: 'Habib Metropolitan Bank',
+  jazzcash: 'JazzCash', js_bank: 'JS Bank', mcb_bank: 'MCB Bank', mcb_islamic: 'MCB Islamic Bank',
+  meezan_bank: 'Meezan Bank', national_bank: 'National Bank of Pakistan (NBP)', nayapay: 'NayaPay',
+  sadapay: 'SadaPay', sindh_bank: 'Sindh Bank', soneri_bank: 'Soneri Bank',
+  standard_chartered: 'Standard Chartered Pakistan', ubl: 'United Bank (UBL)',
+  upaisa: 'UPaisa', zindigi: 'Zindigi', other: 'Other Bank / Wallet',
+};
+
 function InfoRow({ icon: Icon, label, value }) {
   if (!value) return null;
   return (
@@ -212,6 +225,9 @@ export default function EmployeeDetailPanel({
               {/* Salary */}
               <Section title="Compensation">
                 <InfoRow icon={Banknote} label="Current Salary" value={formatCurrency(employee.currentSalary)} />
+                <InfoRow icon={CreditCard} label="Salary Bank / Wallet" value={PAYMENT_METHOD_LABELS[employee.salaryPaymentMethod] || employee.salaryPaymentMethod} />
+                <InfoRow icon={CreditCard} label="Account Number" value={employee.salaryAccountNumber} />
+                <InfoRow icon={User} label="Account Title" value={employee.salaryAccountTitle} />
                 <InfoRow icon={TrendingUp} label="Last Increment" value={
                   employee.lastIncrementAmount
                     ? `${formatCurrency(employee.lastIncrementAmount)} on ${formatDate(employee.lastIncrementDate)}`

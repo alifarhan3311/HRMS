@@ -28,6 +28,9 @@ const employeesSchema = new mongoose.Schema(
   teamLeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   shiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift' },
   currentSalary: { type: String, set: encryptField, get: decryptFieldSafe },
+  salaryPaymentMethod: { type: String },
+  salaryAccountNumber: { type: String, set: encryptField, get: decryptFieldSafe },
+  salaryAccountTitle: { type: String, set: encryptField, get: decryptFieldSafe },
   status: {
     type: String,
     enum: ['active', 'inactive', 'on_leave', 'resigned'],

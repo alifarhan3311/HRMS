@@ -34,6 +34,21 @@ const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
 const DEFAULT_ROLES = ['employee', 'team_lead', 'manager'];
 const HIDDEN_CREATE_DEPARTMENTS = new Set(['hr', 'executive']);
+const SALARY_PAYMENT_METHODS = [
+  ['allied_bank', 'Allied Bank (ABL)'], ['askari_bank', 'Askari Bank'],
+  ['bank_alfalah', 'Bank Alfalah'], ['bank_al_habib', 'Bank AL Habib'],
+  ['bankislami', 'BankIslami Pakistan'], ['bank_of_khyber', 'Bank of Khyber'],
+  ['bank_of_punjab', 'Bank of Punjab'], ['dubai_islamic_bank', 'Dubai Islamic Bank Pakistan'],
+  ['easypaisa', 'Easypaisa'], ['faysal_bank', 'Faysal Bank'],
+  ['first_women_bank', 'First Women Bank'], ['habib_bank', 'Habib Bank (HBL)'],
+  ['habib_metropolitan', 'Habib Metropolitan Bank'], ['jazzcash', 'JazzCash'],
+  ['js_bank', 'JS Bank'], ['mcb_bank', 'MCB Bank'], ['mcb_islamic', 'MCB Islamic Bank'],
+  ['meezan_bank', 'Meezan Bank'], ['national_bank', 'National Bank of Pakistan (NBP)'],
+  ['nayapay', 'NayaPay'], ['sadapay', 'SadaPay'], ['sindh_bank', 'Sindh Bank'],
+  ['soneri_bank', 'Soneri Bank'], ['standard_chartered', 'Standard Chartered Pakistan'],
+  ['ubl', 'United Bank (UBL)'], ['upaisa', 'UPaisa'], ['zindigi', 'Zindigi'],
+  ['other', 'Other Bank / Wallet'],
+];
 
 function formatCnic(value) {
   const digits = String(value || '').replace(/\D/g, '').slice(0, 13);
@@ -49,7 +64,10 @@ function formatCnic(value) {
 const TAB_FIELDS = {
   personal: ['fullName', 'fatherName', 'cnic', 'dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'],
   contact: ['email', 'contactNumber', 'address', 'emergencyContact'],
-  employment: ['joiningDate', 'department', 'designation', 'role', 'managerId', 'teamLeadId', 'shiftId', 'currentSalary'],
+  employment: [
+    'joiningDate', 'department', 'designation', 'role', 'managerId', 'teamLeadId',
+    'shiftId', 'currentSalary', 'salaryPaymentMethod', 'salaryAccountNumber', 'salaryAccountTitle',
+  ],
   professional: ['qualification', 'experience'],
   account: ['password', 'confirmPassword'],
 };
@@ -65,6 +83,9 @@ const FIELD_LABELS = {
   teamLeadId: 'Team Lead',
   shiftId: 'Assigned Shift',
   currentSalary: 'Current Salary',
+  salaryPaymentMethod: 'Bank / Wallet',
+  salaryAccountNumber: 'Account Number',
+  salaryAccountTitle: 'Account Title',
   password: 'Initial Password',
   confirmPassword: 'Confirm Password',
 };
@@ -96,6 +117,9 @@ const EMPTY_FORM = {
   biometricDeviceUserId: '',
   insuranceCardNumber: '',
   currentSalary: '',
+  salaryPaymentMethod: '',
+  salaryAccountNumber: '',
+  salaryAccountTitle: '',
   // Professional
   qualification: '',
   experience: '',
@@ -185,6 +209,9 @@ export default function EmployeeForm({
         managerId: initial.managerId?._id || initial.managerId || '',
         teamLeadId: initial.teamLeadId?._id || initial.teamLeadId || '',
         shiftId: initial.shiftId?._id || initial.shiftId || '',
+        salaryPaymentMethod: initial.salaryPaymentMethod || '',
+        salaryAccountNumber: initial.salaryAccountNumber || '',
+        salaryAccountTitle: initial.salaryAccountTitle || '',
         skills: initial.skills || [],
         password: '',
         confirmPassword: '',
@@ -276,6 +303,19 @@ export default function EmployeeForm({
     if (!form.shiftId) validationErrors.shiftId = 'Shift assignment is required';
     if (form.currentSalary !== '' && (!Number.isFinite(Number(form.currentSalary)) || Number(form.currentSalary) < 0)) {
       validationErrors.currentSalary = 'Salary must be zero or a positive number';
+    }
+    const hasPaymentDetail = Boolean(
+      form.salaryPaymentMethod
+      || String(form.salaryAccountNumber || '').trim()
+      || String(form.salaryAccountTitle || '').trim(),
+    );
+    if (hasPaymentDetail) {
+      if (!form.salaryPaymentMethod) validationErrors.salaryPaymentMethod = 'Select a bank or wallet';
+      if (!String(form.salaryAccountNumber || '').trim()) validationErrors.salaryAccountNumber = 'Account number is required';
+      else if (!/^[A-Za-z0-9+\-\s]{5,50}$/.test(String(form.salaryAccountNumber).trim())) {
+        validationErrors.salaryAccountNumber = 'Enter a valid account, IBAN, or wallet number';
+      }
+      if (!String(form.salaryAccountTitle || '').trim()) validationErrors.salaryAccountTitle = 'Account title is required';
     }
     if (!isEdit) {
       if (!form.password) validationErrors.password = 'Initial password is required';
@@ -612,6 +652,33 @@ export default function EmployeeForm({
                   value={form.currentSalary}
                   onChange={(e) => set('currentSalary', e.target.value)}
                   error={errors.currentSalary}
+                />
+                <Select
+                  label="Salary Bank / Wallet"
+                  value={form.salaryPaymentMethod}
+                  onChange={(e) => set('salaryPaymentMethod', e.target.value)}
+                  error={errors.salaryPaymentMethod}
+                >
+                  <option value="">Select payment method</option>
+                  {SALARY_PAYMENT_METHODS.map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </Select>
+                <Input
+                  label="Account / IBAN / Wallet Number"
+                  placeholder="PK00BANK0000000000000000"
+                  value={form.salaryAccountNumber}
+                  onChange={(e) => set('salaryAccountNumber', e.target.value)}
+                  error={errors.salaryAccountNumber}
+                  autoComplete="off"
+                />
+                <Input
+                  label="Account Title"
+                  placeholder="Account holder name"
+                  value={form.salaryAccountTitle}
+                  onChange={(e) => set('salaryAccountTitle', e.target.value)}
+                  error={errors.salaryAccountTitle}
+                  autoComplete="off"
                 />
                 {['employee', 'team_lead'].includes(form.role) && (
                   <Select

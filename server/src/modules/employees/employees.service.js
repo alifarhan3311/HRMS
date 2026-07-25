@@ -158,6 +158,7 @@ function redactManagerPrivateFields(employee) {
   const visible = { ...employee };
   for (const field of [
     'cnic', 'currentSalary', 'salaryHistory', 'insuranceCardNumber',
+    'salaryPaymentMethod', 'salaryAccountNumber', 'salaryAccountTitle',
     'fatherName', 'dateOfBirth', 'maritalStatus', 'address', 'emergencyContact',
   ]) delete visible[field];
   return visible;

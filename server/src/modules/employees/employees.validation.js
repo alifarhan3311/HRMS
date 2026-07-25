@@ -10,6 +10,18 @@ const STATUSES = ['active', 'inactive', 'on_leave', 'resigned'];
 const GENDERS = ['male', 'female', 'other'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
+const SALARY_PAYMENT_METHODS = [
+  'allied_bank', 'askari_bank', 'bank_alfalah', 'bank_al_habib', 'bankislami',
+  'bank_of_khyber', 'bank_of_punjab', 'dubai_islamic_bank', 'easypaisa',
+  'faysal_bank', 'first_women_bank', 'habib_bank', 'habib_metropolitan',
+  'jazzcash', 'js_bank', 'mcb_bank', 'mcb_islamic', 'meezan_bank',
+  'national_bank', 'nayapay', 'sadapay', 'sindh_bank', 'soneri_bank',
+  'standard_chartered', 'ubl', 'upaisa', 'zindigi', 'other',
+];
+const paymentMethodSchema = Joi.string().valid(...SALARY_PAYMENT_METHODS).empty('').optional();
+const accountNumberSchema = Joi.string().trim().pattern(/^[A-Za-z0-9+\-\s]{5,50}$/).empty('').optional()
+  .messages({ 'string.pattern.base': 'Enter a valid account, IBAN, or wallet number.' });
+const accountTitleSchema = Joi.string().trim().min(2).max(100).empty('').optional();
 const bloodGroupSchema = Joi.string().trim().custom((value, helpers) => {
   const normalized = value.toLowerCase();
   if (['unknown', 'not known', 'not specified', 'n/a', 'na'].includes(normalized)) {
@@ -52,6 +64,9 @@ const createSchema = Joi.object({
 
   // Salary
   currentSalary: Joi.string().optional().allow(''),
+  salaryPaymentMethod: paymentMethodSchema,
+  salaryAccountNumber: accountNumberSchema,
+  salaryAccountTitle: accountTitleSchema,
 
   // Professional
   skills: Joi.array().items(Joi.string().trim()).optional(),
@@ -94,8 +109,11 @@ const updateSchema = Joi.object({
   experience: Joi.string().trim().max(500).optional().allow(''),
   insuranceCardNumber: Joi.string().trim().max(50).optional().allow(''),
   biometricDeviceUserId: Joi.string().trim().max(32).pattern(/^[A-Za-z0-9_-]+$/).optional().allow(''),
+  salaryPaymentMethod: paymentMethodSchema,
+  salaryAccountNumber: accountNumberSchema,
+  salaryAccountTitle: accountTitleSchema,
   profilePicture: Joi.string().uri().optional().allow(''),
-}).min(1);
+}).and('salaryPaymentMethod', 'salaryAccountNumber', 'salaryAccountTitle').min(1);
 
 const statusSchema = Joi.object({
   status: Joi.string().valid(...STATUSES).required(),
@@ -131,7 +149,7 @@ const departmentSchema = Joi.object({
       'string.empty': 'Department name is required.',
       'string.min': 'Department name must contain at least 2 characters.',
     }),
-});
+}).and('salaryPaymentMethod', 'salaryAccountNumber', 'salaryAccountTitle');
 
 const leaveBalanceInitializationSchema = Joi.object({
   mode: Joi.string().valid('full_year', 'prorated', 'manual').required(),
