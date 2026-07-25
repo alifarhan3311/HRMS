@@ -22,6 +22,7 @@ const {
   earlyLeaveMinutes: calculateShiftEarlyLeave,
 } = require('./shiftTime');
 const { appliesToEmployee, findClosure, effectivePolicy } = require('./closurePolicy');
+const { isSaturdayShiftDate, saturdayStatus } = require('./saturdayPolicy');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -108,7 +109,8 @@ async function signIn({ employeeId, method = 'manual', notes, punchTime }, actor
   }
 
   const policy = effectivePolicy(attendanceExempt ? null : closure, shift, schedule);
-  const arrival = attendanceExempt
+  const saturdayPolicy = isSaturdayShiftDate(schedule.shiftDate);
+  const arrival = attendanceExempt || saturdayPolicy
     ? { status: 'present', lateMinutes: 0 }
     : calculateArrivalStatus(now, { scheduledStart: policy.effectiveStart }, shift);
   const lateMinutes = arrival.lateMinutes;
@@ -234,7 +236,17 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
   const fullDayClosure = closure?.eventType === 'full_day' || (closure && !closure.eventType);
   const status = attendanceExempt
     ? 'present'
-    : attendanceStatus(record.status, workedMinutes, policy.effectiveRequiredMinutes, policy.effectiveHalfDayMinutes, fullDayClosure);
+    : saturdayStatus({
+        shiftDate: record.shiftDate,
+        hasSignIn: true,
+        isFullDayClosure: fullDayClosure,
+      }) || attendanceStatus(
+        record.status,
+        workedMinutes,
+        policy.effectiveRequiredMinutes,
+        policy.effectiveHalfDayMinutes,
+        fullDayClosure,
+      );
 
   const updated = await repository.updateById(record._id, {
     signOutTime: now,
@@ -565,6 +577,10 @@ async function manualCorrection(id, payload, actor) {
     update.autoClosedAt = null;
   }
   if (status) update.status = status;
+  if (isSaturdayShiftDate(record.shiftDate) && correctedSignIn) {
+    update.status = 'present';
+    update.lateMinutes = 0;
+  }
 
   const updated = await repository.updateById(id, update);
   return updated;
@@ -761,6 +777,10 @@ async function reviewRegularization(id, { action, remarks }, actor) {
           update.lateMinutes ?? Number(record.lateMinutes || 0),
         ));
         update.autoClosedAt = null;
+      }
+      if (isSaturdayShiftDate(record.shiftDate) && correctedSignIn) {
+        update.status = 'present';
+        update.lateMinutes = 0;
       }
     }
   }

@@ -1,16 +1,16 @@
 const { emitToCompany } = require('../config/socket');
 
 const RESOURCE_TAGS = {
-  employees: ['Employees', 'Dashboard', 'Projects'],
-  attendance: ['Attendance', 'Dashboard', 'Reports'],
-  leaves: ['Leaves', 'Employees', 'Dashboard'],
+  employees: ['Employees', 'Auth', 'Attendance', 'Leaves', 'Payroll', 'Dashboard', 'Projects', 'Reports'],
+  attendance: ['Attendance', 'Payroll', 'Dashboard', 'Reports'],
+  leaves: ['Leaves', 'Employees', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
   payroll: ['Payroll', 'Dashboard', 'Reports'],
   expenses: ['Expenses', 'ExpenseCategories', 'Dashboard', 'Reports'],
   projects: ['Projects', 'Employees', 'Dashboard'],
-  holidays: ['Holidays', 'Attendance', 'Dashboard'],
-  shifts: ['Shifts', 'Employees', 'Auth', 'Attendance'],
+  holidays: ['Holidays', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
+  shifts: ['Shifts', 'Employees', 'Auth', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
   notifications: ['Notifications', 'Dashboard'],
-  'company-settings': ['Settings', 'Employees', 'Dashboard', 'Auth'],
+  'company-settings': ['Settings', 'Employees', 'Auth', 'Attendance', 'Leaves', 'Payroll', 'Dashboard', 'Reports'],
 };
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

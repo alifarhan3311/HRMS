@@ -7,6 +7,7 @@ const { sendCompanyMail } = require('../config/mailer');
 const settingsService = require('../modules/companySettings/companySettings.service');
 const logger = require('../utils/logger');
 const { appliesToEmployee } = require('../modules/attendance/closurePolicy');
+const { isSaturdayShiftDate } = require('../modules/attendance/saturdayPolicy');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const AUTOMATION_INTERVAL_MS = Number(process.env.HR_AUTOMATION_INTERVAL_MS)
@@ -369,7 +370,8 @@ async function reconcileAttendance(now = new Date()) {
   }
 
   const employees = await Employee.find({ status: 'active', role: { $ne: 'super_admin' } })
-    .select('_id fullName employeeCode companyId branchId joiningDate department shiftId');
+    .select('_id fullName employeeCode companyId branchId joiningDate department shiftId')
+    .populate('shiftId', 'workingDays');
   if (!employees.length) return 0;
   const employeeIds = employees.map((employee) => employee._id);
 
@@ -421,6 +423,9 @@ async function reconcileAttendance(now = new Date()) {
       )))
       .filter((employee) => {
         const settings = policyCache.get(String(employee.companyId));
+        if (employee.shiftId?.workingDays?.length) {
+          return employee.shiftId.workingDays.includes(date.getDay());
+        }
         return !settings.timing.weekendDays.includes(date.getDay());
       })
       .map((employee) => {
@@ -470,6 +475,15 @@ async function reconcileAttendance(now = new Date()) {
       status: { $nin: ['on_leave', 'holiday', 'weekend'] },
     });
     for (const record of expiredOpenRecords) {
+      if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) {
+        record.status = 'present';
+        record.lateMinutes = 0;
+        record.autoClosedAt = now;
+        record.missedPunchType = null;
+        record.notes = `${record.notes || ''} [Saturday attendance: sign-in counted as present; no late or half-day penalty.]`.trim();
+        await record.save();
+        continue;
+      }
       // A scheduled shift end is not evidence that the employee remained at
       // work until that time. Close the open punch without inventing worked
       // hours; actual status is calculated after regularization/HR correction.

@@ -15,11 +15,11 @@ export const leavesApi = api.injectEndpoints({
     }),
     applyLeave: builder.mutation({
       query: (body) => ({ url: '/leaves', method: 'POST', body }),
-      invalidatesTags: ['Leaves', 'Attendance', 'Payroll', 'Dashboard'],
+      invalidatesTags: ['Leaves', 'Employees', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
     }),
     approveLeave: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/leaves/${id}/approve`, method: 'PATCH', body }),
-      invalidatesTags: ['Leaves', 'Employees', 'Dashboard'],
+      invalidatesTags: ['Leaves', 'Employees', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
     }),
     rejectLeave: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/leaves/${id}/reject`, method: 'PATCH', body }),
@@ -27,7 +27,7 @@ export const leavesApi = api.injectEndpoints({
     }),
     cancelLeave: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/leaves/${id}/cancel`, method: 'PATCH', body }),
-      invalidatesTags: ['Leaves', 'Employees', 'Dashboard'],
+      invalidatesTags: ['Leaves', 'Employees', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
     }),
     getPendingApprovals: builder.query({
       query: () => '/leaves/pending-approvals',

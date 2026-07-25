@@ -14,7 +14,7 @@ const SYNC_EVENTS = [
 ];
 
 const DATA_SYNC_EVENTS = {
-  'leave:updated': ['Leaves', 'Employees', 'Dashboard'],
+  'leave:updated': ['Leaves', 'Employees', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
 };
 
 const ALL_LIVE_TAGS = [

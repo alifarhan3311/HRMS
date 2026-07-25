@@ -16,11 +16,14 @@ export const employeesApi = api.injectEndpoints({
     }),
     createEmployee: builder.mutation({
       query: (body) => ({ url: '/employees', method: 'POST', body }),
-      invalidatesTags: ['Employees', 'Dashboard'],
+      invalidatesTags: ['Employees', 'Attendance', 'Leaves', 'Payroll', 'Dashboard', 'Projects', 'Reports'],
     }),
     updateEmployee: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/employees/${id}`, method: 'PUT', body }),
-      invalidatesTags: (result, error, { id }) => [{ type: 'Employees', id }, 'Employees', 'Auth'],
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'Employees', id }, 'Employees', 'Auth', 'Attendance', 'Leaves',
+        'Payroll', 'Dashboard', 'Projects', 'Reports',
+      ],
     }),
     initializeEmployeeLeaveBalance: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/employees/${id}/leave-balance`, method: 'PUT', body }),
@@ -34,15 +37,20 @@ export const employeesApi = api.injectEndpoints({
     }),
     deleteEmployee: builder.mutation({
       query: (id) => ({ url: `/employees/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['Employees'],
+      invalidatesTags: ['Employees', 'Auth', 'Attendance', 'Leaves', 'Payroll', 'Dashboard', 'Projects', 'Reports'],
     }),
     changeEmployeeStatus: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/employees/${id}/status`, method: 'PATCH', body }),
-      invalidatesTags: (result, error, { id }) => [{ type: 'Employees', id }, 'Employees'],
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'Employees', id }, 'Employees', 'Auth', 'Attendance',
+        'Payroll', 'Dashboard', 'Projects', 'Reports',
+      ],
     }),
     promoteEmployee: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/employees/${id}/promote`, method: 'POST', body }),
-      invalidatesTags: (result, error, { id }) => [{ type: 'Employees', id }, 'Employees'],
+      invalidatesTags: (result, error, { id }) => [
+        { type: 'Employees', id }, 'Employees', 'Auth', 'Payroll', 'Dashboard', 'Reports',
+      ],
     }),
     getEmployeeDepartments: builder.query({
       query: () => '/employees/departments',

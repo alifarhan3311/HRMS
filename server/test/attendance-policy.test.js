@@ -5,6 +5,7 @@ const { normalizeDurationPolicy } = require('../src/modules/shifts/shifts.servic
 const { arrivalStatus } = require('../src/modules/attendance/shiftTime');
 const { appliesToEmployee } = require('../src/modules/attendance/closurePolicy');
 const { correctedWorkMetrics } = require('../src/modules/attendance/attendance.service');
+const { isSaturdayShiftDate, saturdayStatus } = require('../src/modules/attendance/saturdayPolicy');
 
 const start = new Date('2026-07-23T20:00:00.000Z');
 const schedule = { scheduledStart: start };
@@ -73,4 +74,16 @@ test('holiday scope matching supports all, department, and assigned shift target
   assert.equal(appliesToEmployee({ affectedScope: 'department', affectedDepartment: 'Operations' }, employee), true);
   assert.equal(appliesToEmployee({ affectedScope: 'shift', affectedShiftId: '6a5fe8009e028adeea8ab4b2' }, employee), true);
   assert.equal(appliesToEmployee({ affectedScope: 'department', affectedDepartment: 'sales' }, employee), false);
+});
+
+test('Saturday policy allows only present or absent for normal attendance', () => {
+  assert.equal(isSaturdayShiftDate('2026-07-25'), true);
+  assert.equal(isSaturdayShiftDate('2026-07-24'), false);
+  assert.equal(saturdayStatus({ shiftDate: '2026-07-25', hasSignIn: true }), 'present');
+  assert.equal(saturdayStatus({ shiftDate: '2026-07-25', hasSignIn: false }), 'absent');
+  assert.equal(
+    saturdayStatus({ shiftDate: '2026-07-25', hasSignIn: true, isFullDayClosure: true }),
+    'holiday',
+  );
+  assert.equal(saturdayStatus({ shiftDate: '2026-07-24', hasSignIn: true }), null);
 });

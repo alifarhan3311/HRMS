@@ -15,15 +15,15 @@ export const expensesApi = api.injectEndpoints({
     }),
     createExpenseCategory: builder.mutation({
       query: (body) => ({ url: '/expenses/categories', method: 'POST', body }),
-      invalidatesTags: ['ExpenseCategories'],
+      invalidatesTags: ['ExpenseCategories', 'Expenses', 'Dashboard', 'Reports'],
     }),
     updateExpenseCategory: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/expenses/categories/${id}`, method: 'PUT', body }),
-      invalidatesTags: ['ExpenseCategories', 'Expenses'],
+      invalidatesTags: ['ExpenseCategories', 'Expenses', 'Dashboard', 'Reports'],
     }),
     deleteExpenseCategory: builder.mutation({
       query: (id) => ({ url: `/expenses/categories/${id}`, method: 'DELETE' }),
-      invalidatesTags: ['ExpenseCategories'],
+      invalidatesTags: ['ExpenseCategories', 'Expenses', 'Dashboard', 'Reports'],
     }),
     getExpenseById: builder.query({
       query: (id) => `/expenses/${id}`,
@@ -31,11 +31,11 @@ export const expensesApi = api.injectEndpoints({
     }),
     submitExpense: builder.mutation({
       query: (body) => ({ url: '/expenses', method: 'POST', body }),
-      invalidatesTags: ['Expenses', 'Dashboard'],
+      invalidatesTags: ['Expenses', 'Dashboard', 'Reports'],
     }),
     submitBulkExpenses: builder.mutation({
       query: (rows) => ({ url: '/expenses/bulk', method: 'POST', body: { rows } }),
-      invalidatesTags: ['Expenses', 'Dashboard'],
+      invalidatesTags: ['Expenses', 'Dashboard', 'Reports'],
     }),
   }),
   overrideExisting: false,

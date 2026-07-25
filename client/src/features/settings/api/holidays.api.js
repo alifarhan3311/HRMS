@@ -8,17 +8,17 @@ export const holidaysApi = api.injectEndpoints({
     }),
     syncCanadaHolidays: builder.mutation({
       query: year => ({ url: '/holidays/sync-canada', method: 'POST', body: { year } }),
-      invalidatesTags: ['Holidays', 'Notifications'],
+      invalidatesTags: ['Holidays', 'Attendance', 'Payroll', 'Dashboard', 'Reports', 'Notifications'],
     }),
     addManualCompanyOff: builder.mutation({
       query: body => ({ url: '/holidays/manual-off', method: 'POST', body }),
-      invalidatesTags: ['Holidays', 'Dashboard', 'Notifications'],
+      invalidatesTags: ['Holidays', 'Attendance', 'Payroll', 'Dashboard', 'Reports', 'Notifications'],
     }),
     decideHoliday: builder.mutation({
       query: ({ id, isCompanyOff, note = '' }) => ({
         url: `/holidays/${id}/decision`, method: 'PATCH', body: { isCompanyOff, note },
       }),
-      invalidatesTags: ['Holidays', 'Dashboard', 'Notifications'],
+      invalidatesTags: ['Holidays', 'Attendance', 'Payroll', 'Dashboard', 'Reports', 'Notifications'],
     }),
   }),
 });

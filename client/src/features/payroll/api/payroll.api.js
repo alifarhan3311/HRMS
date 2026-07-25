@@ -23,23 +23,23 @@ export const payrollApi = api.injectEndpoints({
     }),
     updatePayroll: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/payroll/${id}`, method: 'PUT', body }),
-      invalidatesTags: (result, error, { id }) => [{ type: 'Payroll', id }, 'Payroll'],
+      invalidatesTags: (result, error, { id }) => [{ type: 'Payroll', id }, 'Payroll', 'Dashboard', 'Reports'],
     }),
     submitPayroll: builder.mutation({
       query: (id) => ({ url: `/payroll/${id}/submit`, method: 'PATCH' }),
-      invalidatesTags: ['Payroll'],
+      invalidatesTags: ['Payroll', 'Dashboard', 'Reports'],
     }),
     approvePayroll: builder.mutation({
       query: (id) => ({ url: `/payroll/${id}/approve`, method: 'PATCH' }),
-      invalidatesTags: ['Payroll'],
+      invalidatesTags: ['Payroll', 'Dashboard', 'Reports'],
     }),
     markPayrollPaid: builder.mutation({
       query: (id) => ({ url: `/payroll/${id}/paid`, method: 'PATCH' }),
-      invalidatesTags: ['Payroll'],
+      invalidatesTags: ['Payroll', 'Dashboard', 'Reports'],
     }),
     lockPayroll: builder.mutation({
       query: (id) => ({ url: `/payroll/${id}/lock`, method: 'PATCH' }),
-      invalidatesTags: ['Payroll'],
+      invalidatesTags: ['Payroll', 'Dashboard', 'Reports'],
     }),
   }),
   overrideExisting: false,

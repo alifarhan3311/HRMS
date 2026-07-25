@@ -9,6 +9,7 @@ const {
   attendanceActionForRecord,
   nextReconnectDelay,
   dataChangedPayload,
+  applyBiometricTimeOffset,
 } = require('../src/integrations/zkteco/zkteco.service');
 
 const punch = {
@@ -23,6 +24,31 @@ test('biometric duplicate fingerprint is stable and changes with dedupe fields',
   assert.equal(first, punchFingerprint({ ...punch }, '192.168.1.5:4370'));
   assert.notEqual(first, punchFingerprint({ ...punch, punchStatus: '1' }, '192.168.1.5:4370'));
   assert.notEqual(first, punchFingerprint({ ...punch, verificationMode: 'finger' }, '192.168.1.5:4370'));
+});
+
+test('biometric timestamp offset corrects same-day machine time', () => {
+  const corrected = applyBiometricTimeOffset(new Date('2026-07-26T06:00:00.000Z'), 12);
+  assert.equal(corrected.toISOString(), '2026-07-26T18:00:00.000Z');
+});
+
+test('biometric timestamp offset crosses midnight', () => {
+  const corrected = applyBiometricTimeOffset(new Date('2026-07-26T14:00:00.000Z'), 12);
+  assert.equal(corrected.toISOString(), '2026-07-27T02:00:00.000Z');
+});
+
+test('biometric timestamp offset handles month and year rollover and negative offsets', () => {
+  assert.equal(
+    applyBiometricTimeOffset(new Date('2026-07-31T23:30:00.000Z'), 12).toISOString(),
+    '2026-08-01T11:30:00.000Z',
+  );
+  assert.equal(
+    applyBiometricTimeOffset(new Date('2026-12-31T18:30:00.000Z'), 12).toISOString(),
+    '2027-01-01T06:30:00.000Z',
+  );
+  assert.equal(
+    applyBiometricTimeOffset(new Date('2026-07-26T02:00:00.000Z'), -5).toISOString(),
+    '2026-07-25T21:00:00.000Z',
+  );
 });
 
 test('employee mapping is tenant-scoped, exact and active-only', () => {

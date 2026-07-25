@@ -33,6 +33,8 @@ function config() {
     reconnectDelay: Math.max(1000, Number(process.env.ZKTECO_RECONNECT_DELAY || 2000)),
     timeout: Math.max(1000, Number(process.env.ZKTECO_TIMEOUT || 10000)),
     timezone: process.env.ZKTECO_TIMEZONE || 'Asia/Karachi',
+    nativeRealtime: String(process.env.ZKTECO_NATIVE_REALTIME || 'true').toLowerCase() === 'true',
+    biometricOffsetHours: Number(process.env.BIOMETRIC_TIME_OFFSET_HOURS || 0),
   };
 }
 
@@ -84,11 +86,35 @@ function normalizeDeviceTime(value, timeZone = config().timezone) {
   return new Date(wallClockAsUtc.getTime() - timezoneOffsetMs(wallClockAsUtc, timeZone));
 }
 
+function applyBiometricTimeOffset(machineTimestamp, offsetHours = config().biometricOffsetHours) {
+  const timestamp = new Date(machineTimestamp);
+  if (Number.isNaN(timestamp.getTime())) {
+    throw new Error('Cannot correct an invalid biometric machine timestamp.');
+  }
+  if (!Number.isFinite(offsetHours)) {
+    throw new Error('BIOMETRIC_TIME_OFFSET_HOURS must be a valid number.');
+  }
+  return new Date(timestamp.getTime() + (offsetHours * 60 * 60 * 1000));
+}
+
 function normalizePunch(event, source) {
-  const punchTime = normalizeDeviceTime(event.attTime || event.recordTime || event.timestamp);
+  const cfg = config();
+  const machineTimestamp = normalizeDeviceTime(
+    event.attTime || event.recordTime || event.timestamp,
+    cfg.timezone,
+  );
+  const correctedTimestamp = applyBiometricTimeOffset(
+    machineTimestamp,
+    cfg.biometricOffsetHours,
+  );
   return {
     deviceUserId: String(event.userId ?? event.deviceUserId ?? event.userSn ?? '').trim(),
-    punchTime,
+    machineTimestamp,
+    correctedTimestamp,
+    biometricOffsetHours: cfg.biometricOffsetHours,
+    // Existing attendance service consumes punchTime. It always receives the
+    // corrected timestamp; raw machine time remains audit-only.
+    punchTime: correctedTimestamp,
     verificationMode: String(event.verifyMode ?? event.verificationMode ?? event.type ?? 'unknown'),
     punchStatus: String(event.status ?? event.punch ?? event.inOut ?? 'unknown'),
     source,
@@ -108,7 +134,7 @@ function punchFingerprint(punch, id = deviceId()) {
   return crypto.createHash('sha256').update([
     id,
     punch.deviceUserId,
-    punch.punchTime.toISOString(),
+    (punch.machineTimestamp || punch.punchTime).toISOString(),
     punch.verificationMode,
     punch.punchStatus,
   ].join('|')).digest('hex');
@@ -162,10 +188,14 @@ async function processPunch(input) {
       fingerprint,
       deviceId: deviceId(cfg),
       deviceUserId: input.deviceUserId,
+      machineTimestamp: input.machineTimestamp,
+      correctedTimestamp: input.correctedTimestamp || input.punchTime,
+      biometricOffsetHours: input.biometricOffsetHours ?? cfg.biometricOffsetHours,
       punchTime: input.punchTime,
       verificationMode: input.verificationMode,
       punchStatus: input.punchStatus,
-      source: input.source,
+      source: 'BIOMETRIC',
+      transportSource: input.source,
       raw: input.raw,
       companyId: cfg.companyId,
     });
@@ -256,12 +286,25 @@ async function syncNewLogs() {
   );
   const response = await enqueueSdk(() => state.device.getAttendances());
   if (response?.err) recordError('attendance-fetch-partial', response.err);
-  const records = (response?.data || [])
+  const downloadedLogs = response?.data || [];
+  const normalizedLogs = downloadedLogs
     .map(item => {
       try { return normalizePunch(item, 'polling'); } catch (error) { recordError('normalize-log', error); return null; }
     })
-    .filter(Boolean)
-    .filter(item => item.punchTime > syncState.lastLogTime)
+    .filter(Boolean);
+  const hadCountCursor = Number.isInteger(syncState.lastLogCount);
+  const isExistingCursorUpgrade = !hadCountCursor
+    && Date.now() - new Date(syncState.initializedAt).getTime() > 60_000;
+  const previousCount = hadCountCursor
+    ? syncState.lastLogCount
+    : Math.max(0, downloadedLogs.length - (isExistingCursorUpgrade ? 1 : 0));
+  const appendedCount = Math.max(0, downloadedLogs.length - previousCount);
+  const candidateRecords = hadCountCursor
+    ? (appendedCount > 0 ? normalizedLogs.slice(-appendedCount) : [])
+    : normalizedLogs.filter(item => item.punchTime > syncState.lastLogTime);
+  const records = [...new Map(
+    candidateRecords.map(item => [punchFingerprint(item, deviceId(cfg)), item]),
+  ).values()]
     .sort((a, b) => a.punchTime - b.punchTime);
 
   let processed = 0;
@@ -269,8 +312,19 @@ async function syncNewLogs() {
     const result = await processPunch(punch);
     if (!result.duplicate) processed += 1;
   }
+  await BiometricSyncState.updateOne(
+    { deviceId: deviceId(cfg) },
+    {
+      $set: {
+        lastLogCount: Math.max(previousCount, downloadedLogs.length),
+        lastSuccessfulSync: new Date(),
+      },
+    },
+  );
   logger.info('[zkteco] Attendance fetch completed', {
-    downloaded: response?.data?.length || 0,
+    downloaded: downloadedLogs.length,
+    previousCount,
+    appendedCount,
     newLogs: records.length,
     processed,
   });
@@ -279,7 +333,7 @@ async function syncNewLogs() {
 
 function clearTimers() {
   clearTimeout(state.reconnectTimer);
-  clearInterval(state.pollTimer);
+  clearTimeout(state.pollTimer);
   state.reconnectTimer = null;
   state.pollTimer = null;
 }
@@ -302,16 +356,23 @@ function scheduleReconnect(reason) {
 }
 
 function startPolling() {
-  clearInterval(state.pollTimer);
+  clearTimeout(state.pollTimer);
   const cfg = config();
-  state.pollTimer = setInterval(() => {
-    syncNewLogs().catch(error => {
+  const poll = async () => {
+    if (state.stopped || !state.connected) return;
+    try {
+      await syncNewLogs();
+    } catch (error) {
       recordError('polling', error);
       scheduleReconnect(error.message);
-    });
-  }, cfg.pollInterval);
+      return;
+    }
+    state.pollTimer = setTimeout(poll, cfg.pollInterval);
+    state.pollTimer.unref();
+  };
+  state.pollTimer = setTimeout(poll, cfg.pollInterval);
   state.pollTimer.unref();
-  logger.info('[zkteco] Native realtime unavailable; polling fallback enabled', { intervalMs: cfg.pollInterval });
+  logger.info('[zkteco] Attendance polling enabled', { intervalMs: cfg.pollInterval });
 }
 
 async function connect() {
@@ -337,6 +398,7 @@ async function connect() {
       deviceId: deviceId(cfg),
       transport: zk.connectionType,
       library: `node-zklib@${sdkPackage.version}`,
+      biometricOffsetHours: cfg.biometricOffsetHours,
     });
     await BiometricSyncState.updateOne(
       { deviceId: deviceId(cfg) },
@@ -351,7 +413,10 @@ async function connect() {
       { upsert: true },
     );
     await syncNewLogs();
-    try {
+    if (!cfg.nativeRealtime) {
+      state.nativeRealtime = false;
+      startPolling();
+    } else try {
       await enqueueSdk(() => zk.getRealTimeLogs(event => {
         try {
           const punch = normalizePunch(event, 'realtime');
@@ -458,6 +523,7 @@ module.exports = {
   getServiceStatus,
   processPunch,
   normalizePunch,
+  applyBiometricTimeOffset,
   punchFingerprint,
   employeeMappingFilter,
   attendanceActionForRecord,
