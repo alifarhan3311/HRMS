@@ -2,24 +2,22 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { leaveBalanceInitializationSchema } = require('../src/modules/employees/employees.validation');
 
-test('HR leave balance initialization accepts annual and sick opening balances', () => {
+test('HR leave balance initialization accepts full-year balances without a reason', () => {
   const result = leaveBalanceInitializationSchema.validate({
-    mode: 'prorated',
-    effectiveDate: '2026-07-25',
-    reason: 'Opening balances confirmed by HR records',
     balances: {
-      annual: { entitlement: 7.01, used: 1 },
-      sick: { entitlement: 2.63, used: 0 },
+      annual: { entitlement: 16, used: 1 },
+      sick: { entitlement: 6, used: 0 },
     },
   });
   assert.equal(result.error, undefined);
+  assert.equal(result.value.mode, 'full_year');
+  assert.equal(result.value.reason, '');
   assert.equal(result.value.confirmAdjustment, false);
 });
 
-test('leave balance initialization rejects missing audit reason and unknown leave types', () => {
+test('leave balance initialization rejects unsupported modes and unknown leave types', () => {
   const result = leaveBalanceInitializationSchema.validate({
-    mode: 'manual',
-    effectiveDate: '2026-07-25',
+    mode: 'prorated',
     balances: {
       annual: { entitlement: 10, used: 0 },
       sick: { entitlement: 5, used: 0 },

@@ -92,9 +92,8 @@ function ResetPasswordModal({ employee, isOpen, onClose, onSubmit, isLoading }) 
 }
 
 function LeaveBalanceModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
-  const today = new Date().toISOString().slice(0, 10);
   const [form, setForm] = useState({
-    mode: 'prorated', effectiveDate: today, reason: '',
+    reason: '',
     annualEntitlement: 0, annualUsed: 0, sickEntitlement: 0, sickUsed: 0,
     confirmAdjustment: false,
   });
@@ -102,8 +101,6 @@ function LeaveBalanceModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
   useEffect(() => {
     if (!isOpen || !employee) return;
     setForm({
-      mode: 'prorated',
-      effectiveDate: today,
       reason: '',
       annualEntitlement: Number(employee.leaveBalance?.annual?.available || 0),
       annualUsed: Number(employee.leaveBalance?.annual?.used || 0),
@@ -111,30 +108,17 @@ function LeaveBalanceModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
       sickUsed: Number(employee.leaveBalance?.sick?.used || 0),
       confirmAdjustment: Number(employee.leaveBalanceInitialization?.year) === new Date().getFullYear(),
     });
-  }, [employee, isOpen, today]);
-
-  function prorated(value) {
-    if (form.mode !== 'prorated' || !form.effectiveDate) return Number(value || 0);
-    const start = new Date(`${form.effectiveDate}T00:00:00`);
-    const yearEnd = new Date(start.getFullYear(), 11, 31);
-    const yearStart = new Date(start.getFullYear(), 0, 1);
-    const totalDays = Math.round((new Date(start.getFullYear() + 1, 0, 1) - yearStart) / 86400000);
-    const remainingDays = Math.max(0, Math.floor((yearEnd - start) / 86400000) + 1);
-    return Math.round((Number(value || 0) * remainingDays / totalDays) * 100) / 100;
-  }
+  }, [employee, isOpen]);
 
   function submit(event) {
     event.preventDefault();
-    const annual = prorated(form.annualEntitlement);
-    const sick = prorated(form.sickEntitlement);
-    if (!form.reason.trim()) return toast.error('Adjustment reason is required');
+    const annual = Number(form.annualEntitlement || 0);
+    const sick = Number(form.sickEntitlement || 0);
     if (Number(form.annualUsed) > annual || Number(form.sickUsed) > sick) {
       return toast.error('Used leave cannot exceed the calculated entitlement');
     }
     onSubmit({
-      mode: form.mode,
-      effectiveDate: form.effectiveDate,
-      reason: form.reason,
+      reason: form.reason.trim(),
       confirmAdjustment: form.confirmAdjustment,
       balances: {
         annual: { entitlement: annual, used: Number(form.annualUsed) },
@@ -143,8 +127,8 @@ function LeaveBalanceModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
     });
   }
 
-  const annualFinal = prorated(form.annualEntitlement);
-  const sickFinal = prorated(form.sickEntitlement);
+  const annualFinal = Number(form.annualEntitlement || 0);
+  const sickFinal = Number(form.sickEntitlement || 0);
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Leave Balance Initialization" size="md">
       <form onSubmit={submit}>
@@ -153,24 +137,15 @@ function LeaveBalanceModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
             <span className="font-semibold">{employee?.fullName}</span>
             <p className="mt-1 text-xs text-muted-foreground">Set opening entitlement and leaves already used. Remaining balance is calculated automatically.</p>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="text-sm font-medium">Calculation mode
-              <select className="mt-1.5 h-10 w-full rounded-lg border border-border bg-background px-3 text-sm"
-                value={form.mode} onChange={(e) => setForm((v) => ({ ...v, mode: e.target.value }))}>
-                <option value="prorated">Prorated from effective date</option>
-                <option value="full_year">Full yearly balance</option>
-                <option value="manual">Manual opening balance</option>
-              </select>
-            </label>
-            <Input label="Effective date" type="date" required value={form.effectiveDate}
-              onChange={(e) => setForm((v) => ({ ...v, effectiveDate: e.target.value }))} />
+          <div className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
+            Calculation mode: <span className="font-semibold">Full yearly balance</span>
           </div>
           <div className="grid gap-3 rounded-xl border border-border p-4 sm:grid-cols-2">
-            <Input label={form.mode === 'prorated' ? 'Annual yearly entitlement' : 'Annual entitlement'} type="number" min="0" step="0.01"
+            <Input label="Annual entitlement" type="number" min="0" step="0.01"
               value={form.annualEntitlement} onChange={(e) => setForm((v) => ({ ...v, annualEntitlement: e.target.value }))} />
             <Input label="Annual already used" type="number" min="0" step="0.01"
               value={form.annualUsed} onChange={(e) => setForm((v) => ({ ...v, annualUsed: e.target.value }))} />
-            <Input label={form.mode === 'prorated' ? 'Sick yearly entitlement' : 'Sick entitlement'} type="number" min="0" step="0.01"
+            <Input label="Sick entitlement" type="number" min="0" step="0.01"
               value={form.sickEntitlement} onChange={(e) => setForm((v) => ({ ...v, sickEntitlement: e.target.value }))} />
             <Input label="Sick already used" type="number" min="0" step="0.01"
               value={form.sickUsed} onChange={(e) => setForm((v) => ({ ...v, sickUsed: e.target.value }))} />
@@ -179,8 +154,8 @@ function LeaveBalanceModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
             <div className="rounded-lg bg-emerald-500/10 p-3">Annual: <b>{annualFinal}</b> total · <b>{Math.max(0, annualFinal - Number(form.annualUsed || 0))}</b> remaining</div>
             <div className="rounded-lg bg-rose-500/10 p-3">Sick: <b>{sickFinal}</b> total · <b>{Math.max(0, sickFinal - Number(form.sickUsed || 0))}</b> remaining</div>
           </div>
-          <label className="block text-sm font-medium">HR reason / notes
-            <textarea className="mt-1.5 min-h-20 w-full rounded-lg border border-border bg-background p-3 text-sm" required
+          <label className="block text-sm font-medium">HR reason / notes <span className="font-normal text-muted-foreground">(optional)</span>
+            <textarea className="mt-1.5 min-h-20 w-full rounded-lg border border-border bg-background p-3 text-sm"
               value={form.reason} onChange={(e) => setForm((v) => ({ ...v, reason: e.target.value }))}
               placeholder="Opening balance source or adjustment reason..." />
           </label>

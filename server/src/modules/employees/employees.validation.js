@@ -156,9 +156,8 @@ const departmentSchema = Joi.object({
 }).and('salaryPaymentMethod', 'salaryAccountNumber', 'salaryAccountTitle');
 
 const leaveBalanceInitializationSchema = Joi.object({
-  mode: Joi.string().valid('full_year', 'prorated', 'manual').required(),
-  effectiveDate: Joi.date().required(),
-  reason: Joi.string().trim().min(3).max(500).required(),
+  mode: Joi.string().valid('full_year').default('full_year'),
+  reason: Joi.string().trim().max(500).optional().allow('').default(''),
   balances: Joi.object({
     annual: Joi.object({
       entitlement: Joi.number().min(0).max(365).required(),

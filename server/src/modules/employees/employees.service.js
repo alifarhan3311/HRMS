@@ -255,8 +255,8 @@ async function initializeLeaveBalance(id, payload, actor) {
   if (!employee || String(employee.companyId) !== String(actor.companyId)) {
     throw createHttpError(404, 'Employee not found.');
   }
-  const effectiveDate = new Date(payload.effectiveDate);
-  const year = effectiveDate.getFullYear();
+  const year = new Date().getFullYear();
+  const effectiveDate = new Date(Date.UTC(year, 0, 1, 12));
   const existingYear = Number(employee.leaveBalanceInitialization?.year || 0);
   const isReinitialization = existingYear === year;
   if (isReinitialization && !payload.confirmAdjustment) {
@@ -276,18 +276,18 @@ async function initializeLeaveBalance(id, payload, actor) {
   employee.leaveBalance.casual = { available: 0, used: 0 };
   employee.leaveBalanceInitialization = {
     year,
-    mode: payload.mode,
+    mode: 'full_year',
     effectiveDate,
     initializedAt: new Date(),
     initializedBy: actor.id,
-    notes: payload.reason,
+    notes: payload.reason || '',
   };
   employee.leaveBalanceAdjustments.push({
     year,
-    mode: payload.mode,
+    mode: 'full_year',
     effectiveDate,
     balances,
-    reason: payload.reason,
+    reason: payload.reason || '',
     adjustedBy: actor.id,
     adjustedAt: new Date(),
     wasReinitialization: isReinitialization,
