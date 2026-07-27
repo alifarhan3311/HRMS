@@ -123,26 +123,6 @@ async function clearTeamLeadReferences(teamLeadId) {
   return Employee.updateMany({ teamLeadId }, { $unset: { teamLeadId: '' } });
 }
 
-async function syncDepartmentManagers(companyId) {
-  const managers = await Employee.find({ companyId, role: 'manager', status: 'active' })
-    .sort({ createdAt: 1 });
-  for (const manager of managers) {
-    const departments = [...new Set([
-      manager.department,
-      ...(manager.managedDepartments || []),
-    ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean))];
-    for (const department of departments) {
-      // Intentionally sequential: the oldest active manager remains canonical
-      // if legacy data contains duplicate managers for one department.
-      // eslint-disable-next-line no-await-in-loop
-      const canonical = await findActiveDepartmentManager(companyId, department);
-      if (String(canonical?._id) !== String(manager._id)) continue;
-      // eslint-disable-next-line no-await-in-loop
-      await assignDepartmentManager(companyId, department, manager._id);
-    }
-  }
-}
-
 async function countByCompany(companyId) {
   return Employee.countDocuments({ companyId });
 }
@@ -231,7 +211,6 @@ module.exports = {
   findActiveDepartmentManager,
   assignDepartmentManager,
   clearManagerReferences,
-  syncDepartmentManagers,
   findActiveDepartmentTeamLeads,
   clearTeamLeadReferences,
   countByCompany,

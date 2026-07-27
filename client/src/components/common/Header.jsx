@@ -44,7 +44,7 @@ export default function Header({ onMenuClick = () => {}, onLogoutLoadingChange =
   const [markAllNotificationsRead] = useMarkAllNotificationsReadMutation();
   const { data: notificationData } = useListNotificationsQuery(
     { limit: 5 },
-    { skip: !user?.id, pollingInterval: 60000 },
+    { skip: !user?.id },
   );
 
   const [searchOpen, setSearchOpen] = useState(false);

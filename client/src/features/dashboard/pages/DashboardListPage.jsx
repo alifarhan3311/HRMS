@@ -14,7 +14,7 @@ import { isAdminRole, isHRRole } from '../../../config/navigation';
 export default function DashboardListPage() {
   const { user } = useSelector((state) => state.auth);
   const { data, isLoading, isError, error } = useGetDashboardSummaryQuery(undefined, {
-    refetchOnMountOrArgChange: true,
+    refetchOnMountOrArgChange: 60,
   });
 
   if (isLoading) return <DashboardSkeleton />;

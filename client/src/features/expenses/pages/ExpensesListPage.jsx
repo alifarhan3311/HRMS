@@ -5,7 +5,6 @@ import {
   Receipt, Plus, RefreshCw, ChevronLeft, ChevronRight, Eye,
   BarChart3, Settings2, Pencil, Trash2, ListChecks, Tags, Upload,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -135,7 +134,7 @@ function BulkExpenseForm({ onSubmit, onClose, isLoading }) {
     setRows((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
   }
 
-  function excelDate(value) {
+  function excelDate(value, XLSX) {
     if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
     if (typeof value === 'number') {
       const parsed = XLSX.SSF.parse_date_code(value);
@@ -151,6 +150,7 @@ function BulkExpenseForm({ onSubmit, onClose, isLoading }) {
     if (!file) return;
     setImportError('');
     try {
+      const XLSX = await import('xlsx');
       const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
       const sheet = workbook.Sheets[workbook.SheetNames[0]];
       const data = XLSX.utils.sheet_to_json(sheet, { defval: '' });
@@ -159,7 +159,7 @@ function BulkExpenseForm({ onSubmit, onClose, isLoading }) {
           String(key).trim().toLowerCase().replace(/[^a-z]/g, ''), value,
         ]));
         return {
-          expenseDate: excelDate(values.date || values.expensedate),
+          expenseDate: excelDate(values.date || values.expensedate, XLSX),
           productName: String(values.product || values.productname || '').trim(),
           quantity: Number(values.quantity || values.qty || 0),
           unitPrice: Number(values.price || values.unitprice || 0),

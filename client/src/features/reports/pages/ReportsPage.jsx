@@ -5,7 +5,6 @@
 import { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { motion } from 'framer-motion';
-import * as XLSX from 'xlsx';
 import {
   BarChart3, Download, Calendar, Users, Wallet,
   Receipt, Clock, TrendingUp, FileText,
@@ -204,34 +203,39 @@ export default function ReportsPage() {
   const activeRows = reportRows[activeReport] || [];
   const activeLabel = REPORT_TYPES.find(report => report.id === activeReport)?.label || 'Report';
 
-  function handleExport() {
+  async function handleExport() {
     if (!activeRows.length) {
       toast.error(`No ${activeLabel.toLowerCase()} data available to export.`);
       return;
     }
-    const heading = [
-      [activeLabel],
-      [`Period: ${MONTHS[Number(filters.month) - 1]} ${filters.year}`],
-      [`Generated: ${new Date().toLocaleString('en-PK')}`],
-      [],
-    ];
-    const sheet = XLSX.utils.aoa_to_sheet(heading);
-    XLSX.utils.sheet_add_json(sheet, activeRows, { origin: 'A5' });
-    const headers = Object.keys(activeRows[0]);
-    sheet['!cols'] = headers.map(header => ({
-      wch: Math.min(40, Math.max(
-        header.length + 2,
-        ...activeRows.map(row => String(row[header] ?? '').length + 2),
-      )),
-    }));
-    sheet['!autofilter'] = { ref: `A5:${XLSX.utils.encode_col(headers.length - 1)}${activeRows.length + 5}` };
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, sheet, activeLabel.slice(0, 31));
-    XLSX.writeFile(
-      workbook,
-      `${activeReport}-report-${filters.year}-${String(filters.month).padStart(2, '0')}.xlsx`,
-    );
-    toast.success(`${activeLabel} exported successfully.`);
+    try {
+      const XLSX = await import('xlsx');
+      const heading = [
+        [activeLabel],
+        [`Period: ${MONTHS[Number(filters.month) - 1]} ${filters.year}`],
+        [`Generated: ${new Date().toLocaleString('en-PK')}`],
+        [],
+      ];
+      const sheet = XLSX.utils.aoa_to_sheet(heading);
+      XLSX.utils.sheet_add_json(sheet, activeRows, { origin: 'A5' });
+      const headers = Object.keys(activeRows[0]);
+      sheet['!cols'] = headers.map(header => ({
+        wch: Math.min(40, Math.max(
+          header.length + 2,
+          ...activeRows.map(row => String(row[header] ?? '').length + 2),
+        )),
+      }));
+      sheet['!autofilter'] = { ref: `A5:${XLSX.utils.encode_col(headers.length - 1)}${activeRows.length + 5}` };
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, activeLabel.slice(0, 31));
+      XLSX.writeFile(
+        workbook,
+        `${activeReport}-report-${filters.year}-${String(filters.month).padStart(2, '0')}.xlsx`,
+      );
+      toast.success(`${activeLabel} exported successfully.`);
+    } catch {
+      toast.error('Unable to load the Excel exporter.');
+    }
   }
 
   return (

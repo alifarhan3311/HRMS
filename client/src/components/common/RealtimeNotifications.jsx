@@ -31,7 +31,7 @@ export default function RealtimeNotifications() {
   const socketReadyOnce = useRef(false);
   const { data: pollingData } = useListNotificationsQuery(
     { limit: 5 },
-    { skip: !user?.id, pollingInterval: 30000, refetchOnFocus: true },
+    { skip: !user?.id, pollingInterval: 60000, refetchOnFocus: true },
   );
 
   useEffect(() => {

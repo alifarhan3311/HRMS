@@ -389,10 +389,6 @@ async function listEmployees(query, actor) {
     sort = '-createdAt',
   } = query;
 
-  if (['manager', 'team_lead'].includes(actor.role)) {
-    await repository.syncDepartmentManagers(actor.companyId);
-  }
-
   const filter = { companyId: actor.companyId };
 
   // The Super Admin identity is private/protected from every lower role.
@@ -552,7 +548,6 @@ async function deleteEmployee(id, actor) {
 }
 
 async function getEmployeeHierarchy(actor) {
-  await repository.syncDepartmentManagers(actor.companyId);
   const filter = { companyId: actor.companyId };
   if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   if (actor.role === 'manager') {
@@ -733,9 +728,6 @@ async function createDepartment(name, actor) {
 }
 
 async function getEmployeeStats(actor) {
-  if (['manager', 'team_lead'].includes(actor.role)) {
-    await repository.syncDepartmentManagers(actor.companyId);
-  }
   const filter = { companyId: actor.companyId };
   if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   if (actor.role === 'manager') filter.$and = [await buildManagerEmployeeScope(actor)];

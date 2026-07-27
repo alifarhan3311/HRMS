@@ -16,7 +16,7 @@ export default function ProtectedRoute({ children }) {
   const location = useLocation();
   const dispatch = useDispatch();
   const { data, error, isLoading, isFetching, isError, refetch } = useGetMeQuery(undefined, {
-    refetchOnMountOrArgChange: true,
+    refetchOnMountOrArgChange: 60,
   });
 
   const isAuthenticationError = error?.status === 401 || error?.status === 403;

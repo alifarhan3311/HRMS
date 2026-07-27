@@ -396,8 +396,10 @@ async function getDashboardForUser(user) {
   }
 
   if (['manager'].includes(role)) {
-    const employeeDash = await getEmployeeDashboard(user);
-    const hrDash = await getHRDashboard(user);
+    const [employeeDash, hrDash] = await Promise.all([
+      getEmployeeDashboard(user),
+      getHRDashboard(user),
+    ]);
     return { role: 'manager', ...employeeDash, teamOverview: hrDash.employeeStatistics };
   }
 

@@ -46,7 +46,8 @@ export const api = createApi({
   // Do not wait for unrelated in-flight queries before refreshing data
   // invalidated by a successful create/update/delete mutation.
   invalidationBehavior: 'immediately',
-  refetchOnFocus: true,
+  // Live events refresh changed data. Avoid reloading every screen on focus.
+  refetchOnFocus: false,
   refetchOnReconnect: true,
   tagTypes: [
     'Auth',
