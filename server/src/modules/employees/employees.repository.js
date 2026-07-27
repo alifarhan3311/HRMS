@@ -83,7 +83,10 @@ async function findActiveDepartmentManager(companyId, department, excludeId = nu
   if (!String(department || '').trim()) return null;
   const filter = {
     companyId,
-    department: departmentPattern(department),
+    $or: [
+      { department: departmentPattern(department) },
+      { managedDepartments: departmentPattern(department) },
+    ],
     role: 'manager',
     status: 'active',
   };
@@ -121,16 +124,22 @@ async function clearTeamLeadReferences(teamLeadId) {
 }
 
 async function syncDepartmentManagers(companyId) {
-  const managers = await Employee.find({ companyId, role: 'manager', status: 'active', department: { $nin: [null, ''] } })
+  const managers = await Employee.find({ companyId, role: 'manager', status: 'active' })
     .sort({ createdAt: 1 });
   for (const manager of managers) {
-    // Intentionally sequential: the oldest active manager remains canonical
-    // if legacy data contains duplicate managers for one department.
-    // eslint-disable-next-line no-await-in-loop
-    const canonical = await findActiveDepartmentManager(companyId, manager.department);
-    if (String(canonical?._id) !== String(manager._id)) continue;
-    // eslint-disable-next-line no-await-in-loop
-    await assignDepartmentManager(companyId, manager.department, manager._id);
+    const departments = [...new Set([
+      manager.department,
+      ...(manager.managedDepartments || []),
+    ].map(value => String(value || '').trim().toLowerCase()).filter(Boolean))];
+    for (const department of departments) {
+      // Intentionally sequential: the oldest active manager remains canonical
+      // if legacy data contains duplicate managers for one department.
+      // eslint-disable-next-line no-await-in-loop
+      const canonical = await findActiveDepartmentManager(companyId, department);
+      if (String(canonical?._id) !== String(manager._id)) continue;
+      // eslint-disable-next-line no-await-in-loop
+      await assignDepartmentManager(companyId, department, manager._id);
+    }
   }
 }
 
@@ -202,7 +211,7 @@ async function getStats(filter) {
 
 async function getHierarchy(filter) {
   return Employee.find({ ...filter, status: { $ne: 'resigned' } })
-    .select('fullName employeeCode email department designation role status profilePicture managerId teamLeadId')
+    .select('fullName employeeCode email department managedDepartments designation role status profilePicture managerId teamLeadId')
     .populate('managerId', 'fullName employeeCode designation role profilePicture')
     .populate('teamLeadId', 'fullName employeeCode designation role profilePicture')
     .sort({ role: 1, fullName: 1 });

@@ -24,7 +24,9 @@ export default function HolidaySettings({ province = 'ON', onProvinceChange }) {
   const holidays = data?.data || [];
   const { data: departmentsData } = useGetEmployeeDepartmentsQuery();
   const { data: shiftsData } = useListShiftsQuery({ active: true });
-  const departments = departmentsData?.data || [];
+  const departments = (departmentsData?.data || []).filter((department) => ![
+    'hr', 'human resource', 'human resources', 'human resources department',
+  ].includes(String(department || '').trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ')));
   const shifts = shiftsData?.data || [];
 
   async function sync(silent = false) {

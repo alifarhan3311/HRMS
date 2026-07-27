@@ -11,6 +11,7 @@ const Expense = require('../expenses/expenses.model');
 const Project = require('../projects/projects.model');
 const Holiday = require('../holidays/holidays.model');
 const settingsService = require('../companySettings/companySettings.service');
+const { buildManagerEmployeeScope } = require('../employees/managerScope');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -164,7 +165,7 @@ async function getHRDashboard(user) {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const employeeFilter = { companyId: user.companyId };
-  if (user.role === 'manager') employeeFilter.managerId = user.id;
+  if (user.role === 'manager') Object.assign(employeeFilter, await buildManagerEmployeeScope(user));
   else if (user.role !== 'super_admin') employeeFilter.role = { $ne: 'super_admin' };
   const visibleEmployeeIds = await Employee.find(employeeFilter).distinct('_id');
 

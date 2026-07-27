@@ -23,6 +23,7 @@ const employeesSchema = new mongoose.Schema(
   address: { type: String, set: encryptField, get: decryptFieldSafe },
   joiningDate: { type: Date, required: true },
   department: { type: String, required: true, trim: true },
+  managedDepartments: { type: [String], default: [] },
   designation: { type: String },
   managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   teamLeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
@@ -128,6 +129,7 @@ employeesSchema.index({ companyId: 1 });
 employeesSchema.index({ companyId: 1, status: 1, createdAt: -1 });
 employeesSchema.index({ companyId: 1, department: 1, role: 1, status: 1 });
 employeesSchema.index({ managerId: 1, status: 1 });
+employeesSchema.index({ companyId: 1, managedDepartments: 1, status: 1 });
 employeesSchema.index({ teamLeadId: 1, status: 1 });
 employeesSchema.index(
   { employeeCardNumber: 1 },

@@ -12,6 +12,11 @@ const Attendance = require('../attendance/attendance.model');
 const LeaveRequest = require('../leaves/leaves.model');
 const settingsService = require('../companySettings/companySettings.service');
 const { emitToUser } = require('../../config/socket');
+const {
+  normalizeDepartments,
+  buildManagerEmployeeScope,
+  managerCanAccessEmployee,
+} = require('./managerScope');
 
 const PASSWORD_SALT_ROUNDS = 12;
 const LEAVE_BALANCE_TYPES = ['paid', 'sick', 'annual'];
@@ -60,6 +65,15 @@ function escapeRegex(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function isHumanResourcesDepartment(value) {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+  return ['hr', 'human resource', 'human resources', 'human resources department'].includes(normalized);
+}
+
 async function validateAssignedShift(shiftId, companyId) {
   if (!shiftId) return;
   const exists = await Shift.exists({ _id: shiftId, companyId, isActive: true });
@@ -77,7 +91,10 @@ async function validateReportingLine({ managerId, teamLeadId, department, role }
   if (managerId && (!manager || String(manager.companyId) !== String(companyId) || manager.role !== 'manager' || manager.status !== 'active')) {
     throw createHttpError(422, 'Selected Reporting Manager is invalid or inactive.');
   }
-  if (manager && String(manager.department || '').trim().toLowerCase() !== String(department || '').trim().toLowerCase()) {
+  const managerDepartments = manager
+    ? normalizeDepartments([manager.department, ...(manager.managedDepartments || [])])
+    : [];
+  if (manager && !managerDepartments.includes(String(department || '').trim().toLowerCase())) {
     throw createHttpError(422, 'Selected Reporting Manager belongs to a different department.');
   }
   if (teamLeadId && (!teamLead || String(teamLead.companyId) !== String(companyId) || teamLead.role !== 'team_lead' || teamLead.status !== 'active')) {
@@ -102,13 +119,17 @@ async function applyDepartmentReportingLine(payload, companyId, role, employeeId
   if (role === 'manager') {
     payload.managerId = null;
     payload.teamLeadId = null;
-    if (!department) return;
-    const duplicate = await repository.findActiveDepartmentManager(companyId, department, employeeId);
-    if (duplicate) {
-      throw createHttpError(409, `${department} already has an active Manager: ${duplicate.fullName}.`);
+    normalizeManagedDepartments(payload, role);
+    for (const managedDepartment of payload.managedDepartments) {
+      // eslint-disable-next-line no-await-in-loop
+      const duplicate = await repository.findActiveDepartmentManager(companyId, managedDepartment, employeeId);
+      if (duplicate) {
+        throw createHttpError(409, `${managedDepartment} already has an active Manager: ${duplicate.fullName}.`);
+      }
     }
     return;
   }
+  if (payload.managedDepartments !== undefined) payload.managedDepartments = [];
   if (!['team_lead', 'employee'].includes(role) || !department) return;
   const departmentManager = await repository.findActiveDepartmentManager(companyId, department);
   if (departmentManager) payload.managerId = departmentManager._id;
@@ -142,7 +163,7 @@ function assertCanAssignRole(actor, role) {
   }
 }
 
-function teamLeaderCanView(actor, employee) {
+async function teamLeaderCanView(actor, employee) {
   if (actor.role !== 'super_admin' && employee.role === 'super_admin') return false;
   if (['employee', 'admin'].includes(actor.role)) {
     return String(employee._id) === String(actor.id);
@@ -150,8 +171,23 @@ function teamLeaderCanView(actor, employee) {
   if (!['manager', 'team_lead'].includes(actor.role)) return true;
   const actorId = String(actor.id);
   if (String(employee._id) === actorId) return true;
-  const reportingField = actor.role === 'manager' ? employee.managerId : employee.teamLeadId;
+  if (actor.role === 'manager') return managerCanAccessEmployee(actor, employee);
+  const reportingField = employee.teamLeadId;
   return String(reportingField?._id || reportingField || '') === actorId;
+}
+
+function normalizeManagedDepartments(payload, role) {
+  if (role !== 'manager') {
+    payload.managedDepartments = [];
+    return;
+  }
+  payload.managedDepartments = normalizeDepartments([
+    payload.department,
+    ...(payload.managedDepartments || []),
+  ]);
+  if (payload.managedDepartments.some(isHumanResourcesDepartment)) {
+    throw createHttpError(422, 'Human Resources is reserved and cannot be assigned to employees.');
+  }
 }
 
 function redactManagerPrivateFields(employee) {
@@ -268,6 +304,9 @@ async function initializeLeaveBalance(id, payload, actor) {
 async function createEmployee(payload, actor) {
   payload = normalizeOptionalReferences(payload);
   payload.department = String(payload.department || '').trim().toLowerCase();
+  if (isHumanResourcesDepartment(payload.department)) {
+    throw createHttpError(422, 'Human Resources is reserved and cannot be assigned to employees.');
+  }
   assertCanAssignRole(actor, payload.role);
   await applyDepartmentReportingLine(payload, actor.companyId, payload.role);
   // Validate uniqueness
@@ -308,8 +347,11 @@ async function createEmployee(payload, actor) {
   delete data.password; // never store plaintext
 
   const employee = await repository.create(data);
-  if (employee.role === 'manager' && employee.department) {
-    await repository.assignDepartmentManager(actor.companyId, employee.department, employee._id);
+  if (employee.role === 'manager') {
+    for (const department of employee.managedDepartments || [employee.department]) {
+      // eslint-disable-next-line no-await-in-loop
+      await repository.assignDepartmentManager(actor.companyId, department, employee._id);
+    }
   }
   return sanitize(employee);
 }
@@ -317,7 +359,7 @@ async function createEmployee(payload, actor) {
 async function getEmployeeById(id, actor) {
   let record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Employee not found.');
-  if (!teamLeaderCanView(actor, record)) {
+  if (!await teamLeaderCanView(actor, record)) {
     throw createHttpError(403, 'You can only view employees assigned to your team.');
   }
   const reconciled = await reconcileLeaveBalance(record);
@@ -359,7 +401,7 @@ async function listEmployees(query, actor) {
   // Managers see only their direct department team. Department automation
   // assigns both Team Leads and Employees to managerId, so this includes the
   // complete team without exposing another manager's staff.
-  if (actor.role === 'manager') filter.managerId = actor.id;
+  if (actor.role === 'manager') filter.$and = [await buildManagerEmployeeScope(actor)];
   if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
 
   if (status) filter.status = status;
@@ -419,9 +461,19 @@ async function updateEmployee(id, payload, actor) {
   }
   const existing = await repository.findById(id);
   if (!existing) throw createHttpError(404, 'Employee not found.');
+  if (
+    payload.department !== undefined
+    && isHumanResourcesDepartment(payload.department)
+    && !isHumanResourcesDepartment(existing.department)
+  ) {
+    throw createHttpError(422, 'Human Resources is reserved and cannot be assigned to employees.');
+  }
   assertCanManageEmployee(actor, existing, { allowSelf: true, action: 'edit' });
   const effectiveDepartment = payload.department !== undefined ? payload.department : existing.department;
   payload.department = effectiveDepartment;
+  if (existing.role === 'manager' && payload.managedDepartments === undefined) {
+    payload.managedDepartments = existing.managedDepartments || [];
+  }
   await applyDepartmentReportingLine(payload, actor.companyId, existing.role, id);
 
   // If email is being changed, check uniqueness
@@ -442,11 +494,12 @@ async function updateEmployee(id, payload, actor) {
   const updated = await repository.updateById(id, payload);
   if (!updated) throw createHttpError(404, 'Employee not found.');
   if (existing.role === 'manager') {
-    if (String(existing.department || '').toLowerCase() !== String(updated.department || '').toLowerCase()) {
-      await repository.clearManagerReferences(id);
-    }
-    if (updated.department && updated.status === 'active') {
-      await repository.assignDepartmentManager(actor.companyId, updated.department, updated._id);
+    await repository.clearManagerReferences(id);
+    if (updated.status === 'active') {
+      for (const department of updated.managedDepartments || [updated.department]) {
+        // eslint-disable-next-line no-await-in-loop
+        await repository.assignDepartmentManager(actor.companyId, department, updated._id);
+      }
     }
   }
   if (existing.role === 'team_lead') {
@@ -503,7 +556,7 @@ async function getEmployeeHierarchy(actor) {
   const filter = { companyId: actor.companyId };
   if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   if (actor.role === 'manager') {
-    filter.$or = [{ _id: actor.id }, { managerId: actor.id }];
+    filter.$or = [{ _id: actor.id }, await buildManagerEmployeeScope(actor)];
   } else if (actor.role === 'team_lead') {
     filter.$or = [{ _id: actor.id }, { teamLeadId: actor.id }];
   }
@@ -525,14 +578,24 @@ async function changeStatus(id, { status, reason }, actor) {
     update.exitReason = reason || '';
   }
 
-  if (employee.role === 'manager' && status === 'active' && employee.department) {
-    const duplicate = await repository.findActiveDepartmentManager(employee.companyId, employee.department, employee._id);
-    if (duplicate) throw createHttpError(409, `${employee.department} already has an active Manager: ${duplicate.fullName}.`);
+  const managedDepartments = normalizeDepartments([
+    employee.department,
+    ...(employee.managedDepartments || []),
+  ]);
+  if (employee.role === 'manager' && status === 'active') {
+    for (const department of managedDepartments) {
+      // eslint-disable-next-line no-await-in-loop
+      const duplicate = await repository.findActiveDepartmentManager(employee.companyId, department, employee._id);
+      if (duplicate) throw createHttpError(409, `${department} already has an active Manager: ${duplicate.fullName}.`);
+    }
   }
   const updated = await repository.updateById(id, update);
   if (employee.role === 'manager') {
-    if (status === 'active' && employee.department) {
-      await repository.assignDepartmentManager(employee.companyId, employee.department, employee._id);
+    if (status === 'active') {
+      for (const department of managedDepartments) {
+        // eslint-disable-next-line no-await-in-loop
+        await repository.assignDepartmentManager(employee.companyId, department, employee._id);
+      }
     } else {
       await repository.clearManagerReferences(employee._id);
     }
@@ -555,6 +618,13 @@ async function promoteEmployee(id, promotionData, actor) {
   }
   const employee = await repository.findById(id);
   if (!employee) throw createHttpError(404, 'Employee not found.');
+  if (
+    promotionData.department
+    && isHumanResourcesDepartment(promotionData.department)
+    && !isHumanResourcesDepartment(employee.department)
+  ) {
+    throw createHttpError(422, 'Human Resources is reserved and cannot be assigned to employees.');
+  }
   assertCanManageEmployee(actor, employee, { action: 'promote' });
   if (promotionData.role) assertCanAssignRole(actor, promotionData.role);
   const nextRole = promotionData.role || employee.role;
@@ -636,7 +706,7 @@ async function getDepartmentList(companyId) {
     ...employeeDepartments,
   ]
     .map((department) => String(department || '').trim().toLowerCase())
-    .filter(Boolean);
+    .filter((department) => department && !isHumanResourcesDepartment(department));
 
   return [...new Set(departments)]
     .sort((left, right) => left.localeCompare(right));
@@ -644,6 +714,9 @@ async function getDepartmentList(companyId) {
 
 async function createDepartment(name, actor) {
   const normalizedName = String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  if (isHumanResourcesDepartment(normalizedName)) {
+    throw createHttpError(422, 'Human Resources is a reserved department and is not available for employee assignment.');
+  }
   const departments = await getDepartmentList(actor.companyId);
   const existing = departments.find(
     (department) => department.toLowerCase() === normalizedName.toLowerCase()
@@ -665,7 +738,7 @@ async function getEmployeeStats(actor) {
   }
   const filter = { companyId: actor.companyId };
   if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
-  if (actor.role === 'manager') filter.managerId = actor.id;
+  if (actor.role === 'manager') filter.$and = [await buildManagerEmployeeScope(actor)];
   if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
   return repository.getStats(filter);
 }

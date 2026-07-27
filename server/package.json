@@ -10,6 +10,7 @@
     "bootstrap:super-admin": "node scripts/bootstrap-super-admin.js",
     "migrate:remove-finance-role": "node scripts/migrate-remove-finance-role.js",
     "migrate:casual-to-annual": "node scripts/migrate-casual-to-annual.js",
+    "migrate:merge-manager": "node scripts/merge-duplicate-manager.js",
     "test": "node --test test/*.test.js",
     "lint": "eslint src --ext .js"
   },

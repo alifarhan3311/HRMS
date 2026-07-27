@@ -11,6 +11,10 @@
 const createHttpError = require('http-errors');
 const repository = require('./attendance.repository');
 const Employee = require('../employees/employees.model');
+const {
+  buildManagerEmployeeScope,
+  managerCanAccessEmployee,
+} = require('../employees/managerScope');
 const { normalizeDurationPolicy } = require('../shifts/shifts.service');
 const settingsService = require('../companySettings/companySettings.service');
 const notificationService = require('../notifications/notifications.service');
@@ -385,14 +389,14 @@ async function assertCanViewEmployeeAttendance(actor, employeeId) {
   if (!['super_admin', 'hr', 'manager', 'team_lead'].includes(actor.role)) {
     throw createHttpError(403, 'You can only view your own attendance.');
   }
-  const employee = await Employee.findById(employeeId).select('companyId role managerId teamLeadId');
+  const employee = await Employee.findById(employeeId).select('companyId role department managerId teamLeadId');
   if (!employee || String(employee.companyId) !== String(actor.companyId)) {
     throw createHttpError(404, 'Employee not found.');
   }
   if (actor.role !== 'super_admin' && employee.role === 'super_admin') {
     throw createHttpError(403, 'Super Admin attendance is not visible to your role.');
   }
-  if (actor.role === 'manager' && String(employee.managerId || '') !== String(actor.id)) {
+  if (actor.role === 'manager' && !await managerCanAccessEmployee(actor, employee)) {
     throw createHttpError(403, 'You can only view attendance for employees reporting to you.');
   }
   if (actor.role === 'team_lead' && String(employee.teamLeadId || '') !== String(actor.id)) {
@@ -437,7 +441,7 @@ async function visibleAttendanceEmployeeIds(actor, includeSelf = true) {
     return includeSelf ? [actor.id] : [];
   }
   const filter = { companyId: actor.companyId };
-  if (actor.role === 'manager') filter.managerId = actor.id;
+  if (actor.role === 'manager') Object.assign(filter, await buildManagerEmployeeScope(actor));
   else if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
   else if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   const ids = await Employee.find(filter).distinct('_id');

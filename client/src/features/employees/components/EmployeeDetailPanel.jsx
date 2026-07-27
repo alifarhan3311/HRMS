@@ -214,6 +214,13 @@ export default function EmployeeDetailPanel({
               <Section title="Employment Details">
                 <InfoRow icon={Calendar} label="Joining Date" value={formatDate(employee.joiningDate)} />
                 <InfoRow icon={Briefcase} label="Department" value={employee.department} />
+                <InfoRow
+                  icon={Briefcase}
+                  label="Managed Departments"
+                  value={employee.role === 'manager' && employee.managedDepartments?.length
+                    ? employee.managedDepartments.join(', ')
+                    : undefined}
+                />
                 <InfoRow icon={Briefcase} label="Designation" value={employee.designation} />
                 <InfoRow icon={User} label="Manager" value={employee.managerId?.fullName} />
                 <InfoRow icon={User} label="Team Lead" value={employee.teamLeadId?.fullName} />

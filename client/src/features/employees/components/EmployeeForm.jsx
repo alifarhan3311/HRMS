@@ -33,7 +33,9 @@ const GENDERS = ['male', 'female', 'other'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
 const DEFAULT_ROLES = ['employee', 'team_lead', 'manager'];
-const HIDDEN_CREATE_DEPARTMENTS = new Set(['hr', 'executive']);
+const HIDDEN_CREATE_DEPARTMENTS = new Set([
+  'hr', 'human resource', 'human resources', 'human resources department', 'executive',
+]);
 const SALARY_PAYMENT_METHODS = [
   ['allied_bank', 'Allied Bank (ABL)'], ['askari_bank', 'Askari Bank'],
   ['bank_alfalah', 'Bank Alfalah'], ['bank_al_habib', 'Bank AL Habib'],
@@ -65,7 +67,7 @@ const TAB_FIELDS = {
   personal: ['fullName', 'fatherName', 'cnic', 'dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'],
   contact: ['email', 'contactNumber', 'address', 'emergencyContact'],
   employment: [
-    'joiningDate', 'department', 'designation', 'role', 'managerId', 'teamLeadId',
+    'joiningDate', 'department', 'managedDepartments', 'designation', 'role', 'managerId', 'teamLeadId',
     'shiftId', 'currentSalary', 'salaryPaymentMethod', 'salaryAccountNumber', 'salaryAccountTitle',
   ],
   professional: ['qualification', 'experience'],
@@ -79,6 +81,7 @@ const FIELD_LABELS = {
   contactNumber: 'Contact Number',
   joiningDate: 'Joining Date',
   department: 'Department',
+  managedDepartments: 'Managed Departments',
   role: 'Role',
   teamLeadId: 'Team Lead',
   shiftId: 'Assigned Shift',
@@ -108,6 +111,7 @@ const EMPTY_FORM = {
   employeeCode: '',
   joiningDate: '',
   department: '',
+  managedDepartments: [],
   designation: '',
   role: 'employee',
   managerId: '',
@@ -157,12 +161,17 @@ export default function EmployeeForm({
     ...(departmentsData?.data || []),
     ...(form.department ? [form.department] : []),
   ].map((department) => String(department).trim().toLowerCase()))]
-    .filter((department) => isEdit || !HIDDEN_CREATE_DEPARTMENTS.has(department))
+    .filter((department) => !HIDDEN_CREATE_DEPARTMENTS.has(
+      department.replace(/[_-]+/g, ' ').replace(/\s+/g, ' '),
+    ))
     .sort((left, right) => left.localeCompare(right));
   const normalizedDepartment = String(form.department || '').trim().toLowerCase();
   const availableManagers = managers.filter((manager) => (
     Boolean(normalizedDepartment)
-    && String(manager.department || '').trim().toLowerCase() === normalizedDepartment
+    && [
+      manager.department,
+      ...(manager.managedDepartments || []),
+    ].some((department) => String(department || '').trim().toLowerCase() === normalizedDepartment)
   ));
   const availableTeamLeads = teamLeads.filter((lead) => (
     Boolean(normalizedDepartment)
@@ -209,6 +218,7 @@ export default function EmployeeForm({
         managerId: initial.managerId?._id || initial.managerId || '',
         teamLeadId: initial.teamLeadId?._id || initial.teamLeadId || '',
         shiftId: initial.shiftId?._id || initial.shiftId || '',
+        managedDepartments: initial.managedDepartments || [],
         salaryPaymentMethod: initial.salaryPaymentMethod || '',
         salaryAccountNumber: initial.salaryAccountNumber || '',
         salaryAccountTitle: initial.salaryAccountTitle || '',
@@ -296,6 +306,9 @@ export default function EmployeeForm({
     }
     if (!form.joiningDate) validationErrors.joiningDate = 'Joining date is required';
     if (!form.department.trim()) validationErrors.department = 'Department is required';
+    if (form.role === 'manager' && !form.managedDepartments.length && !form.department.trim()) {
+      validationErrors.managedDepartments = 'Select at least one managed department';
+    }
     if (!form.role || !allowedRoles.includes(form.role)) validationErrors.role = 'Select an allowed employee role';
     if (form.role === 'employee' && availableTeamLeads.length > 0 && !form.teamLeadId) {
       validationErrors.teamLeadId = 'Select the Team Lead this employee will report to';
@@ -358,6 +371,9 @@ export default function EmployeeForm({
     payload.managerId = payload.managerId || null;
     payload.teamLeadId = payload.teamLeadId || null;
     payload.shiftId = payload.shiftId || null;
+    payload.managedDepartments = form.role === 'manager'
+      ? [...new Set([form.department, ...form.managedDepartments].filter(Boolean))]
+      : [];
     const saved = await onSubmit(payload);
     if (saved !== false) clearDraft();
   }
@@ -519,11 +535,6 @@ export default function EmployeeForm({
             {activeTab === 'employment' && (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Input
-                  label="Employee Code"
-                  value={isEdit ? form.employeeCode : 'Generated automatically after save'}
-                  disabled
-                />
-                <Input
                   label="Joining Date" required type="date"
                   value={form.joiningDate}
                   onChange={(e) => set('joiningDate', e.target.value)}
@@ -600,6 +611,29 @@ export default function EmployeeForm({
                     )}
                   </AnimatePresence>
                 </div>
+                {form.role === 'manager' && (
+                  <div className="col-span-1 sm:col-span-2">
+                    <Select
+                      label="Managed Departments"
+                      multiple
+                      size={Math.min(Math.max(departments.length, 3), 6)}
+                      value={form.managedDepartments}
+                      onChange={(event) => set(
+                        'managedDepartments',
+                        Array.from(event.target.selectedOptions, (option) => option.value),
+                      )}
+                      error={errors.managedDepartments}
+                      className="min-h-28"
+                    >
+                      {departments.map((department) => (
+                        <option key={department} value={department}>{department}</option>
+                      ))}
+                    </Select>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Select all departments this manager controls. The primary department is included automatically.
+                    </p>
+                  </div>
+                )}
                 <Input
                   label="Designation"
                   placeholder="Software Engineer"
@@ -680,11 +714,11 @@ export default function EmployeeForm({
                   error={errors.salaryAccountTitle}
                   autoComplete="off"
                 />
-                {['employee', 'team_lead'].includes(form.role) && (
+                {['employee', 'team_lead'].includes(form.role) && !departmentManager && (
                   <Select
-                    label={departmentManager ? 'Reporting Manager (Auto-assigned)' : 'Reporting Manager'}
+                    label="Reporting Manager"
                     value={form.managerId}
-                    disabled={!form.department || availableManagers.length === 0 || Boolean(departmentManager)}
+                    disabled={!form.department || availableManagers.length === 0}
                     onChange={(e) => {
                       const managerId = e.target.value;
                       set('managerId', managerId);
@@ -703,11 +737,6 @@ export default function EmployeeForm({
                       <option key={m._id} value={m._id}>{m.fullName} ({m.designation})</option>
                     ))}
                   </Select>
-                )}
-                {departmentManager && (
-                  <p className="text-xs text-emerald-600">
-                    {departmentManager.fullName} is automatically assigned because they manage the {form.department} department.
-                  </p>
                 )}
                 {form.role === 'employee' && (
                   <Select
@@ -730,11 +759,6 @@ export default function EmployeeForm({
                     ))}
                   </Select>
                 )}
-                <Input
-                  label="Employee Card Number"
-                  value={isEdit ? (form.employeeCardNumber || 'Not assigned') : 'Generated automatically after save'}
-                  disabled
-                />
                 <Input
                   label="Biometric Device User ID"
                   placeholder="Exact user ID shown on ZKTeco device"

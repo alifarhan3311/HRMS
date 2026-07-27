@@ -225,10 +225,24 @@ function TeamStructure({ employees = [] }) {
   const members = employees.filter((employee) => employee.role === 'employee');
 
   function Person({ employee }) {
+    const managedDepartments = employee.role === 'manager'
+      ? [...new Set([
+        employee.department,
+        ...(employee.managedDepartments || []),
+      ].map((department) => String(department || '').trim()).filter(Boolean))]
+      : [];
     return (
       <div className="flex min-w-0 items-center gap-3 rounded-xl border border-border bg-background px-3 py-3 shadow-sm transition-colors hover:border-primary/30 hover:bg-accent/30">
         <Avatar name={employee.fullName} src={employee.profilePicture} size="xs" />
-        <div className="min-w-0"><p className="truncate text-sm font-medium">{employee.fullName}</p><p className="truncate text-[11px] text-muted-foreground">{employee.designation || employee.employeeCode}</p></div>
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium">{employee.fullName}</p>
+          <p className="truncate text-[11px] text-muted-foreground">{employee.designation || employee.employeeCode}</p>
+          {managedDepartments.length > 0 && (
+            <p className="mt-1 text-[11px] font-medium capitalize text-primary">
+              Manages: {managedDepartments.join(' · ')}
+            </p>
+          )}
+        </div>
       </div>
     );
   }
@@ -237,7 +251,9 @@ function TeamStructure({ employees = [] }) {
     const assigned = members.filter((member) => idOf(member.teamLeadId) === idOf(lead));
     return (
       <div className="min-w-0 rounded-2xl border border-primary/20 bg-primary/5 p-3 sm:p-4">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-primary">Team Lead</p>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-primary">
+          Team Lead{lead.department ? ` · ${lead.department}` : ''}
+        </p>
         <Person employee={lead} />
         <div className="ml-3 mt-3 space-y-2 border-l-2 border-primary/15 pl-3 sm:ml-5 sm:pl-4">
           {assigned.length ? assigned.map((member) => <Person key={member._id} employee={member} />) : <p className="py-2 text-xs text-muted-foreground">No members assigned</p>}

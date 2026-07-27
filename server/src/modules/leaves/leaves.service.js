@@ -17,6 +17,10 @@ const notificationService = require('../notifications/notifications.service');
 const settingsService = require('../companySettings/companySettings.service');
 const logger = require('../../utils/logger');
 const { emitToCompany } = require('../../config/socket');
+const {
+  buildManagerEmployeeScope,
+  managerCanAccessEmployee,
+} = require('../employees/managerScope');
 
 function leaveEligibilityDate(joiningDate) {
   const joined = new Date(joiningDate);
@@ -110,7 +114,7 @@ function buildApprovalChain() {
 
 async function visibleLeaveEmployeeIds(actor, includeSelf = true) {
   const filter = { companyId: actor.companyId };
-  if (actor.role === 'manager') filter.managerId = actor.id;
+  if (actor.role === 'manager') Object.assign(filter, await buildManagerEmployeeScope(actor));
   else if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
   else if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   const ids = await Employee.find(filter).distinct('_id');
@@ -120,14 +124,14 @@ async function visibleLeaveEmployeeIds(actor, includeSelf = true) {
 
 async function assertCanViewLeave(actor, employeeId) {
   if (String(employeeId) === String(actor.id)) return;
-  const employee = await Employee.findById(employeeId).select('companyId role managerId teamLeadId');
+  const employee = await Employee.findById(employeeId).select('companyId role department managerId teamLeadId');
   if (!employee || String(employee.companyId) !== String(actor.companyId)) {
     throw createHttpError(404, 'Leave request not found.');
   }
   if (actor.role !== 'super_admin' && employee.role === 'super_admin') {
     throw createHttpError(403, 'Super Admin leave records are not visible to your role.');
   }
-  if (actor.role === 'manager' && String(employee.managerId || '') !== String(actor.id)) {
+  if (actor.role === 'manager' && !await managerCanAccessEmployee(actor, employee)) {
     throw createHttpError(403, 'You can only view leave records for employees reporting to you.');
   }
   if (actor.role === 'team_lead' && String(employee.teamLeadId || '') !== String(actor.id)) {
