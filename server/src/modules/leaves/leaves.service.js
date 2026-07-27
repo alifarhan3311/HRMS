@@ -236,6 +236,103 @@ async function notifyStageApprovers(leave, stage, onlyRecipientId = null) {
 }
 
 // ─── Apply ───────────────────────────────────────────────────────────────────
+async function reservedLateAttendanceIds(employeeId, excludeLeaveId = null) {
+  const filter = {
+    employeeId,
+    requestKind: 'late_conversion',
+    status: { $in: ['pending', 'approved'] },
+  };
+  if (excludeLeaveId) filter._id = { $ne: excludeLeaveId };
+  return LeaveRequest.find(filter).distinct('selectedLateAttendanceIds');
+}
+
+async function getEligibleLates(actor) {
+  const reservedIds = await reservedLateAttendanceIds(actor.id);
+  return Attendance.find({
+    employeeId: actor.id,
+    companyId: actor.companyId,
+    _id: { $nin: reservedIds },
+    $or: [
+      { status: 'late', lateMinutes: { $gt: 0 } },
+      { lateCountAppliedAt: { $exists: true } },
+    ],
+  })
+    .select('_id shiftDate date signInTime signOutTime lateMinutes status missedPunchType shiftName')
+    .sort({ shiftDate: -1, date: -1 })
+    .lean();
+}
+
+async function applyLeaveAgainstLates({ leaveType, attendanceIds, reason }, actor) {
+  const employee = await Employee.findOne({ _id: actor.id, companyId: actor.companyId });
+  if (!employee) throw createHttpError(404, 'Employee not found.');
+  const eligibilityDate = leaveEligibilityDate(employee.joiningDate);
+  if (new Date() < eligibilityDate) {
+    throw createHttpError(403, `Leave is available after completing 3 months of service (${eligibilityDate.toISOString().slice(0, 10)}).`);
+  }
+
+  const settings = await settingsService.getPolicy(actor.companyId);
+  const enabledTypes = settings.leavePolicy?.enabledTypes || Object.keys(LEAVE_BALANCE_KEYS);
+  if (!LEAVE_BALANCE_KEYS[leaveType] || !enabledTypes.includes(leaveType)) {
+    throw createHttpError(400, 'Select an enabled paid leave type.');
+  }
+
+  const uniqueIds = [...new Set(attendanceIds.map(String))];
+  if (uniqueIds.length !== 3) throw createHttpError(422, 'Select exactly 3 different late records.');
+  const reservedIds = new Set((await reservedLateAttendanceIds(actor.id)).map(String));
+  if (uniqueIds.some(id => reservedIds.has(id))) {
+    throw createHttpError(409, 'One or more selected lates are already used in another request.');
+  }
+
+  const lateRecords = await Attendance.find({
+    _id: { $in: uniqueIds },
+    employeeId: actor.id,
+    companyId: actor.companyId,
+    $or: [
+      { status: 'late', lateMinutes: { $gt: 0 } },
+      { lateCountAppliedAt: { $exists: true } },
+    ],
+  }).sort({ shiftDate: 1, date: 1 });
+  if (lateRecords.length !== 3) {
+    throw createHttpError(422, 'All 3 selected records must be your eligible lates.');
+  }
+
+  const balanceKey = LEAVE_BALANCE_KEYS[leaveType];
+  const balance = employee.leaveBalance?.[balanceKey];
+  const remaining = Number(balance?.available || 0) - Number(balance?.used || 0);
+  if (remaining < 1) {
+    throw createHttpError(400, `Insufficient ${leaveType} leave balance. Available: ${remaining} days.`);
+  }
+
+  const selectedLateDates = lateRecords.map(record =>
+    record.shiftDate || new Date(record.date).toISOString().slice(0, 10)
+  );
+  const startDate = new Date(`${selectedLateDates[0]}T12:00:00.000Z`);
+  const endDate = new Date(`${selectedLateDates[selectedLateDates.length - 1]}T12:00:00.000Z`);
+  const leave = await repository.create({
+    employeeId: actor.id,
+    employeeName: employee.fullName,
+    employeeCode: employee.employeeCode,
+    leaveType,
+    startDate,
+    endDate,
+    totalDays: 1,
+    dutyDates: [],
+    reason: reason || 'Leave requested against 3 selected lates.',
+    requestKind: 'late_conversion',
+    selectedLateAttendanceIds: lateRecords.map(record => record._id),
+    selectedLateDates,
+    status: 'pending',
+    currentStage: 2,
+    approvalChain: [{ stage: 2, approverRole: 'hr', status: 'pending' }],
+    companyId: actor.companyId,
+    branchId: actor.branchId,
+  });
+
+  await notifyStageApprovers(leave, 2);
+  emitLeaveUpdate(actor.companyId, 'applied', leave);
+  return leave;
+}
+
 async function applyLeave(payload, actor) {
   const { leaveType, startDate, endDate, reason, emergencyContact, employeeId, attendanceId } = payload;
   const isHrOverride = Boolean(employeeId) && actor.role === 'hr';
@@ -564,6 +661,8 @@ module.exports = {
   calcWorkingDays,
   calculateLeaveDutyDates,
   leaveEligibilityDate,
+  getEligibleLates,
+  applyLeaveAgainstLates,
   applyLeave,
   approveLeave,
   rejectLeave,

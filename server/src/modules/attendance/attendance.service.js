@@ -6,7 +6,7 @@
  *  - Manual attendance correction
  *  - Regularization request workflow
  *  - Monthly summary
- *  - Late policy: every 3 lates = 1 leave deduction
+ *  - Late tracking for employee-requested leave conversion
  */
 const createHttpError = require('http-errors');
 const repository = require('./attendance.repository');
@@ -195,13 +195,12 @@ async function signIn({
     await Employee.updateOne({ _id: employeeId }, { $set: { lateCount: 0 } });
   } else if (lateMinutes > 0) {
     await Employee.findByIdAndUpdate(employeeId, { $inc: { lateCount: 1 } });
-    // Check if late count hits multiple of 3 — trigger leave deduction notification
+    // Every complete group of three is only made available for an optional
+    // employee leave request. Attendance never deducts leave or salary itself.
     const emp = await Employee.findById(employeeId);
     if (emp && emp.lateCount % 3 === 0) {
-      // In production: emit a BullMQ job to deduct leave and send notification
-      // For now we note it in the record
       await repository.updateById(record._id, {
-        notes: (notes || '') + ' [Late policy: 3rd late mark — 1 leave deduction pending]',
+        notes: `${notes || ''} [3 lates available for optional leave request]`.trim(),
       });
     }
   }

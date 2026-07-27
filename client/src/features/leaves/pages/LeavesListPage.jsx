@@ -21,6 +21,7 @@ import {
 import {
   useListLeavesQuery, useApplyLeaveMutation, useApproveLeaveMutation,
   useRejectLeaveMutation, useCancelLeaveMutation, useGetPendingApprovalsQuery,
+  useGetEligibleLatesQuery, useApplyLeaveAgainstLatesMutation,
 } from '../api/leaves.api';
 import { toast } from '../../../utils/toast';
 import { useGetEmployeeByIdQuery } from '../../employees/api/employees.api';
@@ -225,6 +226,9 @@ export default function LeavesListPage() {
   const isApprover = ['hr', 'manager', 'team_lead'].includes(user?.role);
 
   const [applyOpen, setApplyOpen] = useState(false);
+  const [lateLeaveOpen, setLateLeaveOpen] = useState(false);
+  const [selectedLateIds, setSelectedLateIds] = useState([]);
+  const [lateLeaveType, setLateLeaveType] = useState('');
   const [cancelTarget, setCancelTarget] = useState(null);
   const [reviewTarget, setReviewTarget] = useState(null); // { leave, action }
   const [remarkText, setRemarkText] = useState('');
@@ -238,7 +242,9 @@ export default function LeavesListPage() {
   const { data, isLoading, isFetching, refetch } = useListLeavesQuery({ page, limit: 15, ...filters });
   const { data: analyticsData, refetch: refetchAnalytics } = useListLeavesQuery({ limit: 100, sort: '-createdAt' });
   const { data: pendingData, refetch: refetchPending } = useGetPendingApprovalsQuery(undefined, { skip: !isApprover });
+  const { data: eligibleLateData, refetch: refetchEligibleLates } = useGetEligibleLatesQuery();
   const [applyLeave, { isLoading: applying }] = useApplyLeaveMutation();
+  const [applyLeaveAgainstLates, { isLoading: applyingLateLeave }] = useApplyLeaveAgainstLatesMutation();
   const [approveLeave, { isLoading: approving }] = useApproveLeaveMutation();
   const [rejectLeave, { isLoading: rejecting }] = useRejectLeaveMutation();
   const [cancelLeave, { isLoading: cancelling }] = useCancelLeaveMutation();
@@ -247,6 +253,8 @@ export default function LeavesListPage() {
   const total = data?.total || 0;
   const totalPages = data?.totalPages || 1;
   const pending = pendingData?.data || [];
+  const eligibleLates = eligibleLateData?.data || [];
+  const paidLeaveTypes = enabledLeaveTypes.filter(type => ['paid', 'sick', 'annual'].includes(type));
   const analyticsLeaves = analyticsData?.items || [];
   const balanceChartData = Object.entries(balance || {}).map(([type, values]) => ({
     name: capitalize(type),
@@ -269,6 +277,22 @@ export default function LeavesListPage() {
   async function handleApply(payload) {
     try { await applyLeave(payload).unwrap(); toast.success('Leave request submitted'); setApplyOpen(false); return true; }
     catch (err) { toast.error(err?.data?.error?.message || 'Failed to submit'); return false; }
+  }
+  async function handleLateLeaveApply() {
+    if (selectedLateIds.length !== 3) return toast.error('Select exactly 3 late records.');
+    if (!lateLeaveType) return toast.error('Select a leave type.');
+    try {
+      await applyLeaveAgainstLates({
+        leaveType: lateLeaveType,
+        attendanceIds: selectedLateIds,
+      }).unwrap();
+      toast.success('Your leave-against-lates request was sent to HR.');
+      setLateLeaveOpen(false);
+      setSelectedLateIds([]);
+      await Promise.allSettled([refetch(), refetchAnalytics(), refetchEligibleLates()]);
+    } catch (err) {
+      toast.error(err?.data?.error?.message || 'The request could not be submitted.');
+    }
   }
   async function handleApprove() {
     try { await approveLeave({ id: reviewTarget._id, remarks: remarkText }).unwrap();
@@ -311,6 +335,28 @@ export default function LeavesListPage() {
 
       {/* Balance cards */}
       {balance && <LeaveBalanceCards balance={balance} />}
+
+      <div className="glass-card p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="font-semibold">Leave Against Lates</h3>
+          <p className="text-sm text-muted-foreground">
+            {eligibleLates.length} unused late record{eligibleLates.length === 1 ? '' : 's'} available.
+            Select exactly 3 records to send one paid leave request to HR.
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={eligibleLates.length < 3 || paidLeaveTypes.length === 0}
+          onClick={() => {
+            setSelectedLateIds([]);
+            setLateLeaveType(paidLeaveTypes[0] || '');
+            setLateLeaveOpen(true);
+          }}
+        >
+          Select 3 Lates
+        </Button>
+      </div>
 
       {/* Leave analytics */}
       <div className="grid gap-5 xl:grid-cols-3">
@@ -450,6 +496,11 @@ export default function LeavesListPage() {
                           <span className="text-xs px-2 py-0.5 rounded-full bg-secondary text-secondary-foreground">
                             {capitalize(leave.leaveType)}
                           </span>
+                          {leave.requestKind === 'late_conversion' && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                              Against 3 Lates
+                            </span>
+                          )}
                           <span className="text-xs text-muted-foreground">{leave.totalDays}d</span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
@@ -503,6 +554,48 @@ export default function LeavesListPage() {
       <Modal isOpen={applyOpen} onClose={() => setApplyOpen(false)} title="Apply for Leave" size="md">
         <ApplyLeaveForm onSubmit={handleApply} onClose={() => setApplyOpen(false)} isLoading={applying}
           leaveTypes={enabledLeaveTypes} draftKey={`hrms:draft:leave:create:${user?.id || 'user'}`} />
+      </Modal>
+
+      <Modal isOpen={lateLeaveOpen} onClose={() => setLateLeaveOpen(false)} title="Apply Leave Against 3 Lates" size="md">
+        <div className="px-6 py-5 space-y-4">
+          <Select label="Paid Leave Type" required value={lateLeaveType} onChange={(event) => setLateLeaveType(event.target.value)}>
+            {paidLeaveTypes.map(type => <option key={type} value={type}>{capitalize(type)} Leave</option>)}
+          </Select>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Select exactly 3 eligible lates ({selectedLateIds.length}/3)</p>
+            {eligibleLates.map(record => {
+              const checked = selectedLateIds.includes(record._id);
+              return (
+                <label key={record._id} className="flex items-center gap-3 rounded-lg border border-border p-3 cursor-pointer hover:bg-accent/30">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={!checked && selectedLateIds.length === 3}
+                    onChange={() => setSelectedLateIds(current =>
+                      checked ? current.filter(id => id !== record._id) : [...current, record._id]
+                    )}
+                  />
+                  <div>
+                    <p className="text-sm font-medium">{fmtDate(record.shiftDate || record.date)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {record.missedPunchType ? 'Missed sign-out violation' : `${record.lateMinutes || 0} minute(s) late`}
+                    </p>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setLateLeaveOpen(false)}>Cancel</Button>
+          <Button
+            variant="primary"
+            disabled={selectedLateIds.length !== 3 || !lateLeaveType || applyingLateLeave}
+            onClick={handleLateLeaveApply}
+          >
+            {applyingLateLeave ? 'Submitting...' : 'Send to HR'}
+          </Button>
+        </ModalFooter>
       </Modal>
 
       {/* Review Modal */}

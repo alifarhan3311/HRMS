@@ -17,6 +17,14 @@ export const leavesApi = api.injectEndpoints({
       query: (body) => ({ url: '/leaves', method: 'POST', body }),
       invalidatesTags: ['Leaves', 'Employees', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
     }),
+    getEligibleLates: builder.query({
+      query: () => '/leaves/eligible-lates',
+      providesTags: ['Leaves', 'Attendance'],
+    }),
+    applyLeaveAgainstLates: builder.mutation({
+      query: (body) => ({ url: '/leaves/late-conversion', method: 'POST', body }),
+      invalidatesTags: ['Leaves', 'Employees', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
+    }),
     approveLeave: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/leaves/${id}/approve`, method: 'PATCH', body }),
       invalidatesTags: ['Leaves', 'Employees', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],
@@ -41,6 +49,8 @@ export const {
   useListLeavesQuery,
   useGetLeaveByIdQuery,
   useApplyLeaveMutation,
+  useGetEligibleLatesQuery,
+  useApplyLeaveAgainstLatesMutation,
   useApproveLeaveMutation,
   useRejectLeaveMutation,
   useCancelLeaveMutation,

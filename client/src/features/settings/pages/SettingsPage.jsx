@@ -383,12 +383,12 @@ export default function SettingsPage() {
 
           {activeTab === 'payroll' && (
             <motion.div key="payroll" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
-              <SectionCard title="Late Salary Deduction Rule">
+              <SectionCard title="Late Conversion Rule">
                 <div className="rounded-xl border border-border bg-muted/40 p-4">
-                  <p className="font-semibold">3 lates = 1 full-day salary deduction</p>
+                  <p className="font-semibold">3 lates can be converted into 1 paid leave</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    1–2 lates have no salary deduction. Every complete group of 3 lates deducts one full daily salary.
-                    Overtime is disabled.
+                    Payroll never deducts salary automatically for lates. The employee selects exactly 3 unused
+                    late records and sends a paid leave request to HR for final approval.
                   </p>
                 </div>
               </SectionCard>

@@ -3,7 +3,12 @@ const assert = require('node:assert/strict');
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
 const { leaveEligibilityDate } = require('../src/modules/leaves/leaves.service');
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
-const { createSchema, decisionSchema, cancelSchema } = require('../src/modules/leaves/leaves.validation');
+const {
+  createSchema,
+  lateConversionSchema,
+  decisionSchema,
+  cancelSchema,
+} = require('../src/modules/leaves/leaves.validation');
 const { calcWorkingDays } = require('../src/modules/leaves/leaves.service');
 
 test('leave application requires a supported type and a valid ordered ISO date range', () => {
@@ -50,6 +55,18 @@ test('leave decision and cancellation payloads reject unknown workflow fields', 
   assert.equal(cancelSchema.validate({ reason: 'Plans changed' }).error, undefined);
   assert.ok(decisionSchema.validate({ status: 'approved' }).error);
   assert.ok(cancelSchema.validate({ approvalChain: [] }).error);
+});
+
+test('late conversion requires exactly three unique attendance records and a paid leave type', () => {
+  const ids = [
+    '667788990011223344556671',
+    '667788990011223344556672',
+    '667788990011223344556673',
+  ];
+  assert.equal(lateConversionSchema.validate({ leaveType: 'annual', attendanceIds: ids }).error, undefined);
+  assert.ok(lateConversionSchema.validate({ leaveType: 'unpaid', attendanceIds: ids }).error);
+  assert.ok(lateConversionSchema.validate({ leaveType: 'annual', attendanceIds: ids.slice(0, 2) }).error);
+  assert.ok(lateConversionSchema.validate({ leaveType: 'annual', attendanceIds: [ids[0], ids[0], ids[2]] }).error);
 });
 
 test('an overnight shift interval consumes the duty day on which the shift starts', () => {

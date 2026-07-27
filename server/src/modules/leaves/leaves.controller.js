@@ -12,6 +12,16 @@ const apply = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: record });
 });
 
+const eligibleLates = asyncHandler(async (req, res) => {
+  const records = await service.getEligibleLates(req.user);
+  res.status(200).json({ success: true, data: records });
+});
+
+const applyLateConversion = asyncHandler(async (req, res) => {
+  const record = await service.applyLeaveAgainstLates(req.body, req.user);
+  res.status(201).json({ success: true, data: record });
+});
+
 const list = asyncHandler(async (req, res) => {
   const result = await service.listLeaves(req.query, req.user);
   res.status(200).json({ success: true, ...result });
@@ -42,4 +52,14 @@ const pendingApprovals = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: records });
 });
 
-module.exports = { apply, list, getById, approve, reject, cancel, pendingApprovals };
+module.exports = {
+  apply,
+  applyLateConversion,
+  eligibleLates,
+  list,
+  getById,
+  approve,
+  reject,
+  cancel,
+  pendingApprovals,
+};

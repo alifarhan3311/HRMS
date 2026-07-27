@@ -37,11 +37,11 @@ function calculateAttendancePayroll({
   const perDaySalary = Number(basicSalary) / 30;
   const requiredHours = Number(requiredMinutes || 480) / 60;
   const perHourSalary = requiredHours ? perDaySalary / requiredHours : 0;
-  // Company rule: every complete group of three late attendances deducts
-  // one full daily salary. Partial groups carry no salary deduction.
+  // Lates are informational in payroll. Employees may voluntarily convert
+  // exactly three eligible lates into one paid leave through HR approval.
   const lateGroups = Math.floor(Number(late || 0) / 3);
-  const lateDeductionDays = lateGroups;
-  const lateDeduction = Math.round(perDaySalary * lateDeductionDays);
+  const lateDeductionDays = 0;
+  const lateDeduction = 0;
   return {
     perDaySalary,
     perHourSalary,
@@ -49,6 +49,7 @@ function calculateAttendancePayroll({
     halfDayDeduction: Math.round(perDaySalary * Number(halfDay || 0) * 0.5),
     lateDeductionDays,
     lateDeduction,
+    lateConversionGroupsAvailable: lateGroups,
     unpaidLeaveDeduction: Math.round(perDaySalary * Number(unpaidLeave || 0)),
   };
 }

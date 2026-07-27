@@ -30,6 +30,16 @@ const leavesSchema = new mongoose.Schema(
     dutyDates: { type: [String], default: [] },
     reason: { type: String },
     emergencyContact: { type: String },
+    requestKind: {
+      type: String,
+      enum: ['normal', 'late_conversion'],
+      default: 'normal',
+    },
+    selectedLateAttendanceIds: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Attendance',
+    }],
+    selectedLateDates: { type: [String], default: [] },
     status: {
       type: String,
       enum: ['pending', 'approved', 'rejected', 'cancelled'],
@@ -52,5 +62,6 @@ leavesSchema.index({ companyId: 1, status: 1 });
 leavesSchema.index({ companyId: 1, status: 1, createdAt: -1 });
 leavesSchema.index({ companyId: 1, currentStage: 1, status: 1, createdAt: -1 });
 leavesSchema.index({ employeeId: 1, startDate: -1 });
+leavesSchema.index({ employeeId: 1, requestKind: 1, status: 1 });
 
 module.exports = mongoose.model('LeaveRequest', leavesSchema);

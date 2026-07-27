@@ -15,6 +15,10 @@ const APPROVERS = ['hr', 'manager', 'team_lead'];
 router.use(authenticate);
 
 router.post('/', authorize(...ALL), validate(validation.createSchema), controller.apply);
+router.get('/eligible-lates', authorize(...ALL), controller.eligibleLates);
+router.post('/late-conversion', authorize(...ALL),
+  validate(validation.lateConversionSchema),
+  controller.applyLateConversion);
 router.get('/', authorize(...ALL), controller.list);
 router.get('/pending-approvals', authorize(...APPROVERS), controller.pendingApprovals);
 

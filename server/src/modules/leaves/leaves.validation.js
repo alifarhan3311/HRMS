@@ -20,4 +20,14 @@ const cancelSchema = Joi.object({
   reason: Joi.string().trim().max(500).allow('').default(''),
 });
 
-module.exports = { createSchema, decisionSchema, cancelSchema };
+const lateConversionSchema = Joi.object({
+  leaveType: Joi.string().valid('paid', 'sick', 'annual').required(),
+  attendanceIds: Joi.array()
+    .items(Joi.string().hex().length(24))
+    .length(3)
+    .unique()
+    .required(),
+  reason: Joi.string().trim().max(1000).allow('').default(''),
+});
+
+module.exports = { createSchema, lateConversionSchema, decisionSchema, cancelSchema };

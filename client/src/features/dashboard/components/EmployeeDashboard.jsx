@@ -83,7 +83,7 @@ export default function EmployeeDashboard({ data }) {
           delay={0.12}
           title="Late Count (Month)"
           value={data.lateCount ?? 0}
-          subtitle="Every 3 lates = 1 leave deduction"
+          subtitle="Select 3 lates to request one paid leave"
           icon={AlertTriangle}
         />
         <StatCard
