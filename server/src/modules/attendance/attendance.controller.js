@@ -56,7 +56,8 @@ const rangeSummary = asyncHandler(async (req, res) => {
     employeeId,
     req.query.dateFrom,
     req.query.dateTo,
-    req.user
+    req.user,
+    req.query.workMode
   );
   res.status(200).json({ success: true, data: result });
 });

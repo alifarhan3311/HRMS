@@ -160,6 +160,7 @@ function SignInWidget({ user, onSigningOutChange }) {
   const record = todayData?.data;
   const hasSignedIn = !!record?.signInTime;
   const hasSignedOut = !!record?.signOutTime;
+  const canUseSelfService = user?.workMode === 'wfh';
 
   async function handleSignIn() {
     try {
@@ -226,14 +227,14 @@ function SignInWidget({ user, onSigningOutChange }) {
         )}
       </div>
       <div className="flex gap-3">
-        {!hasSignedIn && (
+        {canUseSelfService && !hasSignedIn && (
           <Button variant="primary" onClick={handleSignIn} disabled={signingIn || isLoading}
             className="gap-2 px-6">
             <CheckCircle2 className="h-4 w-4" />
             {signingIn ? 'Signing In...' : 'Sign In'}
           </Button>
         )}
-        {hasSignedIn && !hasSignedOut && (
+        {canUseSelfService && hasSignedIn && !hasSignedOut && (
           <Button variant="secondary" onClick={handleSignOut} disabled={signingOut}
             className="gap-2 px-6 border-amber-300 text-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20">
             <XCircle className="h-4 w-4" />
@@ -244,6 +245,11 @@ function SignInWidget({ user, onSigningOutChange }) {
           <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 text-sm font-medium">
             <CheckCircle2 className="h-4 w-4" />
             Day Complete
+          </div>
+        )}
+        {!canUseSelfService && !hasSignedOut && (
+          <div className="max-w-56 rounded-lg bg-muted px-4 py-2 text-center text-xs text-muted-foreground">
+            Office attendance is recorded through the biometric or admin system.
           </div>
         )}
       </div>
@@ -476,7 +482,7 @@ export default function AttendanceListPage() {
 
   const [ym, setYm] = useState(nowYM());
   const [reportRange, setReportRange] = useState(() => presetRange('month'));
-  const [filters, setFilters] = useState({ status: '', employeeId: '' });
+  const [filters, setFilters] = useState({ status: '', workMode: '', employeeId: '' });
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
   const employeePickerRef = useRef(null);
@@ -510,11 +516,12 @@ export default function AttendanceListPage() {
   const { data: summaryData } = useGetMonthlySummaryQuery(monthParams);
   const { data: rangeData, isLoading: rangeLoading, isFetching: rangeFetching } = useGetAttendanceRangeSummaryQuery({
     employeeId: selectedEmployeeId,
+    workMode: filters.workMode,
     dateFrom: reportRange.dateFrom,
     dateTo: reportRange.dateTo,
   }, { skip: !selectedEmployeeId });
   const { data: listData, isLoading: listLoading, isFetching, refetch } = useListAttendanceQuery({
-    page, limit: 30, status: filters.status,
+    page, limit: 30, status: filters.status, workMode: filters.workMode,
     dateFrom: reportRange.dateFrom,
     dateTo: reportRange.dateTo,
     ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
@@ -606,11 +613,12 @@ export default function AttendanceListPage() {
       toast.error('No attendance records available to export');
       return;
     }
-    const headers = ['Employee', 'Employee Code', 'Date', 'Status', 'Sign In', 'Sign Out', 'Worked Hours', 'Late Minutes', 'Early Leave Minutes', 'Method', 'Notes'];
+    const headers = ['Employee', 'Employee Code', 'Date', 'Status', 'Work Mode', 'Sign In', 'Sign Out', 'Worked Hours', 'Late Minutes', 'Early Leave Minutes', 'Method', 'Notes'];
     const name = selectedEmployee?.fullName || user?.fullName || 'Employee';
     const code = selectedEmployee?.employeeCode || user?.employeeCode || '';
     const rows = reportRecords.map((record) => [
       name, code, inputDate(record.date), STATUS_STYLES[record.status]?.label || record.status,
+      record.workMode === 'wfh' ? 'WFH' : 'Office',
       record.signInTime ? fmtTime(record.signInTime, record.shiftTimezone) : '',
       record.signOutTime ? fmtTime(record.signOutTime, record.shiftTimezone) : '',
       record.totalHours || 0, record.lateMinutes || 0, record.earlyLeaveMinutes || 0,
@@ -925,6 +933,12 @@ export default function AttendanceListPage() {
                   <option key={s} value={s}>{STATUS_STYLES[s].label}</option>
                 ))}
               </select>
+              <select className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
+                value={filters.workMode} onChange={(e) => { setFilters(p => ({ ...p, workMode: e.target.value })); setPage(1); }}>
+                <option value="">All Work Modes</option>
+                <option value="wfh">WFH Only</option>
+                <option value="office">Office Only</option>
+              </select>
               <span className="text-xs text-muted-foreground ml-auto">{total} records</span>
             </div>
             <div className="hidden grid-cols-[1fr_auto_auto_auto] gap-4 border-b border-border bg-muted/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
@@ -960,7 +974,16 @@ export default function AttendanceListPage() {
                         <p className="text-sm font-medium truncate">{rec.employeeId?.fullName || rec.employeeName || 'You'}</p>
                         <p className="text-xs text-muted-foreground">{fmtDate(rec.date)}</p>
                       </div>
-                      <Badge variant={st.variant}>{st.label}</Badge>
+                      <div className="flex flex-col items-end gap-1">
+                        <Badge variant={st.variant}>{st.label}</Badge>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          rec.workMode === 'wfh'
+                            ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+                            : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                        }`}>
+                          {rec.workMode === 'wfh' ? 'WFH' : 'Office'}
+                        </span>
+                      </div>
                       <div className="hidden sm:block text-xs text-muted-foreground space-y-0.5 text-right">
                         <p>{fmtTime(rec.signInTime, rec.shiftTimezone)} – {fmtTime(rec.signOutTime, rec.shiftTimezone)}</p>
                         {rec.totalHours > 0 && <p>{rec.totalHours}h</p>}

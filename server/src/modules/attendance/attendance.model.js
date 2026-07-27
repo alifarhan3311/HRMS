@@ -26,6 +26,7 @@ const attendanceSchema = new mongoose.Schema(
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
     employeeName: { type: String },
     employeeCode: { type: String },
+    workMode: { type: String, enum: ['office', 'wfh'], default: 'office' },
     date: { type: Date, required: true },
     shiftDate: { type: String },
     shiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift' },

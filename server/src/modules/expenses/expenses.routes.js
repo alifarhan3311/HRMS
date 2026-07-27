@@ -28,9 +28,9 @@ router.delete('/categories/:categoryId', authorize('hr'),
 
 router.post('/', authorize('hr'), validate(createSchema), controller.submit);
 router.post('/bulk', authorize('hr'), validate(bulkCreateSchema), controller.submitBulk);
-router.get('/', authorize('super_admin'), controller.list);
+router.get('/', authorize(...EXPENSE_ROLES), controller.list);
 
-router.get('/:id', authorize('super_admin'),
+router.get('/:id', authorize(...EXPENSE_ROLES),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.getById);
 

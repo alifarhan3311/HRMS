@@ -214,6 +214,7 @@ export default function EmployeeDetailPanel({
               <Section title="Employment Details">
                 <InfoRow icon={Calendar} label="Joining Date" value={formatDate(employee.joiningDate)} />
                 <InfoRow icon={Briefcase} label="Department" value={employee.department} />
+                <InfoRow icon={Briefcase} label="Work Mode" value={employee.workMode === 'wfh' ? 'Work From Home' : 'Office'} />
                 <InfoRow
                   icon={Briefcase}
                   label="Managed Departments"

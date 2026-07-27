@@ -55,6 +55,7 @@ const createSchema = Joi.object({
   joiningDate: Joi.date().required(),
   department: Joi.string().trim().min(2).max(100).required()
     .messages({ 'string.empty': 'Department is required', 'any.required': 'Department is required' }),
+  workMode: Joi.string().valid('office', 'wfh').default('office'),
   managedDepartments: Joi.array().items(Joi.string().trim().min(2).max(100)).unique().optional(),
   designation: Joi.string().trim().max(100).optional().allow(''),
   managerId: Joi.string().hex().length(24).optional().allow(null, ''),
@@ -101,6 +102,7 @@ const updateSchema = Joi.object({
   address: Joi.string().trim().max(500).optional().allow(''),
   emergencyContact: Joi.string().trim().max(200).optional().allow(''),
   department: Joi.string().trim().min(2).max(100).optional(),
+  workMode: Joi.string().valid('office', 'wfh').optional(),
   managedDepartments: Joi.array().items(Joi.string().trim().min(2).max(100)).unique().optional(),
   designation: Joi.string().trim().max(100).optional().allow(''),
   managerId: Joi.string().hex().length(24).optional().allow(null, ''),

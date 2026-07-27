@@ -67,7 +67,7 @@ const TAB_FIELDS = {
   personal: ['fullName', 'fatherName', 'cnic', 'dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'],
   contact: ['email', 'contactNumber', 'address', 'emergencyContact'],
   employment: [
-    'joiningDate', 'department', 'managedDepartments', 'designation', 'role', 'managerId', 'teamLeadId',
+    'joiningDate', 'department', 'workMode', 'managedDepartments', 'designation', 'role', 'managerId', 'teamLeadId',
     'shiftId', 'currentSalary', 'salaryPaymentMethod', 'salaryAccountNumber', 'salaryAccountTitle',
   ],
   professional: ['qualification', 'experience'],
@@ -81,6 +81,7 @@ const FIELD_LABELS = {
   contactNumber: 'Contact Number',
   joiningDate: 'Joining Date',
   department: 'Department',
+  workMode: 'Work Mode',
   managedDepartments: 'Managed Departments',
   role: 'Role',
   teamLeadId: 'Team Lead',
@@ -111,6 +112,7 @@ const EMPTY_FORM = {
   employeeCode: '',
   joiningDate: '',
   department: '',
+  workMode: 'office',
   managedDepartments: [],
   designation: '',
   role: 'employee',
@@ -218,6 +220,7 @@ export default function EmployeeForm({
         managerId: initial.managerId?._id || initial.managerId || '',
         teamLeadId: initial.teamLeadId?._id || initial.teamLeadId || '',
         shiftId: initial.shiftId?._id || initial.shiftId || '',
+        workMode: initial.workMode || 'office',
         managedDepartments: initial.managedDepartments || [],
         salaryPaymentMethod: initial.salaryPaymentMethod || '',
         salaryAccountNumber: initial.salaryAccountNumber || '',
@@ -697,6 +700,14 @@ export default function EmployeeForm({
                   {SALARY_PAYMENT_METHODS.map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
+                </Select>
+                <Select
+                  label="Work Mode"
+                  value={form.workMode}
+                  onChange={(e) => set('workMode', e.target.value)}
+                >
+                  <option value="office">Office</option>
+                  <option value="wfh">Work From Home</option>
                 </Select>
                 <Input
                   label="Account / IBAN / Wallet Number"

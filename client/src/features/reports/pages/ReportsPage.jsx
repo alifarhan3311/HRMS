@@ -137,6 +137,7 @@ export default function ReportsPage() {
       Department: record.employeeId?.department || record.employeeDepartment || '',
       Date: dateValue(record.date),
       Status: titleCase(record.status),
+      'Work Mode': record.workMode === 'wfh' ? 'WFH' : 'Office',
       'Sign In': timeValue(record.signInTime),
       'Sign Out': timeValue(record.signOutTime),
       'Worked Hours': Number(record.totalHours || 0),
@@ -411,7 +412,7 @@ export default function ReportsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border">
-                {activeReport === 'attendance' && ['Employee','Date','Status','Sign In','Sign Out','Hours'].map(h => (
+                {activeReport === 'attendance' && ['Employee','Date','Status','Work Mode','Sign In','Sign Out','Hours'].map(h => (
                   <th key={h} className="text-left py-2 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                 ))}
                 {activeReport === 'leave' && ['Employee','Type','Start','End','Days','Status'].map(h => (
@@ -434,6 +435,11 @@ export default function ReportsPage() {
                   <td className="py-2 px-3">{r.employeeId?.fullName || '—'}</td>
                   <td className="py-2 px-3 text-muted-foreground">{new Date(r.date).toLocaleDateString('en-PK')}</td>
                   <td className="py-2 px-3"><span className="capitalize">{r.status}</span></td>
+                  <td className="py-2 px-3">
+                    <span className="rounded-full bg-muted px-2 py-1 text-xs font-medium">
+                      {r.workMode === 'wfh' ? 'WFH' : 'Office'}
+                    </span>
+                  </td>
                   <td className="py-2 px-3 text-muted-foreground">{r.signInTime ? new Date(r.signInTime).toLocaleTimeString('en-PK',{hour:'2-digit',minute:'2-digit'}) : '—'}</td>
                   <td className="py-2 px-3 text-muted-foreground">{r.signOutTime ? new Date(r.signOutTime).toLocaleTimeString('en-PK',{hour:'2-digit',minute:'2-digit'}) : '—'}</td>
                   <td className="py-2 px-3">{r.totalHours || 0}h</td>

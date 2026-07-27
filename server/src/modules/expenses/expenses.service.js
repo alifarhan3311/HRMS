@@ -23,9 +23,9 @@ async function notifySuperAdmins(companyId, notification) {
   })));
 }
 
-function assertSuperAdmin(actor) {
-  if (actor.role !== 'super_admin') {
-    throw createHttpError(403, 'Only Super Admin can view recorded expenses.');
+function assertExpenseViewer(actor) {
+  if (!['hr', 'super_admin'].includes(actor.role)) {
+    throw createHttpError(403, 'Only HR and Super Admin can view recorded expenses.');
   }
 }
 
@@ -102,7 +102,7 @@ async function submitBulkExpenses(rows, actor) {
 }
 
 async function listExpenses(query, actor) {
-  assertSuperAdmin(actor);
+  assertExpenseViewer(actor);
   const { page = 1, limit = 20, status, category, dateFrom, dateTo, sort = '-createdAt' } = query;
   const filter = { companyId: actor.companyId };
 
@@ -123,7 +123,7 @@ async function listExpenses(query, actor) {
 }
 
 async function getExpenseById(id, actor) {
-  assertSuperAdmin(actor);
+  assertExpenseViewer(actor);
   const expense = await repository.findById(id);
   if (!expense || String(expense.companyId) !== String(actor.companyId)) {
     throw createHttpError(404, 'Expense not found.');

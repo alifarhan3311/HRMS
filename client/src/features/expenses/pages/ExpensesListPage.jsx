@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
   Receipt, Plus, RefreshCw, ChevronLeft, ChevronRight, Eye,
-  BarChart3, Settings2, Pencil, Trash2, ListChecks, Tags, Upload,
+  BarChart3, Settings2, Pencil, Trash2, ListChecks, Tags, Upload, MessageCircle,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -336,6 +336,7 @@ function CategoryManagerModal({ isOpen, onClose, categories }) {
 }
 
 function ExpenseDetailModal({ expense, isOpen, onClose }) {
+  const [whatsAppNumber, setWhatsAppNumber] = useState('');
   if (!expense) return null;
   const status = STATUS_STYLES[expense.status] || STATUS_STYLES.recorded;
   const details = [
@@ -348,6 +349,26 @@ function ExpenseDetailModal({ expense, isOpen, onClose }) {
     ['Expense Date', fmtDate(expense.expenseDate)],
     ['Recorded On', fmtDate(expense.createdAt)],
   ];
+
+  function shareOnWhatsApp() {
+    let number = whatsAppNumber.replace(/\D/g, '');
+    if (number.startsWith('0')) number = `92${number.slice(1)}`;
+    if (number.length < 10) {
+      toast.error('Enter a valid WhatsApp number');
+      return;
+    }
+    const message = [
+      '*HRMS Expense Details*',
+      `Category: ${expense.category}`,
+      `Product/Vendor: ${expense.productName || expense.vendorName || '-'}`,
+      `Amount: ${fmtPKR(expense.amount)}`,
+      `Date: ${fmtDate(expense.expenseDate)}`,
+      `Payment: ${expense.paymentMethod || '-'}`,
+      expense.remarks ? `Remarks: ${expense.remarks}` : '',
+      `Recorded by: ${expense.submittedBy?.fullName || 'HR'}`,
+    ].filter(Boolean).join('\n');
+    window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Expense Details" size="md">
@@ -369,6 +390,21 @@ function ExpenseDetailModal({ expense, isOpen, onClose }) {
           ))}
         </div>
         {expense.remarks && <div className="rounded-lg border border-border p-3 text-sm">{expense.remarks}</div>}
+        <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4">
+          <p className="mb-3 text-sm font-semibold">Share expense on WhatsApp</p>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              aria-label="WhatsApp number"
+              placeholder="03XXXXXXXXX or 923XXXXXXXXX"
+              value={whatsAppNumber}
+              onChange={(event) => setWhatsAppNumber(event.target.value)}
+            />
+            <Button type="button" variant="secondary" className="shrink-0 gap-2 text-emerald-700"
+              onClick={shareOnWhatsApp}>
+              <MessageCircle className="h-4 w-4" /> Share
+            </Button>
+          </div>
+        </div>
       </div>
     </Modal>
   );
@@ -386,7 +422,7 @@ export default function ExpensesListPage() {
 
   const { data, isLoading, isFetching, refetch } = useListExpensesQuery(
     { page, limit: 15, ...filters },
-    { skip: !isSuperAdmin },
+    { skip: !isHR && !isSuperAdmin },
   );
   const { data: categoriesData } = useListExpenseCategoriesQuery(undefined, {
     skip: !isHR && !isSuperAdmin,
@@ -433,60 +469,29 @@ export default function ExpensesListPage() {
     }
   }
 
-  if (isHR) {
-    return (
-      <div className="space-y-6">
-        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Record Expenses</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">Add company expenses for Super Admin to view</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setCategoriesOpen(true)}>
-              <Settings2 className="h-4 w-4" /> Categories
-            </Button>
-            <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setSubmitOpen(true)}>
-              <Plus className="h-4 w-4" /> Add Expenses
-            </Button>
-          </div>
-        </motion.div>
-
-        <div className="glass-card p-6">
-          <div className="flex items-start gap-4">
-            <div className="rounded-xl bg-primary/10 p-3 text-primary"><Receipt className="h-6 w-6" /></div>
-            <div>
-              <h2 className="font-semibold">Bulk expense entry</h2>
-              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-                Add multiple product rows manually or import Date, Product, Quantity and Price from Excel.
-                Row totals and the grand total are calculated automatically.
-              </p>
-              <p className="mt-3 text-sm"><span className="font-medium">Active categories:</span> {categories.length}</p>
-            </div>
-          </div>
-        </div>
-
-        <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Add Expenses" size="full">
-          <BulkExpenseForm onSubmit={handleBulkSubmit} onClose={() => setSubmitOpen(false)}
-            isLoading={submittingBulk} />
-        </Modal>
-        <CategoryManagerModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)}
-          categories={categoryRecords} />
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
         className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Company Expenses</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Read-only expense records submitted by HR</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">View recorded expenses and share details on WhatsApp</p>
         </div>
-        <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} /> Refresh
+          </Button>
+          {isHR && (
+            <>
+              <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setCategoriesOpen(true)}>
+                <Settings2 className="h-4 w-4" /> Categories
+              </Button>
+              <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setSubmitOpen(true)}>
+                <Plus className="h-4 w-4" /> Add Expenses
+              </Button>
+            </>
+          )}
+        </div>
       </motion.div>
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -579,6 +584,16 @@ export default function ExpensesListPage() {
       </div>
 
       <ExpenseDetailModal expense={detailExpense} isOpen={Boolean(detailExpense)} onClose={() => setDetailExpense(null)} />
+      {isHR && (
+        <>
+          <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Add Expenses" size="full">
+            <BulkExpenseForm onSubmit={handleBulkSubmit} onClose={() => setSubmitOpen(false)}
+              isLoading={submittingBulk} />
+          </Modal>
+          <CategoryManagerModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)}
+            categories={categoryRecords} />
+        </>
+      )}
     </div>
   );
 }

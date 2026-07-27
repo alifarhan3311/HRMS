@@ -66,6 +66,18 @@ function missedSignOutClosure(now = new Date()) {
   };
 }
 
+function saturdayMissedSignOutClosure(now = new Date()) {
+  return {
+    autoClosedAt: now,
+    totalHours: 0,
+    workedMinutes: 0,
+    overtimeMinutes: 0,
+    status: 'present',
+    lateMinutes: 0,
+    missedPunchType: 'sign_out',
+  };
+}
+
 function addCalendarDay(parts) {
   const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + 1, 12));
   return {
@@ -388,7 +400,7 @@ async function reconcileAttendance(now = new Date()) {
   }
 
   const employees = await Employee.find({ status: 'active', role: { $ne: 'super_admin' } })
-    .select('_id fullName employeeCode companyId branchId joiningDate department shiftId')
+    .select('_id fullName employeeCode companyId branchId joiningDate department workMode shiftId')
     .populate('shiftId', 'workingDays');
   if (!employees.length) return 0;
   const employeeIds = employees.map((employee) => employee._id);
@@ -448,17 +460,27 @@ async function reconcileAttendance(now = new Date()) {
       })
       .map((employee) => {
         const onLeave = employeesOnLeave.has(String(employee._id));
+        const settings = policyCache.get(String(employee.companyId));
+        const shiftDate = zonedDateKey(date, settings?.company?.timezone || 'Asia/Karachi');
         return ({
         updateOne: {
-          filter: { employeeId: employee._id, date: { $gte: date, $lte: dayEnd } },
+          filter: {
+            employeeId: employee._id,
+            $or: [
+              { shiftDate },
+              { date: { $gte: date, $lte: dayEnd } },
+            ],
+          },
           update: {
             $setOnInsert: {
               employeeId: employee._id,
               employeeName: employee.fullName,
               employeeCode: employee.employeeCode,
+              workMode: employee.workMode === 'wfh' ? 'wfh' : 'office',
               companyId: employee.companyId,
               branchId: employee.branchId,
               date,
+              shiftDate,
               status: onLeave ? 'on_leave' : 'absent',
               method: 'manual',
               ...(!onLeave && { missedPunchType: 'sign_in' }),
@@ -475,6 +497,30 @@ async function reconcileAttendance(now = new Date()) {
     if (operations.length) {
       const result = await Attendance.bulkWrite(operations, { ordered: false });
       created += result.upsertedCount || 0;
+    }
+
+    const invalidClosedRecords = await Attendance.find({
+      employeeId: { $in: employeeIds },
+      date: { $gte: date, $lte: dayEnd },
+      signInTime: { $exists: true },
+      signOutTime: { $exists: true },
+      $expr: { $lte: ['$signOutTime', '$signInTime'] },
+      autoClosedAt: { $exists: false },
+    });
+    for (const record of invalidClosedRecords) {
+      record.signOutTime = undefined;
+      record.autoClosedAt = now;
+      record.totalHours = 0;
+      record.workedMinutes = 0;
+      record.overtimeMinutes = 0;
+      record.missedPunchType = 'sign_out';
+      if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) {
+        Object.assign(record, saturdayMissedSignOutClosure(now));
+      } else {
+        record.status = 'incomplete';
+      }
+      record.notes = `${record.notes || ''} [Invalid sign-out ignored; missed sign-out counted as one late.]`.trim();
+      await record.save();
     }
 
     const expiredOpenRecords = await Attendance.find({
@@ -494,11 +540,8 @@ async function reconcileAttendance(now = new Date()) {
     });
     for (const record of expiredOpenRecords) {
       if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) {
-        record.status = 'present';
-        record.lateMinutes = 0;
-        record.autoClosedAt = now;
-        record.missedPunchType = null;
-        record.notes = `${record.notes || ''} [Saturday attendance: sign-in counted as present; no late or half-day penalty.]`.trim();
+        Object.assign(record, saturdayMissedSignOutClosure(now));
+        record.notes = `${record.notes || ''} [Saturday sign-in counted as present; missed sign-out counted as one late.]`.trim();
         await record.save();
         continue;
       }
@@ -649,6 +692,7 @@ module.exports = {
   birthdayDateContext,
   isAttendanceDateAfterReset,
   missedSignOutClosure,
+  saturdayMissedSignOutClosure,
   processBirthdayNotifications,
   runHrAutomation,
   startHrAutomation,

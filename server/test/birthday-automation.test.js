@@ -1,7 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
-const { birthdayDateContext, isAttendanceDateAfterReset, missedSignOutClosure } = require('../src/jobs/hrAutomation');
+const {
+  birthdayDateContext,
+  isAttendanceDateAfterReset,
+  missedSignOutClosure,
+  saturdayMissedSignOutClosure,
+} = require('../src/jobs/hrAutomation');
 const { smtpSecure } = require('../src/config/mailer');
 
 test('birthday automation identifies exact company-local midnight and tomorrow', () => {
@@ -36,6 +41,14 @@ test('missed sign-out never fabricates a scheduled-end sign-out or worked hours'
   assert.equal(result.workedMinutes, 0);
   assert.equal(result.totalHours, 0);
   assert.equal(Object.hasOwn(result, 'signOutTime'), false);
+});
+
+test('Saturday missed sign-out remains present and adds one late violation marker', () => {
+  const result = saturdayMissedSignOutClosure(new Date('2026-07-26T02:00:00.000Z'));
+  assert.equal(result.status, 'present');
+  assert.equal(result.missedPunchType, 'sign_out');
+  assert.equal(result.workedMinutes, 0);
+  assert.equal(result.lateMinutes, 0);
 });
 
 test('SMTP port 465 always enables implicit TLS', () => {

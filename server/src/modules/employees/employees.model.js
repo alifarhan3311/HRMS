@@ -23,6 +23,7 @@ const employeesSchema = new mongoose.Schema(
   address: { type: String, set: encryptField, get: decryptFieldSafe },
   joiningDate: { type: Date, required: true },
   department: { type: String, required: true, trim: true },
+  workMode: { type: String, enum: ['office', 'wfh'], default: 'office' },
   managedDepartments: { type: [String], default: [] },
   designation: { type: String },
   managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },

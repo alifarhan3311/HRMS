@@ -74,12 +74,12 @@ async function getMonthlySummary(employeeId, year, month) {
   return Attendance.find({ employeeId, date: { $gte: start, $lte: end } }).sort('date');
 }
 
-async function getRangeSummary(employeeId, dateFrom, dateTo) {
+async function getRangeSummary(employeeId, dateFrom, dateTo, extraFilter = {}) {
   const start = new Date(dateFrom);
   const end = new Date(dateTo);
   start.setUTCHours(0, 0, 0, 0);
   end.setUTCHours(23, 59, 59, 999);
-  return Attendance.find({ employeeId, date: { $gte: start, $lte: end } })
+  return Attendance.find({ employeeId, date: { $gte: start, $lte: end }, ...extraFilter })
     .sort('date')
     .lean();
 }

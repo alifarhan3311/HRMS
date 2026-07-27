@@ -27,6 +27,11 @@ const {
 } = require('./shiftTime');
 const { appliesToEmployee, findClosure, effectivePolicy } = require('./closurePolicy');
 const { isSaturdayShiftDate, saturdayStatus } = require('./saturdayPolicy');
+const {
+  normalizeWorkMode,
+  canUseSelfServiceSignIn,
+  buildWorkModeFilter,
+} = require('./workModePolicy');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -87,9 +92,19 @@ function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0) {
 // -------------------------------------------------------------------------
 // Sign In
 // -------------------------------------------------------------------------
-async function signIn({ employeeId, method = 'manual', notes, punchTime }, actor) {
+async function signIn({
+  employeeId,
+  method = 'manual',
+  notes,
+  punchTime,
+  allowOfficeAttendance = false,
+}, actor) {
   const now = punchTime ? new Date(punchTime) : new Date();
   const { employee, shift, schedule } = await resolveShiftContext(employeeId, actor.companyId, now);
+  if (!allowOfficeAttendance && !canUseSelfServiceSignIn(employee)) {
+    throw createHttpError(403, 'Self-service sign-in is available only to Work From Home employees.');
+  }
+  const workMode = normalizeWorkMode(employee.workMode);
   const attendanceExempt = employee.role === 'super_admin';
   const closure = await findClosure(employee, actor.companyId, schedule.shiftDate);
   if (!attendanceExempt && (closure?.eventType === 'full_day' || (closure && !closure.eventType))) {
@@ -125,6 +140,7 @@ async function signIn({ employeeId, method = 'manual', notes, punchTime }, actor
         signInTime: now, status, lateMinutes, method, notes,
         employeeName: employee.fullName,
         employeeCode: employee.employeeCode,
+        workMode,
         shiftDate: schedule.shiftDate,
         shiftId: shift._id || undefined,
         shiftName: shift.name,
@@ -146,6 +162,7 @@ async function signIn({ employeeId, method = 'manual', notes, punchTime }, actor
         employeeId,
         employeeName: employee.fullName,
         employeeCode: employee.employeeCode,
+        workMode,
         date: attendanceDate,
         shiftDate: schedule.shiftDate,
         shiftId: shift._id || undefined,
@@ -201,6 +218,9 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
   if (record.signOutTime) throw createHttpError(409, 'You have already signed out today.');
 
   const now = punchTime ? new Date(punchTime) : new Date();
+  if (now <= new Date(record.signInTime)) {
+    throw createHttpError(422, 'Sign-out time must be after sign-in time.');
+  }
   const attendanceExempt = actor.role === 'super_admin';
   // Use the policy snapshot captured at sign-in. Editing an assigned shift
   // while somebody is clocked in must not change that open attendance day.
@@ -288,6 +308,7 @@ async function ingestBiometricPunch({ employee, punchTime, punchKey, deviceId, d
       method: 'biometric',
       punchTime,
       notes: `Biometric sign-in from ${deviceId}.`,
+      allowOfficeAttendance: true,
     }, actor);
     action = 'sign_in';
   } else if (!existing.signOutTime) {
@@ -474,7 +495,7 @@ async function getMonthlySummary(employeeId, year, month, actor) {
 async function listAttendances(query, actor) {
   const {
     page = 1, limit = 30, sort = '-date',
-    employeeId, status, dateFrom, dateTo, month, year,
+    employeeId, status, workMode, dateFrom, dateTo, month, year,
   } = query;
 
   const filter = { companyId: actor.companyId };
@@ -490,6 +511,7 @@ async function listAttendances(query, actor) {
   }
 
   if (status) filter.status = status;
+  Object.assign(filter, buildWorkModeFilter(workMode));
 
   if (month && year) {
     filter.date = {
@@ -601,10 +623,15 @@ async function resolveRegularizationApprover(employee, companyId) {
   return fallback?._id;
 }
 
-async function getRangeSummary(employeeId, dateFrom, dateTo, actor) {
+async function getRangeSummary(employeeId, dateFrom, dateTo, actor, workMode) {
   await assertCanViewEmployeeAttendance(actor, employeeId);
 
-  const records = await repository.getRangeSummary(employeeId, dateFrom, dateTo);
+  const records = await repository.getRangeSummary(
+    employeeId,
+    dateFrom,
+    dateTo,
+    buildWorkModeFilter(workMode),
+  );
   const summary = {
     totalRecords: records.length,
     present: 0, late: 0, absent: 0, half_day: 0, incomplete: 0, on_leave: 0, holiday: 0, weekend: 0,

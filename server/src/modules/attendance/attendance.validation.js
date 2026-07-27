@@ -5,6 +5,7 @@ const Joi = require('joi');
 
 const objectId = Joi.string().hex().length(24);
 const statuses = ['present', 'absent', 'half_day', 'late', 'incomplete', 'on_leave', 'holiday', 'weekend'];
+const workModes = ['office', 'wfh'];
 
 const idParamsSchema = Joi.object({
   id: objectId.required(),
@@ -27,6 +28,7 @@ const monthlySummaryQuerySchema = Joi.object({
 
 const rangeSummaryQuerySchema = Joi.object({
   employeeId: objectId.empty('').optional(),
+  workMode: Joi.string().valid(...workModes).empty('').optional(),
   dateFrom: Joi.date().iso().required(),
   dateTo: Joi.date().iso().min(Joi.ref('dateFrom')).required(),
 }).custom((value, helpers) => {
@@ -41,6 +43,7 @@ const listQuerySchema = Joi.object({
   sort: Joi.string().valid('date', '-date', 'createdAt', '-createdAt').default('-date'),
   employeeId: objectId.empty('').optional(),
   status: Joi.string().valid(...statuses).empty('').optional(),
+  workMode: Joi.string().valid(...workModes).empty('').optional(),
   dateFrom: Joi.date().iso().optional(),
   dateTo: Joi.date().iso().min(Joi.ref('dateFrom')).optional(),
   month: Joi.number().integer().min(1).max(12).optional(),

@@ -197,6 +197,9 @@ function LeaveBalanceModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
 
 const STATUSES = ['active', 'inactive', 'on_leave', 'resigned'];
 const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'];
+const HIDDEN_TEAM_DEPARTMENTS = new Set([
+  'hr', 'human resource', 'human resources', 'human resources department',
+]);
 
 function TableSkeleton() {
   return (
@@ -220,9 +223,40 @@ function TableSkeleton() {
 
 function TeamStructure({ employees = [] }) {
   const idOf = (value) => String(value?._id || value || '');
-  const managers = employees.filter((employee) => employee.role === 'manager');
-  const teamLeads = employees.filter((employee) => employee.role === 'team_lead');
-  const members = employees.filter((employee) => employee.role === 'employee');
+  const normalizeDepartment = (value) => String(value || '').trim().toLowerCase();
+  const departments = [...new Set(employees.flatMap((employee) => [
+    employee.department,
+    ...(employee.role === 'manager' ? employee.managedDepartments || [] : []),
+  ]).map((department) => String(department || '').trim()).filter((department) => (
+    department && !HIDDEN_TEAM_DEPARTMENTS.has(department.toLowerCase())
+  )))]
+    .sort((left, right) => left.localeCompare(right));
+  const [activeDepartment, setActiveDepartment] = useState(() => departments[0] || '');
+  const selectedDepartment = departments.some(
+    (department) => normalizeDepartment(department) === normalizeDepartment(activeDepartment),
+  ) ? activeDepartment : departments[0] || '';
+  const belongsToDepartment = (employee) => (
+    normalizeDepartment(employee.department) === normalizeDepartment(selectedDepartment)
+  );
+  const managesDepartment = (employee) => [
+    employee.department,
+    ...(employee.managedDepartments || []),
+  ].some((department) => normalizeDepartment(department) === normalizeDepartment(selectedDepartment));
+
+  const teamLeads = employees.filter(
+    (employee) => employee.role === 'team_lead' && belongsToDepartment(employee),
+  );
+  const members = employees.filter(
+    (employee) => employee.role === 'employee' && belongsToDepartment(employee),
+  );
+  const scopedManagerIds = new Set([
+    ...teamLeads.map((lead) => idOf(lead.managerId)),
+    ...members.map((member) => idOf(member.managerId)),
+  ].filter(Boolean));
+  const managers = employees.filter((employee) => (
+    employee.role === 'manager'
+    && (managesDepartment(employee) || scopedManagerIds.has(idOf(employee)))
+  ));
 
   function Person({ employee }) {
     const managedDepartments = employee.role === 'manager'
@@ -268,6 +302,35 @@ function TeamStructure({ employees = [] }) {
 
   return (
     <div className="space-y-5 p-3 sm:p-5 lg:p-6">
+      {departments.length > 0 && (
+        <div className="sticky top-0 z-10 -mx-1 rounded-2xl border border-border bg-card/95 p-2 shadow-sm backdrop-blur">
+          <div className="flex gap-2 overflow-x-auto">
+            {departments.map((department) => {
+              const isActive = normalizeDepartment(department) === normalizeDepartment(selectedDepartment);
+              return (
+                <button
+                  key={department}
+                  type="button"
+                  onClick={() => setActiveDepartment(department)}
+                  className={`shrink-0 rounded-xl px-4 py-2 text-sm font-semibold capitalize transition-colors ${
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'bg-muted/60 text-muted-foreground hover:bg-accent hover:text-foreground'
+                  }`}
+                >
+                  {department}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {selectedDepartment && (
+        <div>
+          <h2 className="text-lg font-semibold capitalize">{selectedDepartment}</h2>
+          <p className="text-xs text-muted-foreground">Showing only this department&apos;s reporting structure.</p>
+        </div>
+      )}
       {managers.map((manager) => {
         const leads = teamLeads.filter((lead) => idOf(lead.managerId) === idOf(manager));
         const direct = members.filter((member) => idOf(member.managerId) === idOf(manager) && !member.teamLeadId);
@@ -286,6 +349,9 @@ function TeamStructure({ employees = [] }) {
       {independentLeads.length > 0 && <section className="rounded-2xl border border-dashed border-border bg-muted/5 p-3 sm:p-4"><h3 className="mb-3 font-semibold">Teams without a Manager</h3><div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))]">{independentLeads.map((lead) => <LeadTeam key={lead._id} lead={lead} />)}</div></section>}
       {unassigned.length > 0 && <section className="rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 p-4"><h3 className="mb-3 font-semibold text-amber-600">Unassigned Employees ({unassigned.length})</h3><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{unassigned.map((member) => <Person key={member._id} employee={member} />)}</div></section>}
       {!employees.length && <p className="py-12 text-center text-muted-foreground">No hierarchy data available.</p>}
+      {employees.length > 0 && !managers.length && !independentLeads.length && !unassigned.length && (
+        <p className="py-12 text-center text-muted-foreground">No team members are assigned to this department.</p>
+      )}
     </div>
   );
 }
