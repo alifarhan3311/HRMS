@@ -14,6 +14,7 @@ const AUTOMATION_INTERVAL_MS = Number(process.env.HR_AUTOMATION_INTERVAL_MS)
   || 6 * 60 * 60 * 1000;
 const LOOKBACK_DAYS = Math.min(Number(process.env.ATTENDANCE_RECONCILIATION_DAYS) || 7, 31);
 const BIRTHDAY_CHECK_INTERVAL_MS = 60 * 1000;
+const MISSED_SIGN_OUT_GRACE_MS = 30 * 60 * 1000;
 
 const BALANCE_TYPES = ['paid', 'sick', 'annual'];
 
@@ -523,6 +524,9 @@ async function reconcileAttendance(now = new Date()) {
       await record.save();
     }
 
+    // Give biometric polling/realtime delivery time to persist the final
+    // punch before treating an open shift as a missed sign-out.
+    const missedSignOutCutoff = new Date(now.getTime() - MISSED_SIGN_OUT_GRACE_MS);
     const expiredOpenRecords = await Attendance.find({
       employeeId: { $in: employeeIds },
       date: { $gte: date, $lte: dayEnd },
@@ -533,7 +537,7 @@ async function reconcileAttendance(now = new Date()) {
       // calendar-day automation runs. Do not flag a missed sign-out until the
       // employee's own scheduled shift end has actually passed.
       $or: [
-        { scheduledEnd: { $lte: now } },
+        { scheduledEnd: { $lte: missedSignOutCutoff } },
         { scheduledEnd: { $exists: false } },
       ],
       status: { $nin: ['on_leave', 'holiday', 'weekend'] },

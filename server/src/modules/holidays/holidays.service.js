@@ -134,16 +134,6 @@ async function decideHoliday(id, payload, actor) {
   const eventLabel = eventDescription(holiday);
   const subject = `Office Schedule Update: ${holiday.title} - ${dateKey(holiday.date)}`;
   const detail = holiday.description || payload.note || '';
-  const notificationResults = await Promise.allSettled(employees.map(employee => notificationService.createNotification({
-    recipientId: employee._id,
-    companyId: actor.companyId,
-    type: 'holiday',
-    title: `Office schedule: ${holiday.title}`,
-    message: `${holiday.title} on ${dateKey(holiday.date)} has been confirmed as ${eventLabel} by HR.${detail ? ` ${detail}` : ''}`,
-    link: '/dashboard',
-    metadata: { holidayId: holiday._id, status: 'confirmed' },
-    dedupeKey: `holiday-confirmed:${holiday._id}:${employee._id}`,
-  })));
   const deliveredIds = new Set((existing.emailDeliveredTo || []).map(String));
   const emailTargets = employees.filter(employee => employee.email && !deliveredIds.has(String(employee._id)));
   const emailResults = await Promise.allSettled(emailTargets.map(employee => sendCompanyMail(actor.companyId, {
@@ -168,7 +158,7 @@ async function decideHoliday(id, payload, actor) {
   await holiday.save();
   return {
     holiday,
-    notified: notificationResults.filter(result => result.status === 'fulfilled').length,
+    notified: 0,
     emailed,
     emailFailed: holiday.employeeEmailFailedCount,
     attendanceAdjusted: holiday.attendanceAdjustedCount,

@@ -238,25 +238,28 @@ async function processPunch(input) {
       deviceId: deviceId(cfg),
       deviceUserId: input.deviceUserId,
     });
-    rawPunch.processingStatus = result.action === 'extra_punch_ignored' ? 'ignored' : 'processed';
+    const ignored = result.action.endsWith('_ignored');
+    rawPunch.processingStatus = ignored ? 'ignored' : 'processed';
     rawPunch.employeeId = employee._id;
     rawPunch.attendanceId = result.record._id;
     rawPunch.attendanceAction = result.action;
     await rawPunch.save();
     await advanceCursor(input.punchTime, cfg);
 
-    logger.info(`[zkteco] Attendance ${result.action === 'sign_in' ? 'created' : 'updated'}`, {
+    logger.info(`[zkteco] Attendance ${ignored ? 'punch ignored' : result.action === 'sign_in' ? 'created' : 'updated'}`, {
       attendanceId: result.record._id,
       employeeId: employee._id,
       action: result.action,
     });
-    emitToCompany(cfg.companyId, 'data:changed', dataChangedPayload(deviceId(cfg)));
-    emitToCompany(cfg.companyId, 'attendance:biometric', {
-      attendanceId: result.record._id,
-      employeeId: employee._id,
-      action: result.action,
-      punchTime: input.punchTime,
-    });
+    if (!ignored) {
+      emitToCompany(cfg.companyId, 'data:changed', dataChangedPayload(deviceId(cfg)));
+      emitToCompany(cfg.companyId, 'attendance:biometric', {
+        attendanceId: result.record._id,
+        employeeId: employee._id,
+        action: result.action,
+        punchTime: input.punchTime,
+      });
+    }
     return { duplicate: false, status: rawPunch.processingStatus, ...result };
   } catch (error) {
     rawPunch.processingStatus = 'error';

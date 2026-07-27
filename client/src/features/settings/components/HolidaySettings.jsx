@@ -115,7 +115,7 @@ export default function HolidaySettings({ province = 'ON', onProvinceChange }) {
       <form onSubmit={addManualHoliday} className="space-y-4 rounded-xl border border-border bg-card p-4">
         <div>
           <h4 className="font-semibold">Emergency Office Schedule</h4>
-          <p className="mt-1 text-sm text-muted-foreground">Create a full off, half day, early closure, or late opening. Saving immediately adjusts attendance and notifies affected employees.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Create a full off, half day, early closure, or late opening. Saving immediately adjusts attendance and emails affected employees.</p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Input label="Holiday / Off Title" required value={manual.title}
@@ -156,7 +156,7 @@ export default function HolidaySettings({ province = 'ON', onProvinceChange }) {
         </div>
         <div className="flex justify-end">
           <Button type="submit" size="sm" disabled={isAddingManual} className="gap-1.5">
-            <Plus className="h-4 w-4" /> {isAddingManual ? 'Applying...' : 'Apply Schedule & Notify'}
+            <Plus className="h-4 w-4" /> {isAddingManual ? 'Applying...' : 'Apply Schedule & Email'}
           </Button>
         </div>
       </form>

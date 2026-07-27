@@ -4,7 +4,10 @@ process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
 const { normalizeDurationPolicy } = require('../src/modules/shifts/shifts.service');
 const { arrivalStatus } = require('../src/modules/attendance/shiftTime');
 const { appliesToEmployee } = require('../src/modules/attendance/closurePolicy');
-const { correctedWorkMetrics } = require('../src/modules/attendance/attendance.service');
+const {
+  correctedWorkMetrics,
+  completedFixedShiftStatus,
+} = require('../src/modules/attendance/attendance.service');
 const { isSaturdayShiftDate, saturdayStatus } = require('../src/modules/attendance/saturdayPolicy');
 
 const start = new Date('2026-07-23T20:00:00.000Z');
@@ -18,8 +21,48 @@ test('fixed shifts longer than seven hours receive 15 minute grace and 150 minut
   assert.equal(shift.graceMinutes, 15);
   assert.equal(shift.lateHalfDayAfterMinutes, 150);
   assert.equal(arrivalStatus(new Date(start.getTime() + 15 * 60000), schedule, shift).status, 'present');
+  assert.equal(arrivalStatus(new Date(start.getTime() + 15 * 60000 + 59000), schedule, shift).status, 'present');
   assert.equal(arrivalStatus(new Date(start.getTime() + 16 * 60000), schedule, shift).status, 'late');
   assert.equal(arrivalStatus(new Date(start.getTime() + 151 * 60000), schedule, shift).status, 'half_day');
+});
+
+test('fixed shift completed through scheduled end stays present when arrival is within grace', () => {
+  const record = {
+    shiftType: 'fixed',
+    status: 'present',
+    signInTime: new Date('2026-07-27T13:12:00.000Z'),
+  };
+  assert.equal(
+    completedFixedShiftStatus(
+      record,
+      new Date('2026-07-27T21:07:00.000Z'),
+      new Date('2026-07-27T21:00:00.000Z'),
+    ),
+    'present',
+  );
+  assert.equal(
+    completedFixedShiftStatus(
+      record,
+      new Date('2026-07-27T20:59:00.000Z'),
+      new Date('2026-07-27T21:00:00.000Z'),
+    ),
+    null,
+  );
+});
+
+test('fixed shift completed through scheduled end preserves a genuine late arrival', () => {
+  assert.equal(
+    completedFixedShiftStatus(
+      {
+        shiftType: 'fixed',
+        status: 'late',
+        signInTime: new Date('2026-07-27T13:20:00.000Z'),
+      },
+      new Date('2026-07-27T21:05:00.000Z'),
+      new Date('2026-07-27T21:00:00.000Z'),
+    ),
+    'late',
+  );
 });
 
 test('fixed shifts of seven hours or less have no grace and use a 120 minute half-day arrival threshold', () => {

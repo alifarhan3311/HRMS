@@ -139,9 +139,9 @@ export default function SettingsPage() {
           delayedApplicationReminderDays: Number(leaveForm.delayedApplicationReminderDays),
         },
         payrollPolicy: {
-          lateDeductionMode: payrollForm.lateDeductionMode,
-          latesPerHalfDay: Number(payrollForm.latesPerHalfDay),
-          perMinuteRate: Number(payrollForm.perMinuteRate),
+          lateDeductionMode: 'three_lates_half_day',
+          latesPerHalfDay: 3,
+          perMinuteRate: 0,
         },
         notifications: {
           inAppEnabled: emailForm.enableInApp,
@@ -384,19 +384,13 @@ export default function SettingsPage() {
           {activeTab === 'payroll' && (
             <motion.div key="payroll" initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}>
               <SectionCard title="Late Salary Deduction Rule">
-                <Select label="Deduction Method" value={payrollForm.lateDeductionMode}
-                  onChange={event => setPayrollForm(previous => ({ ...previous, lateDeductionMode: event.target.value }))}>
-                  <option value="three_lates_half_day">Late count converts to half day</option>
-                  <option value="per_minute">Per-minute deduction</option>
-                </Select>
-                {payrollForm.lateDeductionMode === 'three_lates_half_day' ? (
-                  <Input label="Lates Per Half Day" type="number" min="1" max="30" value={payrollForm.latesPerHalfDay}
-                    onChange={event => setPayrollForm(previous => ({ ...previous, latesPerHalfDay: event.target.value }))} />
-                ) : (
-                  <Input label="Deduction Per Late Minute (PKR)" type="number" min="0" value={payrollForm.perMinuteRate}
-                    onChange={event => setPayrollForm(previous => ({ ...previous, perMinuteRate: event.target.value }))} />
-                )}
-                <p className="text-sm text-muted-foreground">Default rule: 3 lates = one half-day salary deduction. Overtime is disabled.</p>
+                <div className="rounded-xl border border-border bg-muted/40 p-4">
+                  <p className="font-semibold">3 lates = 1 full-day salary deduction</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    1–2 lates have no salary deduction. Every complete group of 3 lates deducts one full daily salary.
+                    Overtime is disabled.
+                  </p>
+                </div>
               </SectionCard>
             </motion.div>
           )}

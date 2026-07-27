@@ -39,7 +39,7 @@ const rangeSummaryQuerySchema = Joi.object({
 
 const listQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(30),
+  limit: Joi.number().integer().min(1).max(2000).default(30),
   sort: Joi.string().valid('date', '-date', 'createdAt', '-createdAt').default('-date'),
   employeeId: objectId.empty('').optional(),
   status: Joi.string().valid(...statuses).empty('').optional(),
