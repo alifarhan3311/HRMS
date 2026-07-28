@@ -19,9 +19,9 @@ const {
 } = require('./attendance.validation');
 
 const router = express.Router();
-const ALL = ['super_admin', 'admin', 'hr', 'manager', 'team_lead', 'employee'];
+const ALL = ['super_admin', 'admin', 'hr', 'manager', 'floor_head', 'team_lead', 'employee'];
 const HR_MANAGEMENT = ['super_admin', 'hr'];
-const MANAGERS_UP = ['super_admin', 'hr', 'manager', 'team_lead'];
+const MANAGERS_UP = ['super_admin', 'hr', 'manager', 'floor_head', 'team_lead'];
 
 router.use(authenticate);
 
@@ -78,7 +78,7 @@ router.post(
 // Regularization review (HR/Manager)
 router.patch(
   '/:id/regularize/review',
-  authorize(...HR_MANAGEMENT, 'manager', 'team_lead'),
+  authorize(...HR_MANAGEMENT, 'manager', 'floor_head', 'team_lead'),
   validate(idParamsSchema, 'params'),
   validate(regularizationReviewSchema),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),

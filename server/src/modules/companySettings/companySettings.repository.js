@@ -40,4 +40,15 @@ async function addDepartment(companyId, name, updatedBy) {
   );
 }
 
-module.exports = { getOrCreate, update, addDepartment };
+async function removeDepartment(companyId, name, updatedBy) {
+  return CompanySettings.findOneAndUpdate(
+    { companyId },
+    {
+      $pull: { departments: name },
+      $set: { updatedBy },
+    },
+    { new: true, runValidators: true }
+  );
+}
+
+module.exports = { getOrCreate, update, addDepartment, removeDepartment };

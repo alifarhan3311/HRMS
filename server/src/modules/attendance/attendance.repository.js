@@ -10,7 +10,7 @@ async function create(data) {
 
 async function findById(id) {
   return Attendance.findById(id)
-    .populate('employeeId', 'fullName employeeCode department designation managerId teamLeadId')
+    .populate('employeeId', 'fullName employeeCode department designation managerId floorHeadId teamLeadId')
     .populate('regularization.assignedApprover', 'fullName employeeCode designation role')
     .populate('regularization.reviewedBy', 'fullName employeeCode designation role');
 }

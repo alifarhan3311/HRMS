@@ -9,7 +9,11 @@ import {
   FolderKanban, Plus, RefreshCw, Clock, Users,
   CheckCircle2, Circle, PauseCircle, XCircle, Briefcase,
 } from 'lucide-react';
-import { useListProjectsQuery, useCreateProjectMutation, useUpdateProjectMutation, useGetEligibleProjectEmployeesQuery } from '../api/projects.api';
+import {
+  useListProjectsQuery, useCreateProjectMutation, useUpdateProjectMutation, useGetEligibleProjectEmployeesQuery,
+  useGetCallTransferContextQuery, useListCallTransfersQuery, useCreateCallTransferMutation,
+  useDecideCallTransferMutation,
+} from '../api/projects.api';
 import { toast } from '../../../utils/toast';
 import Button from '../../../components/ui/Button';
 import { Badge } from '../../../components/ui/Badge';
@@ -19,6 +23,171 @@ import StatCard from '../../../components/ui/StatCard';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import { Avatar } from '../../../components/ui/Avatar';
+
+function CallTransferPanel({ user }) {
+  const now = new Date();
+  const [filters, setFilters] = useState({ status: '', employeeId: '', month: now.getMonth() + 1, year: now.getFullYear() });
+  const [modalOpen, setModalOpen] = useState(false);
+  const [tab, setTab] = useState(user?.role === 'team_lead' ? 'pending' : 'all');
+  const [search, setSearch] = useState('');
+  const [form, setForm] = useState({
+    transferredEmployeeId: '', transferDate: now.toISOString().slice(0, 10), businessOwnerName: '',
+  });
+  const { data: contextData } = useGetCallTransferContextQuery();
+  const context = contextData?.data;
+  const query = {
+    ...filters,
+    status: tab === 'all' ? filters.status : tab,
+  };
+  const { data, isFetching } = useListCallTransfersQuery(query);
+  const [createTransfer, { isLoading: creating }] = useCreateCallTransferMutation();
+  const [decideTransfer, { isLoading: deciding }] = useDecideCallTransferMutation();
+  const records = data?.data?.records || [];
+  const progress = data?.data?.progress || {};
+  const currentKey = `${user?.id || user?._id}:${Number(filters.year)}-${Number(filters.month)}`;
+  const approved = progress[currentKey]?.approved || records.filter((record) => (
+    record.status === 'approved'
+    && String(record.submittedBy?._id || record.submittedBy) === String(user?.id || user?._id)
+  )).length;
+  const filteredEmployees = (context?.employees || []).filter((employee) => (
+    employee.fullName.toLowerCase().includes(search.toLowerCase())
+    || employee.employeeCode?.toLowerCase().includes(search.toLowerCase())
+  ));
+  const probationEmployees = (context?.employees || []).filter((employee) => {
+    if (employee.role !== 'employee' || !employee.joiningDate) return false;
+    const end = new Date(employee.joiningDate);
+    end.setMonth(end.getMonth() + 3);
+    return now < end;
+  });
+  const afterProbationEmployees = (context?.employees || []).filter((employee) => {
+    if (employee.role !== 'employee' || !employee.joiningDate) return false;
+    const end = new Date(employee.joiningDate);
+    end.setMonth(end.getMonth() + 3);
+    return now >= end;
+  });
+
+  async function submit(event) {
+    event.preventDefault();
+    try {
+      await createTransfer(form).unwrap();
+      toast.success('Transfer sent to your Team Lead');
+      setModalOpen(false);
+      setForm({ transferredEmployeeId: '', transferDate: now.toISOString().slice(0, 10), businessOwnerName: '' });
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Could not add transfer');
+    }
+  }
+
+  async function decide(record, status) {
+    const reason = status === 'rejected' ? window.prompt('Rejection reason (optional):') || '' : '';
+    try {
+      await decideTransfer({ id: record._id, status, reason }).unwrap();
+      toast.success(`Transfer ${status}`);
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Could not update transfer');
+    }
+  }
+
+  if (context && !context.isCallCenter && !['hr', 'admin', 'super_admin'].includes(user?.role)) return null;
+  return (
+    <section className="glass-card space-y-4 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Call Center Monthly Transfers</h2>
+          <p className="text-xs text-muted-foreground">Probation target: 3 approved transfers every calendar month.</p>
+        </div>
+        {context?.underProbation && user?.role === 'employee' && (
+          <Button size="sm" onClick={() => setModalOpen(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add Transfer</Button>
+        )}
+      </div>
+      {user?.role === 'employee' && (
+        <div className={`rounded-xl border p-4 ${approved >= 3 ? 'border-emerald-500 bg-emerald-500/10' : 'border-border bg-muted/20'}`}>
+          <div className="flex justify-between text-sm"><b>Monthly target</b><b>{Math.min(approved, 3)}/3</b></div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-emerald-500 transition-all" style={{ width: `${Math.min(100, approved / 3 * 100)}%` }} /></div>
+          {approved >= 3 && <p className="mt-2 text-sm font-semibold text-emerald-600">Congratulations! Monthly target completed.</p>}
+        </div>
+      )}
+      {['team_lead', 'manager', 'hr', 'admin', 'super_admin'].includes(user?.role) && (
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+            <h3 className="font-semibold">Under Probation ({probationEmployees.length})</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Monthly target applies to these employees.</p>
+            <div className="mt-3 flex flex-wrap gap-2">{probationEmployees.map((employee) => <span key={employee._id} className="rounded-full bg-background px-3 py-1 text-xs">{employee.fullName}</span>)}</div>
+          </div>
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+            <h3 className="font-semibold">After Probation ({afterProbationEmployees.length})</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Historical transfer records remain available.</p>
+            <div className="mt-3 flex flex-wrap gap-2">{afterProbationEmployees.map((employee) => <span key={employee._id} className="rounded-full bg-background px-3 py-1 text-xs">{employee.fullName}</span>)}</div>
+          </div>
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {(user?.role === 'team_lead' ? ['pending', 'approved', 'rejected'] : ['all', 'pending', 'approved', 'rejected']).map((value) => (
+          <Button key={value} size="sm" variant={tab === value ? 'primary' : 'outline'} onClick={() => setTab(value)} className="capitalize">{value}</Button>
+        ))}
+        <Select value={filters.month} onChange={(e) => setFilters((v) => ({ ...v, month: e.target.value }))} className="w-36">
+          {Array.from({ length: 12 }, (_, index) => <option key={index + 1} value={index + 1}>{new Date(2020, index).toLocaleString('en', { month: 'long' })}</option>)}
+        </Select>
+        <Input type="number" value={filters.year} onChange={(e) => setFilters((v) => ({ ...v, year: e.target.value }))} className="w-28" />
+        {user?.role === 'team_lead' && (
+          <Select value={filters.employeeId} onChange={(e) => setFilters((v) => ({ ...v, employeeId: e.target.value }))}>
+            <option value="">All Employees</option>
+            {(context?.employees || []).filter((e) => e.role === 'employee').map((e) => <option key={e._id} value={e._id}>{e.fullName}</option>)}
+          </Select>
+        )}
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left"><tr><th className="p-3">Employee</th><th className="p-3">Transferred To</th><th className="p-3">Date</th><th className="p-3">Owner / Manager</th><th className="p-3">Status</th>{user?.role === 'team_lead' && <th className="p-3">Actions</th>}</tr></thead>
+          <tbody>{records.map((record) => <tr key={record._id} className="border-t border-border">
+            <td className="p-3 font-medium">{record.submittedBy?.fullName}</td><td className="p-3">{record.transferredEmployeeId?.fullName}</td>
+            <td className="p-3">{fmtDate(record.transferDate)}</td><td className="p-3">{record.businessOwnerName || record.ownerManagerId?.fullName || '—'}</td>
+            <td className="p-3 capitalize">{record.status}</td>
+            {user?.role === 'team_lead' && <td className="p-3">{record.status === 'pending' && <div className="flex gap-2"><Button size="xs" disabled={deciding} onClick={() => decide(record, 'approved')}>Approve</Button><Button size="xs" variant="destructive" disabled={deciding} onClick={() => decide(record, 'rejected')}>Reject</Button></div>}</td>}
+          </tr>)}</tbody>
+        </table>
+        {!records.length && <p className="p-8 text-center text-sm text-muted-foreground">{isFetching ? 'Loading...' : 'No transfers found.'}</p>}
+      </div>
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Add Call Transfer" size="sm">
+        <form onSubmit={submit}><div className="space-y-4 p-5">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Transferred To <span className="text-destructive">*</span></label>
+            <Input
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setForm((value) => ({ ...value, transferredEmployeeId: '' }));
+              }}
+              placeholder="Search Call Center employee..."
+              autoComplete="off"
+            />
+            <div className="max-h-44 overflow-y-auto rounded-xl border border-border bg-background p-1">
+              {filteredEmployees.map((employee) => {
+                const selected = String(form.transferredEmployeeId) === String(employee._id);
+                return (
+                  <button key={employee._id} type="button"
+                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm ${selected ? 'bg-primary text-primary-foreground' : 'hover:bg-accent'}`}
+                    onClick={() => {
+                      setForm((value) => ({ ...value, transferredEmployeeId: employee._id }));
+                      setSearch(employee.fullName);
+                    }}>
+                    <span>{employee.fullName}</span><span className="text-xs opacity-70">{employee.employeeCode}</span>
+                  </button>
+                );
+              })}
+              {!filteredEmployees.length && <p className="px-3 py-4 text-center text-xs text-muted-foreground">No Call Center employee found.</p>}
+            </div>
+          </div>
+          <Input label="Transfer Date" required type="date" value={form.transferDate} onChange={(e) => setForm((v) => ({ ...v, transferDate: e.target.value }))} />
+          <Input label="Business Owner / Manager Name" required
+            placeholder="Name of the business owner you called"
+            value={form.businessOwnerName}
+            onChange={(e) => setForm((v) => ({ ...v, businessOwnerName: e.target.value }))} />
+        </div><ModalFooter><Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button><Button type="submit" disabled={creating}>Submit Transfer</Button></ModalFooter></form>
+      </Modal>
+    </section>
+  );
+}
 
 const STATUS_STYLES = {
   planning:  { label: 'Planning',   variant: 'blue',   Icon: Circle },
@@ -167,6 +336,8 @@ export default function ProjectsListPage() {
           )}
         </div>
       </motion.div>
+
+      <CallTransferPanel user={user} />
 
       {/* Status stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

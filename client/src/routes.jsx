@@ -37,7 +37,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
       ...dashboardRoutes,
-      ...withRoles(employeesRoutes, ['team_lead', 'manager', 'hr', 'super_admin']),
+      ...withRoles(employeesRoutes, ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin']),
       ...attendanceRoutes,
       ...leavesRoutes,
       ...withRoles(payrollRoutes, ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin']),

@@ -29,6 +29,22 @@ export const projectsApi = api.injectEndpoints({
       query: (id) => ({ url: `/projects/${id}`, method: 'DELETE' }),
       invalidatesTags: ['Projects'],
     }),
+    getCallTransferContext: builder.query({
+      query: () => '/projects/call-transfers/context',
+      providesTags: ['CallTransfers'],
+    }),
+    listCallTransfers: builder.query({
+      query: (params) => ({ url: '/projects/call-transfers', params }),
+      providesTags: ['CallTransfers'],
+    }),
+    createCallTransfer: builder.mutation({
+      query: (body) => ({ url: '/projects/call-transfers', method: 'POST', body }),
+      invalidatesTags: ['CallTransfers', 'Notifications'],
+    }),
+    decideCallTransfer: builder.mutation({
+      query: ({ id, ...body }) => ({ url: `/projects/call-transfers/${id}/decision`, method: 'PATCH', body }),
+      invalidatesTags: ['CallTransfers', 'Notifications'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -40,4 +56,8 @@ export const {
   useUpdateProjectMutation,
   useDeleteProjectMutation,
   useGetEligibleProjectEmployeesQuery,
+  useGetCallTransferContextQuery,
+  useListCallTransfersQuery,
+  useCreateCallTransferMutation,
+  useDecideCallTransferMutation,
 } = projectsApi;

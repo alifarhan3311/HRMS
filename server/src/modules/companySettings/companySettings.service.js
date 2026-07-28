@@ -52,6 +52,10 @@ async function addDepartment(companyId, name, actorId) {
   return repository.addDepartment(companyId, name, actorId);
 }
 
+async function removeDepartment(companyId, name, actorId) {
+  return repository.removeDepartment(companyId, name, actorId);
+}
+
 async function updateSettings(payload, actor) {
   const changes = { updatedBy: actor.id };
   for (const section of ['company', 'holidayPolicy', 'timing', 'leavePolicy', 'payrollPolicy', 'notifications', 'security']) {
@@ -80,4 +84,4 @@ async function updateSettings(payload, actor) {
   return publicSettings(updated);
 }
 
-module.exports = { getSettings, getPolicy, addDepartment, updateSettings };
+module.exports = { getSettings, getPolicy, addDepartment, removeDepartment, updateSettings };

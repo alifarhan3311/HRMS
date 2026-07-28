@@ -27,6 +27,7 @@ const employeesSchema = new mongoose.Schema(
   managedDepartments: { type: [String], default: [] },
   designation: { type: String },
   managerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+  floorHeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   teamLeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   shiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift' },
   currentSalary: { type: String, set: encryptField, get: decryptFieldSafe },
@@ -84,7 +85,7 @@ const employeesSchema = new mongoose.Schema(
   lateCount: { type: Number, default: 0 },
   role: {
     type: String,
-    enum: ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'],
+    enum: ['employee', 'team_lead', 'floor_head', 'manager', 'hr', 'admin', 'super_admin'],
     required: true,
   },
   // Card details
@@ -130,6 +131,7 @@ employeesSchema.index({ companyId: 1 });
 employeesSchema.index({ companyId: 1, status: 1, createdAt: -1 });
 employeesSchema.index({ companyId: 1, department: 1, role: 1, status: 1 });
 employeesSchema.index({ managerId: 1, status: 1 });
+employeesSchema.index({ floorHeadId: 1, status: 1 });
 employeesSchema.index({ companyId: 1, managedDepartments: 1, status: 1 });
 employeesSchema.index({ teamLeadId: 1, status: 1 });
 employeesSchema.index(

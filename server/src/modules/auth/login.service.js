@@ -202,8 +202,9 @@ async function getCurrentUser(employeeId) {
     }
   };
 
-  const [manager, teamLead, shift] = await Promise.all([
+  const [manager, floorHead, teamLead, shift] = await Promise.all([
     safeReference(Employee, employee.managerId, 'fullName employeeCode designation', 'managerId'),
+    safeReference(Employee, employee.floorHeadId, 'fullName employeeCode designation', 'floorHeadId'),
     safeReference(Employee, employee.teamLeadId, 'fullName employeeCode designation', 'teamLeadId'),
     safeReference(
       Shift,
@@ -214,6 +215,7 @@ async function getCurrentUser(employeeId) {
   ]);
 
   user.managerId = manager;
+  user.floorHeadId = floorHead;
   user.teamLeadId = teamLead;
   user.id = employee._id;
   user.shiftId = shift;

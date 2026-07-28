@@ -14,6 +14,7 @@ async function create(data) {
 async function findById(id) {
   return Employee.findById(id)
     .populate('managerId', 'fullName employeeCode designation')
+    .populate('floorHeadId', 'fullName employeeCode designation')
     .populate('teamLeadId', 'fullName employeeCode designation')
     .populate('shiftId', 'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive');
 }
@@ -37,6 +38,7 @@ async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' 
     Employee.find(filter)
       .select('-passwordHash -__v')
       .populate('managerId', 'fullName employeeCode')
+      .populate('floorHeadId', 'fullName employeeCode')
       .populate('teamLeadId', 'fullName employeeCode')
       .populate('shiftId', 'name code shiftType startTime endTime graceMinutes lateHalfDayAfterMinutes requiredMinutes halfDayMinutes overtimeAfterMinutes workingDays isActive')
       .sort(sort)
@@ -70,6 +72,7 @@ async function deleteById(id) {
 async function clearReportingReferences(id) {
   return Promise.all([
     Employee.updateMany({ managerId: id }, { $unset: { managerId: '' } }),
+    Employee.updateMany({ floorHeadId: id }, { $unset: { floorHeadId: '' } }),
     Employee.updateMany({ teamLeadId: id }, { $unset: { teamLeadId: '' } }),
   ]);
 }
@@ -99,7 +102,7 @@ async function assignDepartmentManager(companyId, department, managerId) {
   return Employee.updateMany({
     companyId,
     department: departmentPattern(department),
-    role: { $in: ['team_lead', 'employee'] },
+    role: { $in: ['floor_head', 'team_lead', 'employee'] },
     _id: { $ne: managerId },
     status: { $ne: 'resigned' },
   }, { $set: { managerId } });
@@ -121,6 +124,10 @@ async function findActiveDepartmentTeamLeads(companyId, department) {
 
 async function clearTeamLeadReferences(teamLeadId) {
   return Employee.updateMany({ teamLeadId }, { $unset: { teamLeadId: '' } });
+}
+
+async function clearFloorHeadReferences(floorHeadId) {
+  return Employee.updateMany({ floorHeadId }, { $unset: { floorHeadId: '' } });
 }
 
 async function countByCompany(companyId) {
@@ -152,6 +159,17 @@ async function getDistinctDepartments(companyId) {
   return Employee.distinct('department', { companyId, department: { $ne: null, $ne: '' } });
 }
 
+async function countDepartmentAssignments(companyId, department) {
+  const pattern = departmentPattern(department);
+  return Employee.countDocuments({
+    companyId,
+    $or: [
+      { department: pattern },
+      { managedDepartments: pattern },
+    ],
+  });
+}
+
 async function normalizeDepartmentNames(companyId) {
   return Employee.updateMany(
     { companyId, department: { $type: 'string', $ne: '', $regex: /[A-Z]|^\s|\s$/ } },
@@ -169,7 +187,7 @@ async function getStats(filter) {
   // Mongoose casts normal find() filters but not aggregation pipeline
   // values. JWT tenant/user ids arrive as strings, so cast them explicitly.
   const match = { ...filter };
-  for (const field of ['companyId', 'managerId', 'teamLeadId']) {
+  for (const field of ['companyId', 'managerId', 'floorHeadId', 'teamLeadId']) {
     if (typeof match[field] === 'string' && mongoose.isValidObjectId(match[field])) {
       match[field] = new mongoose.Types.ObjectId(match[field]);
     }
@@ -191,8 +209,9 @@ async function getStats(filter) {
 
 async function getHierarchy(filter) {
   return Employee.find({ ...filter, status: { $ne: 'resigned' } })
-    .select('fullName employeeCode email department managedDepartments designation role status profilePicture managerId teamLeadId')
+    .select('fullName employeeCode email department managedDepartments designation role status profilePicture managerId floorHeadId teamLeadId')
     .populate('managerId', 'fullName employeeCode designation role profilePicture')
+    .populate('floorHeadId', 'fullName employeeCode designation role profilePicture')
     .populate('teamLeadId', 'fullName employeeCode designation role profilePicture')
     .sort({ role: 1, fullName: 1 });
 }
@@ -213,9 +232,11 @@ module.exports = {
   clearManagerReferences,
   findActiveDepartmentTeamLeads,
   clearTeamLeadReferences,
+  clearFloorHeadReferences,
   countByCompany,
   nextSequence,
   getDistinctDepartments,
+  countDepartmentAssignments,
   normalizeDepartmentNames,
   getStats,
   getHierarchy,

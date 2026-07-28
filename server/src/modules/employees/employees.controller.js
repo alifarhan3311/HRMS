@@ -20,7 +20,7 @@ function asyncHandler(fn) {
 function validate(schema) {
   return (req, res, next) => {
     const normalizedBody = { ...req.body };
-    for (const field of ['managerId', 'teamLeadId']) {
+    for (const field of ['managerId', 'floorHeadId', 'teamLeadId']) {
       if (normalizedBody[field] === '') normalizedBody[field] = null;
     }
     const { error, value } = schema.validate(normalizedBody, { abortEarly: false, stripUnknown: true });
@@ -119,6 +119,11 @@ const initializeLeaveBalance = [
   }),
 ];
 
+const deleteDepartment = asyncHandler(async (req, res) => {
+  const result = await service.deleteDepartment(req.params.name, req.user);
+  res.status(200).json({ success: true, data: result });
+});
+
 module.exports = {
   create,
   getById,
@@ -130,6 +135,7 @@ module.exports = {
   promote,
   departments,
   createDepartment,
+  deleteDepartment,
   stats,
   hierarchy,
   initializeLeaveBalance,

@@ -16,6 +16,7 @@ export const ROLES = {
   HR:          'hr',
   MANAGER:     'manager',
   TEAM_LEAD:   'team_lead',
+  FLOOR_HEAD:  'floor_head',
   EMPLOYEE:    'employee',
 };
 
@@ -39,7 +40,7 @@ export const NAV_GROUPS = [
     items: [
       {
         id: 'employees', label: 'Employees', path: '/employees',
-        icon: Users, roles: ['team_lead', 'manager', 'hr', 'super_admin'],
+        icon: Users, roles: ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin'],
       },
       {
         id: 'attendance', label: 'Attendance', path: '/attendance',
@@ -143,11 +144,11 @@ export function getNavGroupsForRole(role) {
 export function getRoleLabel(role) {
   const labels = {
     super_admin: 'Super Admin', admin: 'Admin', hr: 'HR',
-    manager: 'Manager', team_lead: 'Team Lead', employee: 'Employee',
+    manager: 'Manager', floor_head: 'Floor Head', team_lead: 'Team Lead', employee: 'Employee',
   };
   return labels[role] || role;
 }
 
 export function isAdminRole(role)  { return ['admin', 'super_admin'].includes(role); }
 export function isHRRole(role)     { return ['hr', 'super_admin'].includes(role); }
-export function isManagerRole(role){ return ['manager', 'team_lead', 'super_admin', 'hr'].includes(role); }
+export function isManagerRole(role){ return ['manager', 'floor_head', 'team_lead', 'super_admin', 'hr'].includes(role); }

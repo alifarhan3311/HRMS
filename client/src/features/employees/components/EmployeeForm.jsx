@@ -32,7 +32,7 @@ const TABS = [
 const GENDERS = ['male', 'female', 'other'];
 const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
-const DEFAULT_ROLES = ['employee', 'team_lead', 'manager'];
+const DEFAULT_ROLES = ['employee', 'team_lead', 'floor_head', 'manager'];
 const HIDDEN_CREATE_DEPARTMENTS = new Set([
   'hr', 'human resource', 'human resources', 'human resources department', 'executive',
 ]);
@@ -67,7 +67,7 @@ const TAB_FIELDS = {
   personal: ['fullName', 'fatherName', 'cnic', 'dateOfBirth', 'gender', 'maritalStatus', 'bloodGroup'],
   contact: ['email', 'contactNumber', 'address', 'emergencyContact'],
   employment: [
-    'joiningDate', 'department', 'workMode', 'managedDepartments', 'designation', 'role', 'managerId', 'teamLeadId',
+    'joiningDate', 'department', 'workMode', 'managedDepartments', 'designation', 'role', 'managerId', 'floorHeadId', 'teamLeadId',
     'shiftId', 'currentSalary', 'salaryPaymentMethod', 'salaryAccountNumber', 'salaryAccountTitle',
   ],
   professional: ['qualification', 'experience'],
@@ -84,6 +84,7 @@ const FIELD_LABELS = {
   workMode: 'Work Mode',
   managedDepartments: 'Managed Departments',
   role: 'Role',
+  floorHeadId: 'Floor Head',
   teamLeadId: 'Team Lead',
   shiftId: 'Assigned Shift',
   currentSalary: 'Current Salary',
@@ -117,6 +118,7 @@ const EMPTY_FORM = {
   designation: '',
   role: 'employee',
   managerId: '',
+  floorHeadId: '',
   teamLeadId: '',
   shiftId: '',
   employeeCardNumber: '',
@@ -136,7 +138,7 @@ const EMPTY_FORM = {
 };
 
 export default function EmployeeForm({
-  initial = null, onSubmit, onClose, isLoading, managers = [], teamLeads = [], allowedRoles = DEFAULT_ROLES,
+  initial = null, onSubmit, onClose, isLoading, managers = [], floorHeads = [], teamLeads = [], allowedRoles = DEFAULT_ROLES,
 }) {
   const isEdit = !!initial;
   const { user } = useSelector((state) => state.auth);
@@ -179,26 +181,36 @@ export default function EmployeeForm({
     Boolean(normalizedDepartment)
     && String(lead.department || '').trim().toLowerCase() === normalizedDepartment
   ));
+  const availableFloorHeads = floorHeads.filter((head) => (
+    Boolean(normalizedDepartment)
+    && String(head.department || '').trim().toLowerCase() === normalizedDepartment
+  ));
   const departmentManager = availableManagers[0];
 
   useEffect(() => {
-    if (!['employee', 'team_lead'].includes(form.role)) return;
+    if (!['employee', 'team_lead', 'floor_head'].includes(form.role)) return;
     if (departmentManager && String(form.managerId || '') !== String(departmentManager._id)) {
       setForm((previous) => ({ ...previous, managerId: departmentManager._id }));
     } else if (!departmentManager && form.managerId) {
-      setForm((previous) => ({ ...previous, managerId: '', teamLeadId: '' }));
+      setForm((previous) => ({ ...previous, managerId: '', floorHeadId: '', teamLeadId: '' }));
     }
   }, [departmentManager, form.managerId, form.role]);
 
   useEffect(() => {
-    if (form.role !== 'employee') {
+    if (!['employee', 'team_lead'].includes(form.role)) {
       if (form.teamLeadId) setForm((previous) => ({ ...previous, teamLeadId: '' }));
+    }
+    if (!['employee', 'team_lead'].includes(form.role) && form.floorHeadId) {
+      setForm((previous) => ({ ...previous, floorHeadId: '' }));
       return;
+    }
+    if (form.floorHeadId && !availableFloorHeads.some((head) => String(head._id) === String(form.floorHeadId))) {
+      setForm((previous) => ({ ...previous, floorHeadId: '' }));
     }
     if (form.teamLeadId && !availableTeamLeads.some((lead) => String(lead._id) === String(form.teamLeadId))) {
       setForm((previous) => ({ ...previous, teamLeadId: '' }));
     }
-  }, [availableTeamLeads, form.role, form.teamLeadId]);
+  }, [availableFloorHeads, availableTeamLeads, form.floorHeadId, form.role, form.teamLeadId]);
 
   // New employees must always have a concrete shift. Select the first active
   // company shift as soon as the async list becomes available.
@@ -218,6 +230,7 @@ export default function EmployeeForm({
         dateOfBirth: initial.dateOfBirth ? initial.dateOfBirth.substring(0, 10) : '',
         joiningDate: initial.joiningDate ? initial.joiningDate.substring(0, 10) : '',
         managerId: initial.managerId?._id || initial.managerId || '',
+        floorHeadId: initial.floorHeadId?._id || initial.floorHeadId || '',
         teamLeadId: initial.teamLeadId?._id || initial.teamLeadId || '',
         shiftId: initial.shiftId?._id || initial.shiftId || '',
         workMode: initial.workMode || 'office',
@@ -372,6 +385,7 @@ export default function EmployeeForm({
     // Optional MongoDB references must be null (not an empty string) when the
     // user chooses "No Manager" or "No Team Lead".
     payload.managerId = payload.managerId || null;
+    payload.floorHeadId = payload.floorHeadId || null;
     payload.teamLeadId = payload.teamLeadId || null;
     payload.shiftId = payload.shiftId || null;
     payload.managedDepartments = form.role === 'manager'
@@ -725,7 +739,7 @@ export default function EmployeeForm({
                   error={errors.salaryAccountTitle}
                   autoComplete="off"
                 />
-                {['employee', 'team_lead'].includes(form.role) && !departmentManager && (
+                {['employee', 'team_lead', 'floor_head'].includes(form.role) && !departmentManager && (
                   <Select
                     label="Reporting Manager"
                     value={form.managerId}
@@ -746,6 +760,25 @@ export default function EmployeeForm({
                     </option>
                     {availableManagers.map((m) => (
                       <option key={m._id} value={m._id}>{m.fullName} ({m.designation})</option>
+                    ))}
+                  </Select>
+                )}
+                {['employee', 'team_lead'].includes(form.role) && (
+                  <Select
+                    label="Floor Head"
+                    value={form.floorHeadId}
+                    disabled={!form.department || availableFloorHeads.length === 0}
+                    onChange={(e) => set('floorHeadId', e.target.value)}
+                  >
+                    <option value="">
+                      {!form.department
+                        ? 'Select department first'
+                        : availableFloorHeads.length
+                          ? 'No Floor Head / Report directly to Manager'
+                          : 'No Floor Head in this department'}
+                    </option>
+                    {availableFloorHeads.map((head) => (
+                      <option key={head._id} value={head._id}>{head.fullName} ({head.designation || 'Floor Head'})</option>
                     ))}
                   </Select>
                 )}

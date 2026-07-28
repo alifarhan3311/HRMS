@@ -171,7 +171,7 @@ function LeaveBalanceModal({ employee, isOpen, onClose, onSubmit, isLoading }) {
 }
 
 const STATUSES = ['active', 'inactive', 'on_leave', 'resigned'];
-const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'];
+const ROLES = ['employee', 'team_lead', 'floor_head', 'manager', 'hr', 'admin', 'super_admin'];
 const HIDDEN_TEAM_DEPARTMENTS = new Set([
   'hr', 'human resource', 'human resources', 'human resources department',
 ]);
@@ -221,10 +221,14 @@ function TeamStructure({ employees = [] }) {
   const teamLeads = employees.filter(
     (employee) => employee.role === 'team_lead' && belongsToDepartment(employee),
   );
+  const floorHeads = employees.filter(
+    (employee) => employee.role === 'floor_head' && belongsToDepartment(employee),
+  );
   const members = employees.filter(
     (employee) => employee.role === 'employee' && belongsToDepartment(employee),
   );
   const scopedManagerIds = new Set([
+    ...floorHeads.map((head) => idOf(head.managerId)),
     ...teamLeads.map((lead) => idOf(lead.managerId)),
     ...members.map((member) => idOf(member.managerId)),
   ].filter(Boolean));
@@ -307,17 +311,27 @@ function TeamStructure({ employees = [] }) {
         </div>
       )}
       {managers.map((manager) => {
-        const leads = teamLeads.filter((lead) => idOf(lead.managerId) === idOf(manager));
+        const heads = floorHeads.filter((head) => idOf(head.managerId) === idOf(manager));
+        const leads = teamLeads.filter((lead) => idOf(lead.managerId) === idOf(manager) && !lead.floorHeadId);
         const direct = members.filter((member) => idOf(member.managerId) === idOf(manager) && !member.teamLeadId);
         return (
           <section key={manager._id} className="overflow-hidden rounded-2xl border border-border bg-muted/10 p-3 sm:p-4">
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Manager</p>
             <Person employee={manager} />
             <div className="mt-3 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr))]">
+              {heads.map((head) => (
+                <div key={head._id} className="rounded-2xl border border-violet-500/25 bg-violet-500/5 p-3">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-violet-600">Floor Head</p>
+                  <Person employee={head} />
+                  <div className="mt-3 grid gap-3">
+                    {teamLeads.filter((lead) => idOf(lead.floorHeadId) === idOf(head)).map((lead) => <LeadTeam key={lead._id} lead={lead} />)}
+                  </div>
+                </div>
+              ))}
               {leads.map((lead) => <LeadTeam key={lead._id} lead={lead} />)}
               {direct.length > 0 && <div className="rounded-xl border border-border p-3"><p className="mb-2 text-xs font-semibold">Direct Reports</p><div className="space-y-2">{direct.map((member) => <Person key={member._id} employee={member} />)}</div></div>}
             </div>
-            {!leads.length && !direct.length && <p className="mt-3 text-xs text-muted-foreground">No team assigned to this manager.</p>}
+            {!heads.length && !leads.length && !direct.length && <p className="mt-3 text-xs text-muted-foreground">No team assigned to this manager.</p>}
           </section>
         );
       })}
@@ -334,11 +348,11 @@ function TeamStructure({ employees = [] }) {
 export default function EmployeesListPage() {
   const { user } = useSelector((s) => s.auth);
   const canManage = ['hr', 'super_admin'].includes(user?.role);
-  const canViewTeamStructure = ['team_lead', 'manager', 'hr', 'super_admin'].includes(user?.role);
+  const canViewTeamStructure = ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin'].includes(user?.role);
   const manageableRoles = user?.role === 'super_admin'
-    ? ['admin', 'hr', 'manager', 'team_lead', 'employee']
+    ? ['admin', 'hr', 'manager', 'floor_head', 'team_lead', 'employee']
     : user?.role === 'hr'
-      ? ['manager', 'team_lead', 'employee']
+      ? ['manager', 'floor_head', 'team_lead', 'employee']
       : [];
   const canManageEmployee = (employee) => (
     String(user?.id || user?._id) !== String(employee?._id)
@@ -399,6 +413,7 @@ export default function EmployeesListPage() {
   const stats = statsData?.data;
   const hierarchyEmployees = hierarchyData?.data || [];
   const managers = hierarchyEmployees.filter((employee) => employee.role === 'manager' && employee._id !== editEmployee?._id);
+  const floorHeads = hierarchyEmployees.filter((employee) => employee.role === 'floor_head' && employee._id !== editEmployee?._id);
   const teamLeads = hierarchyEmployees.filter((employee) => employee.role === 'team_lead' && employee._id !== editEmployee?._id);
 
   // Search with debounce on Enter / blur
@@ -878,6 +893,7 @@ export default function EmployeesListPage() {
           initial={editEmployee}
           allowedRoles={assignableRoles}
           managers={managers}
+          floorHeads={floorHeads}
           teamLeads={teamLeads}
           onSubmit={editEmployee ? handleUpdate : handleCreate}
           onClose={() => { setFormOpen(false); setEditEmployee(null); }}
@@ -885,7 +901,7 @@ export default function EmployeesListPage() {
         />
       </Modal>
 
-      <Modal isOpen={teamViewOpen} onClose={() => setTeamViewOpen(false)} title={['manager', 'team_lead'].includes(user?.role) ? 'My Team Structure' : 'Company Team Structure'} size="full">
+      <Modal isOpen={teamViewOpen} onClose={() => setTeamViewOpen(false)} title={['manager', 'floor_head', 'team_lead'].includes(user?.role) ? 'My Team Structure' : 'Company Team Structure'} size="full">
         <TeamStructure employees={hierarchyEmployees} />
       </Modal>
 

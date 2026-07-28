@@ -44,10 +44,11 @@ if (!ACCESS_TOKEN_SECRET || !REFRESH_TOKEN_SECRET) {
 const ROLE_RANK = Object.freeze({
   employee: 1,
   team_lead: 2,
-  manager: 3,
-  hr: 4,
-  admin: 5,
-  super_admin: 6,
+  floor_head: 3,
+  manager: 4,
+  hr: 5,
+  admin: 6,
+  super_admin: 7,
 });
 
 /**

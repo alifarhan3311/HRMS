@@ -476,7 +476,7 @@ function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
 export default function AttendanceListPage() {
   const { user } = useSelector((s) => s.auth);
   const isAdminHR = ['hr', 'super_admin'].includes(user?.role);
-  const isManagerUp = ['hr', 'super_admin', 'manager', 'team_lead'].includes(user?.role);
+  const isManagerUp = ['hr', 'super_admin', 'manager', 'floor_head', 'team_lead'].includes(user?.role);
   const canSelectEmployee = ['manager', 'hr', 'super_admin'].includes(user?.role);
   const canViewLeaveBalances = canSelectEmployee;
 

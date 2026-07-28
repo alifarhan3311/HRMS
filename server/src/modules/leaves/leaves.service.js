@@ -115,6 +115,7 @@ function buildApprovalChain() {
 async function visibleLeaveEmployeeIds(actor, includeSelf = true) {
   const filter = { companyId: actor.companyId };
   if (actor.role === 'manager') Object.assign(filter, await buildManagerEmployeeScope(actor));
+  else if (actor.role === 'floor_head') filter.floorHeadId = actor.id;
   else if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
   else if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   const ids = await Employee.find(filter).distinct('_id');
@@ -124,7 +125,7 @@ async function visibleLeaveEmployeeIds(actor, includeSelf = true) {
 
 async function assertCanViewLeave(actor, employeeId) {
   if (String(employeeId) === String(actor.id)) return;
-  const employee = await Employee.findById(employeeId).select('companyId role department managerId teamLeadId');
+  const employee = await Employee.findById(employeeId).select('companyId role department managerId floorHeadId teamLeadId');
   if (!employee || String(employee.companyId) !== String(actor.companyId)) {
     throw createHttpError(404, 'Leave request not found.');
   }
@@ -137,7 +138,10 @@ async function assertCanViewLeave(actor, employeeId) {
   if (actor.role === 'team_lead' && String(employee.teamLeadId || '') !== String(actor.id)) {
     throw createHttpError(403, 'You can only view leave records for your team members.');
   }
-  if (!['super_admin', 'admin', 'hr', 'manager', 'team_lead'].includes(actor.role)) {
+  if (actor.role === 'floor_head' && String(employee.floorHeadId || '') !== String(actor.id)) {
+    throw createHttpError(403, 'You can only access leave requests for employees assigned to your floor.');
+  }
+  if (!['super_admin', 'admin', 'hr', 'manager', 'floor_head', 'team_lead'].includes(actor.role)) {
     throw createHttpError(403, 'You can only view your own leave records.');
   }
 }
@@ -176,7 +180,7 @@ function approvalNotificationPayload(leave, stage, recipientId, employee) {
 async function stageApproverIds(leave, stage) {
   const employeeId = leave.employeeId?._id || leave.employeeId;
   const employee = await Employee.findById(employeeId)
-    .select('fullName role managerId teamLeadId companyId status')
+    .select('fullName role managerId floorHeadId teamLeadId companyId status')
     .lean();
   if (!employee) return { employee: null, recipientIds: [] };
 
@@ -184,9 +188,11 @@ async function stageApproverIds(leave, stage) {
   if (stage === 1) {
     // Employees go to their Team Lead first when one exists. A Team Lead's
     // own request goes to their Manager, never back to themselves.
-    const directApprover = employee.role === 'team_lead'
+    const directApprover = employee.role === 'floor_head'
       ? employee.managerId
-      : employee.teamLeadId || employee.managerId;
+      : employee.role === 'team_lead'
+        ? employee.floorHeadId || employee.managerId
+        : employee.teamLeadId || employee.floorHeadId || employee.managerId;
     if (directApprover) recipientIds = [directApprover];
   } else if (stage === 2) {
     recipientIds = await Employee.find({
@@ -460,7 +466,7 @@ async function approveLeave(id, { remarks }, actor) {
   await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   if (leave.status !== 'pending') throw createHttpError(400, 'This leave is no longer pending.');
 
-  const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2 };
+  const ROLE_STAGE_MAP = { team_lead: 1, floor_head: 1, manager: 1, hr: 2 };
   const actorStage = ROLE_STAGE_MAP[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot approve leave requests.');
   if (actorStage !== leave.currentStage) {
@@ -536,7 +542,7 @@ async function rejectLeave(id, { remarks }, actor) {
   await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   if (leave.status !== 'pending') throw createHttpError(400, 'This leave is no longer pending.');
 
-  const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2 };
+  const ROLE_STAGE_MAP = { team_lead: 1, floor_head: 1, manager: 1, hr: 2 };
   const actorStage = ROLE_STAGE_MAP[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot reject leave requests.');
   if (actorStage !== leave.currentStage) {
@@ -599,7 +605,7 @@ async function listLeaves(query, actor) {
   const { page = 1, limit = 20, status, leaveType, employeeId, year, month, sort = '-createdAt' } = query;
   const filter = { companyId: actor.companyId };
 
-  if (!['admin', 'hr', 'super_admin', 'manager', 'team_lead'].includes(actor.role)) {
+  if (!['admin', 'hr', 'super_admin', 'manager', 'floor_head', 'team_lead'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
     await assertCanViewLeave(actor, employeeId);
@@ -642,7 +648,7 @@ async function getLeaveById(id, actor) {
 }
 
 async function getPendingApprovals(actor) {
-  const ROLE_STAGE_MAP = { team_lead: 1, manager: 1, hr: 2 };
+  const ROLE_STAGE_MAP = { team_lead: 1, floor_head: 1, manager: 1, hr: 2 };
   const stage = ROLE_STAGE_MAP[actor.role];
   if (!stage) return [];
   const employeeIds = actor.role === 'super_admin'

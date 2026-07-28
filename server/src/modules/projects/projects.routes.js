@@ -8,13 +8,37 @@ const repository = require('./projects.repository');
 const { authenticate, authorize, enforceTenantScope } = require('../../middlewares/auth.middleware');
 const validate = require('../../middlewares/validate.middleware');
 const { createSchema, updateSchema, idParamsSchema } = require('./projects.validation');
+const callTransferController = require('./callTransfer.controller');
+const Joi = require('joi');
 
 const router = express.Router();
-const ALLOWED_ROLES = ['admin','manager','team_lead','super_admin','hr','employee'];
+const ALLOWED_ROLES = ['admin','manager','floor_head','team_lead','super_admin','hr','employee'];
 const MANAGE_ROLES = ['admin', 'manager', 'super_admin'];
 
 router.use(authenticate);
 
+router.get('/call-transfers/context', authorize(...ALLOWED_ROLES), callTransferController.context);
+router.get('/call-transfers', authorize(...ALLOWED_ROLES), callTransferController.list);
+router.post(
+  '/call-transfers',
+  authorize(...ALLOWED_ROLES),
+  validate(Joi.object({
+    transferredEmployeeId: Joi.string().hex().length(24).required(),
+    transferDate: Joi.string().isoDate().required(),
+    businessOwnerName: Joi.string().trim().min(2).max(150).required(),
+  })),
+  callTransferController.create
+);
+router.patch(
+  '/call-transfers/:id/decision',
+  authorize('team_lead'),
+  validate(idParamsSchema, 'params'),
+  validate(Joi.object({
+    status: Joi.string().valid('approved', 'rejected').required(),
+    reason: Joi.string().trim().max(500).allow('').optional(),
+  })),
+  callTransferController.decide
+);
 router.get('/', authorize(...ALLOWED_ROLES), controller.list);
 router.get('/eligible-employees', authorize(...ALLOWED_ROLES), controller.eligibleEmployees);
 router.post('/', authorize(...MANAGE_ROLES), validate(createSchema), controller.create);

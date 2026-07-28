@@ -40,6 +40,7 @@ export function RoleBadge({ role }) {
     hr: { label: 'HR', variant: 'blue' },
     manager: { label: 'Manager', variant: 'yellow' },
     team_lead: { label: 'Team Lead', variant: 'blue' },
+    floor_head: { label: 'Floor Head', variant: 'purple' },
     employee: { label: 'Employee', variant: 'gray' },
   };
   const { label, variant } = MAP[role] || { label: role, variant: 'gray' };

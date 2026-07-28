@@ -442,10 +442,10 @@ function recordTiming(record, fallback) {
 
 async function assertCanViewEmployeeAttendance(actor, employeeId) {
   if (String(employeeId) === String(actor.id)) return;
-  if (!['super_admin', 'hr', 'manager', 'team_lead'].includes(actor.role)) {
+  if (!['super_admin', 'hr', 'manager', 'floor_head', 'team_lead'].includes(actor.role)) {
     throw createHttpError(403, 'You can only view your own attendance.');
   }
-  const employee = await Employee.findById(employeeId).select('companyId role department managerId teamLeadId');
+  const employee = await Employee.findById(employeeId).select('companyId role department managerId floorHeadId teamLeadId');
   if (!employee || String(employee.companyId) !== String(actor.companyId)) {
     throw createHttpError(404, 'Employee not found.');
   }
@@ -454,6 +454,9 @@ async function assertCanViewEmployeeAttendance(actor, employeeId) {
   }
   if (actor.role === 'manager' && !await managerCanAccessEmployee(actor, employee)) {
     throw createHttpError(403, 'You can only view attendance for employees reporting to you.');
+  }
+  if (actor.role === 'floor_head' && String(employee.floorHeadId || '') !== String(actor.id)) {
+    throw createHttpError(403, 'You can only view attendance for employees assigned to your floor.');
   }
   if (actor.role === 'team_lead' && String(employee.teamLeadId || '') !== String(actor.id)) {
     throw createHttpError(403, 'You can only view attendance for your team members.');
@@ -493,11 +496,12 @@ function addDateKeyDays(dateKey, amount) {
 }
 
 async function visibleAttendanceEmployeeIds(actor, includeSelf = true) {
-  if (!['super_admin', 'hr', 'manager', 'team_lead'].includes(actor.role)) {
+  if (!['super_admin', 'hr', 'manager', 'floor_head', 'team_lead'].includes(actor.role)) {
     return includeSelf ? [actor.id] : [];
   }
   const filter = { companyId: actor.companyId };
   if (actor.role === 'manager') Object.assign(filter, await buildManagerEmployeeScope(actor));
+  else if (actor.role === 'floor_head') filter.floorHeadId = actor.id;
   else if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
   else if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   const ids = await Employee.find(filter).distinct('_id');
@@ -536,7 +540,7 @@ async function listAttendances(query, actor) {
   const filter = { companyId: actor.companyId };
 
   // Users without HR/team authority only see their own records.
-  if (!['hr', 'super_admin', 'manager', 'team_lead'].includes(actor.role)) {
+  if (!['hr', 'super_admin', 'manager', 'floor_head', 'team_lead'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
     await assertCanViewEmployeeAttendance(actor, employeeId);
@@ -648,6 +652,7 @@ async function manualCorrection(id, payload, actor) {
 // -------------------------------------------------------------------------
 async function resolveRegularizationApprover(employee, companyId) {
   if (employee.teamLeadId) return employee.teamLeadId;
+  if (employee.floorHeadId) return employee.floorHeadId;
   if (employee.managerId) return employee.managerId;
 
   const fallback = await Employee.findOne({
@@ -748,7 +753,7 @@ async function requestRegularization(id, payload, actor) {
     }
   }
 
-  const employee = await Employee.findById(actor.id).select('managerId teamLeadId companyId fullName');
+  const employee = await Employee.findById(actor.id).select('managerId floorHeadId teamLeadId companyId fullName');
   const assignedApprover = await resolveRegularizationApprover(employee, actor.companyId);
   if (!assignedApprover) {
     throw createHttpError(422, 'No manager, team lead, HR, or super administrator is available to review this request.');

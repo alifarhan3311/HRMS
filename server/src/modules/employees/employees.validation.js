@@ -5,7 +5,7 @@
  */
 const Joi = require('joi');
 
-const ROLES = ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin'];
+const ROLES = ['employee', 'team_lead', 'floor_head', 'manager', 'hr', 'admin', 'super_admin'];
 const STATUSES = ['active', 'inactive', 'on_leave', 'resigned'];
 const GENDERS = ['male', 'female', 'other'];
 const MARITAL_STATUSES = ['single', 'married', 'divorced', 'widowed'];
@@ -65,6 +65,7 @@ const createSchema = Joi.object({
   managedDepartments: Joi.array().items(Joi.string().trim().min(2).max(100)).unique().optional(),
   designation: Joi.string().trim().max(100).optional().allow(''),
   managerId: Joi.string().hex().length(24).optional().allow(null, ''),
+  floorHeadId: Joi.string().hex().length(24).optional().allow(null, ''),
   teamLeadId: Joi.string().hex().length(24).optional().allow(null, ''),
   shiftId: Joi.string().hex().length(24).required(),
   role: Joi.string().valid(...ROLES).required(),
@@ -112,6 +113,7 @@ const updateSchema = Joi.object({
   managedDepartments: Joi.array().items(Joi.string().trim().min(2).max(100)).unique().optional(),
   designation: Joi.string().trim().max(100).optional().allow(''),
   managerId: Joi.string().hex().length(24).optional().allow(null, ''),
+  floorHeadId: Joi.string().hex().length(24).optional().allow(null, ''),
   teamLeadId: Joi.string().hex().length(24).optional().allow(null, ''),
   shiftId: Joi.string().hex().length(24).optional().allow(null, ''),
   skills: Joi.array().items(Joi.string().trim()).optional(),

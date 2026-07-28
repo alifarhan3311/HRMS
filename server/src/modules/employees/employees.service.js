@@ -21,8 +21,8 @@ const {
 const PASSWORD_SALT_ROUNDS = 12;
 const LEAVE_BALANCE_TYPES = ['paid', 'sick', 'annual'];
 const MANAGEABLE_ROLES = {
-  super_admin: ['admin', 'hr', 'manager', 'team_lead', 'employee'],
-  hr: ['manager', 'team_lead', 'employee'],
+  super_admin: ['admin', 'hr', 'manager', 'floor_head', 'team_lead', 'employee'],
+  hr: ['manager', 'floor_head', 'team_lead', 'employee'],
 };
 
 // -------------------------------------------------------------------------
@@ -55,7 +55,7 @@ function calcTenure(joiningDate) {
 
 function normalizeOptionalReferences(payload) {
   const normalized = { ...payload };
-  for (const field of ['managerId', 'teamLeadId', 'shiftId']) {
+  for (const field of ['managerId', 'floorHeadId', 'teamLeadId', 'shiftId']) {
     if (normalized[field] === '') normalized[field] = null;
   }
   return normalized;
@@ -80,12 +80,13 @@ async function validateAssignedShift(shiftId, companyId) {
   if (!exists) throw createHttpError(422, 'Selected shift is invalid or inactive.');
 }
 
-async function validateReportingLine({ managerId, teamLeadId, department, role }, companyId, employeeId = null) {
-  if (employeeId && [managerId, teamLeadId].filter(Boolean).some((id) => String(id) === String(employeeId))) {
+async function validateReportingLine({ managerId, floorHeadId, teamLeadId, department, role }, companyId, employeeId = null) {
+  if (employeeId && [managerId, floorHeadId, teamLeadId].filter(Boolean).some((id) => String(id) === String(employeeId))) {
     throw createHttpError(422, 'An employee cannot report to themselves.');
   }
-  const [manager, teamLead] = await Promise.all([
+  const [manager, floorHead, teamLead] = await Promise.all([
     managerId ? repository.findById(managerId) : null,
+    floorHeadId ? repository.findById(floorHeadId) : null,
     teamLeadId ? repository.findById(teamLeadId) : null,
   ]);
   if (managerId && (!manager || String(manager.companyId) !== String(companyId) || manager.role !== 'manager' || manager.status !== 'active')) {
@@ -97,6 +98,15 @@ async function validateReportingLine({ managerId, teamLeadId, department, role }
   if (manager && !managerDepartments.includes(String(department || '').trim().toLowerCase())) {
     throw createHttpError(422, 'Selected Reporting Manager belongs to a different department.');
   }
+  if (floorHeadId && (!floorHead || String(floorHead.companyId) !== String(companyId) || floorHead.role !== 'floor_head' || floorHead.status !== 'active')) {
+    throw createHttpError(422, 'Selected Floor Head is invalid or inactive.');
+  }
+  if (floorHead && String(floorHead.department || '').trim().toLowerCase() !== String(department || '').trim().toLowerCase()) {
+    throw createHttpError(422, 'Selected Floor Head belongs to a different department.');
+  }
+  if (manager && floorHead?.managerId && String(floorHead.managerId?._id || floorHead.managerId) !== String(manager._id)) {
+    throw createHttpError(422, 'Selected Floor Head belongs to a different Manager.');
+  }
   if (teamLeadId && (!teamLead || String(teamLead.companyId) !== String(companyId) || teamLead.role !== 'team_lead' || teamLead.status !== 'active')) {
     throw createHttpError(422, 'Selected Team Lead is invalid or inactive.');
   }
@@ -105,6 +115,9 @@ async function validateReportingLine({ managerId, teamLeadId, department, role }
   }
   if (manager && teamLead?.managerId && String(teamLead.managerId?._id || teamLead.managerId) !== String(manager._id)) {
     throw createHttpError(422, 'Selected Team Lead belongs to a different Manager.');
+  }
+  if (floorHead && teamLead?.floorHeadId && String(teamLead.floorHeadId?._id || teamLead.floorHeadId) !== String(floorHead._id)) {
+    throw createHttpError(422, 'Selected Team Lead belongs to a different Floor Head.');
   }
   if (role === 'employee' && department && !teamLeadId) {
     const departmentTeamLeads = await repository.findActiveDepartmentTeamLeads(companyId, department);
@@ -118,6 +131,7 @@ async function applyDepartmentReportingLine(payload, companyId, role, employeeId
   const department = String(payload.department || '').trim();
   if (role === 'manager') {
     payload.managerId = null;
+    payload.floorHeadId = null;
     payload.teamLeadId = null;
     normalizeManagedDepartments(payload, role);
     for (const managedDepartment of payload.managedDepartments) {
@@ -130,10 +144,15 @@ async function applyDepartmentReportingLine(payload, companyId, role, employeeId
     return;
   }
   if (payload.managedDepartments !== undefined) payload.managedDepartments = [];
-  if (!['team_lead', 'employee'].includes(role) || !department) return;
+  if (!['floor_head', 'team_lead', 'employee'].includes(role) || !department) return;
   const departmentManager = await repository.findActiveDepartmentManager(companyId, department);
   if (departmentManager) payload.managerId = departmentManager._id;
 
+  if (role === 'floor_head') {
+    payload.floorHeadId = null;
+    payload.teamLeadId = null;
+    return;
+  }
   if (role === 'team_lead') {
     payload.teamLeadId = null;
     return;
@@ -168,10 +187,13 @@ async function teamLeaderCanView(actor, employee) {
   if (['employee', 'admin'].includes(actor.role)) {
     return String(employee._id) === String(actor.id);
   }
-  if (!['manager', 'team_lead'].includes(actor.role)) return true;
+  if (!['manager', 'floor_head', 'team_lead'].includes(actor.role)) return true;
   const actorId = String(actor.id);
   if (String(employee._id) === actorId) return true;
   if (actor.role === 'manager') return managerCanAccessEmployee(actor, employee);
+  if (actor.role === 'floor_head') {
+    return String(employee.floorHeadId?._id || employee.floorHeadId || '') === actorId;
+  }
   const reportingField = employee.teamLeadId;
   return String(reportingField?._id || reportingField || '') === actorId;
 }
@@ -372,7 +394,7 @@ async function getEmployeeById(id, actor) {
     reconciled.entitlements
   );
   obj.tenure = obj.joiningDate ? calcTenure(obj.joiningDate) : null;
-  const visible = ['manager', 'team_lead'].includes(actor.role) && String(actor.id) !== String(obj._id)
+  const visible = ['manager', 'floor_head', 'team_lead'].includes(actor.role) && String(actor.id) !== String(obj._id)
     ? redactManagerPrivateFields(obj)
     : obj;
   return enforceLeaveBalanceVisibility(visible, actor);
@@ -398,6 +420,7 @@ async function listEmployees(query, actor) {
   // assigns both Team Leads and Employees to managerId, so this includes the
   // complete team without exposing another manager's staff.
   if (actor.role === 'manager') filter.$and = [await buildManagerEmployeeScope(actor)];
+  if (actor.role === 'floor_head') filter.floorHeadId = actor.id;
   if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
 
   if (status) filter.status = status;
@@ -441,7 +464,7 @@ async function listEmployees(query, actor) {
       ),
       tenure: obj.joiningDate ? calcTenure(obj.joiningDate) : null,
     };
-    const visible = ['manager', 'team_lead'].includes(actor.role)
+    const visible = ['manager', 'floor_head', 'team_lead'].includes(actor.role)
       ? redactManagerPrivateFields(item)
       : item;
     return enforceLeaveBalanceVisibility(visible, actor);
@@ -569,6 +592,8 @@ async function getEmployeeHierarchy(actor) {
   if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
   if (actor.role === 'manager') {
     filter.$or = [{ _id: actor.id }, await buildManagerEmployeeScope(actor)];
+  } else if (actor.role === 'floor_head') {
+    filter.$or = [{ _id: actor.id }, { floorHeadId: actor.id }];
   } else if (actor.role === 'team_lead') {
     filter.$or = [{ _id: actor.id }, { teamLeadId: actor.id }];
   }
@@ -744,6 +769,23 @@ async function createDepartment(name, actor) {
   };
 }
 
+async function deleteDepartment(name, actor) {
+  const normalizedName = String(name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  if (!normalizedName || isHumanResourcesDepartment(normalizedName)) {
+    throw createHttpError(422, 'Selected department cannot be deleted.');
+  }
+  const departments = await getDepartmentList(actor.companyId);
+  if (!departments.includes(normalizedName)) {
+    throw createHttpError(404, 'Department not found.');
+  }
+  const assignedCount = await repository.countDepartmentAssignments(actor.companyId, normalizedName);
+  if (assignedCount > 0) {
+    throw createHttpError(409, `Department cannot be deleted because ${assignedCount} employee(s) are assigned to it.`);
+  }
+  await settingsService.removeDepartment(actor.companyId, normalizedName, actor.id);
+  return { name: normalizedName, departments: await getDepartmentList(actor.companyId) };
+}
+
 async function getEmployeeStats(actor) {
   const filter = { companyId: actor.companyId };
   if (actor.role !== 'super_admin') filter.role = { $ne: 'super_admin' };
@@ -777,5 +819,6 @@ module.exports = {
   promoteEmployee,
   getDepartmentList,
   createDepartment,
+  deleteDepartment,
   getEmployeeStats,
 };
