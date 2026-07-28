@@ -13,6 +13,7 @@ import {
   useListProjectsQuery, useCreateProjectMutation, useUpdateProjectMutation, useGetEligibleProjectEmployeesQuery,
   useGetCallTransferContextQuery, useListCallTransfersQuery, useCreateCallTransferMutation,
   useDecideCallTransferMutation,
+  useGetCallSaleContextQuery, useListCallSalesQuery, useCreateCallSaleMutation, useDecideCallSaleMutation,
 } from '../api/projects.api';
 import { toast } from '../../../utils/toast';
 import Button from '../../../components/ui/Button';
@@ -189,6 +190,97 @@ function CallTransferPanel({ user }) {
   );
 }
 
+const SALE_PRODUCTS = {
+  pos: 'POS', atm_service: 'ATM Service', accounting: 'Accounting', osap: 'OSAP',
+  digital_media_service: 'Digital Media Service', pr: 'PR', insurance: 'Insurance',
+};
+
+function CallSalesPanel({ user }) {
+  const now = new Date();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [tab, setTab] = useState('pending');
+  const [filters, setFilters] = useState({ employeeId: '', product: '', month: now.getMonth() + 1, year: now.getFullYear() });
+  const [form, setForm] = useState({
+    saleDate: now.toISOString().slice(0, 10), businessName: '', ownerName: '', product: '',
+  });
+  const { data: contextData } = useGetCallSaleContextQuery();
+  const context = contextData?.data;
+  const { data, isFetching } = useListCallSalesQuery({ ...filters, status: tab === 'all' ? '' : tab });
+  const [createSale, { isLoading: creating }] = useCreateCallSaleMutation();
+  const [decideSale, { isLoading: deciding }] = useDecideCallSaleMutation();
+  const records = data?.data?.records || [];
+  const progress = data?.data?.progress || {};
+  const target = Number(context?.target || 0);
+  const key = `${user?.id || user?._id}:${filters.year}-${filters.month}`;
+  const approved = Number(progress[key]?.approved || 0);
+  const canSubmit = context?.isCallCenter && context?.afterProbation && ['employee', 'team_lead', 'floor_head'].includes(user?.role);
+
+  async function submit(event) {
+    event.preventDefault();
+    try {
+      await createSale(form).unwrap();
+      toast.success('Sale submitted for approval');
+      setModalOpen(false);
+      setForm({ saleDate: now.toISOString().slice(0, 10), businessName: '', ownerName: '', product: '' });
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Could not submit sale');
+    }
+  }
+
+  async function decide(record, status) {
+    const reason = status === 'rejected' ? window.prompt('Rejection reason (optional):') || '' : '';
+    try {
+      await decideSale({ id: record._id, status, reason }).unwrap();
+      toast.success(status === 'approved'
+        ? (user?.role === 'manager' ? 'Sale finally approved and counted' : 'Approved and sent to next stage')
+        : 'Sale rejected');
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Could not process sale');
+    }
+  }
+
+  if (context && !context.isCallCenter && !['hr', 'admin', 'super_admin'].includes(user?.role)) return null;
+  return (
+    <section className="glass-card space-y-4 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h2 className="text-lg font-semibold">After Probation Sales</h2><p className="text-xs text-muted-foreground">Only Manager-finalized sales count toward the monthly target.</p></div>
+        {canSubmit && <Button size="sm" className="gap-1.5" onClick={() => setModalOpen(true)}><Plus className="h-4 w-4" /> Add Sale</Button>}
+      </div>
+      {canSubmit && target > 0 && (
+        <div className={`rounded-xl border p-4 ${approved >= target ? 'border-emerald-500 bg-emerald-500/10' : 'border-border bg-muted/20'}`}>
+          <div className="flex justify-between text-sm"><b>Monthly Manager-approved target</b><b>{Math.min(approved, target)}/{target}</b></div>
+          <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-emerald-500" style={{ width: `${Math.min(100, approved / target * 100)}%` }} /></div>
+          {approved >= target && <p className="mt-2 font-semibold text-emerald-600">Congratulations! Monthly sales target completed.</p>}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {['all', 'pending', 'approved', 'rejected'].map((value) => <Button key={value} size="sm" variant={tab === value ? 'primary' : 'outline'} className="capitalize" onClick={() => setTab(value)}>{value}</Button>)}
+        <Select value={filters.employeeId} onChange={(e) => setFilters((v) => ({ ...v, employeeId: e.target.value }))}><option value="">All Employees</option>{(context?.employees || []).map((e) => <option key={e._id} value={e._id}>{e.fullName}</option>)}</Select>
+        <Select value={filters.product} onChange={(e) => setFilters((v) => ({ ...v, product: e.target.value }))}><option value="">All Products</option>{Object.entries(SALE_PRODUCTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+        <Select value={filters.month} onChange={(e) => setFilters((v) => ({ ...v, month: e.target.value }))}>{Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{new Date(2020, i).toLocaleString('en', { month: 'long' })}</option>)}</Select>
+        <Input type="number" value={filters.year} onChange={(e) => setFilters((v) => ({ ...v, year: e.target.value }))} className="w-28" />
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-3">Employee</th><th className="p-3">Date</th><th className="p-3">Business</th><th className="p-3">Owner</th><th className="p-3">Product</th><th className="p-3">Status / Stage</th><th className="p-3">Actions</th></tr></thead>
+          <tbody>{records.map((record) => {
+            const isCurrentApprover = String(record.currentApproverId?._id || record.currentApproverId || '') === String(user?.id || user?._id);
+            return <tr key={record._id} className="border-t border-border"><td className="p-3 font-medium">{record.submittedBy?.fullName}</td><td className="p-3">{fmtDate(record.saleDate)}</td><td className="p-3">{record.businessName}</td><td className="p-3">{record.ownerName}</td><td className="p-3">{SALE_PRODUCTS[record.product]}</td><td className="p-3 capitalize">{record.status === 'pending' ? `Pending: ${record.currentApproverId?.role?.replace('_', ' ') || 'approval'}` : record.status}</td><td className="p-3">{isCurrentApprover && record.status === 'pending' && <div className="flex gap-2"><Button size="xs" disabled={deciding} onClick={() => decide(record, 'approved')}>Approve</Button><Button size="xs" variant="destructive" disabled={deciding} onClick={() => decide(record, 'rejected')}>Reject</Button></div>}</td></tr>;
+          })}</tbody>
+        </table>
+        {!records.length && <p className="p-8 text-center text-sm text-muted-foreground">{isFetching ? 'Loading...' : 'No sales found.'}</p>}
+      </div>
+      <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Add Sale" size="sm">
+        <form onSubmit={submit}><div className="space-y-4 p-5">
+          <Input label="Sale Date" required type="date" value={form.saleDate} onChange={(e) => setForm((v) => ({ ...v, saleDate: e.target.value }))} />
+          <Input label="Business Name" required value={form.businessName} onChange={(e) => setForm((v) => ({ ...v, businessName: e.target.value }))} />
+          <Input label="Owner Name" required value={form.ownerName} onChange={(e) => setForm((v) => ({ ...v, ownerName: e.target.value }))} />
+          <Select label="Product" required value={form.product} onChange={(e) => setForm((v) => ({ ...v, product: e.target.value }))}><option value="">Select product</option>{Object.entries(SALE_PRODUCTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+        </div><ModalFooter><Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button><Button type="submit" disabled={creating}>Submit Sale</Button></ModalFooter></form>
+      </Modal>
+    </section>
+  );
+}
+
 const STATUS_STYLES = {
   planning:  { label: 'Planning',   variant: 'blue',   Icon: Circle },
   active:    { label: 'Active',     variant: 'green',  Icon: CheckCircle2 },
@@ -338,6 +430,7 @@ export default function ProjectsListPage() {
       </motion.div>
 
       <CallTransferPanel user={user} />
+      <CallSalesPanel user={user} />
 
       {/* Status stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

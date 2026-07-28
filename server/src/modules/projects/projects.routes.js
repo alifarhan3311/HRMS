@@ -9,6 +9,7 @@ const { authenticate, authorize, enforceTenantScope } = require('../../middlewar
 const validate = require('../../middlewares/validate.middleware');
 const { createSchema, updateSchema, idParamsSchema } = require('./projects.validation');
 const callTransferController = require('./callTransfer.controller');
+const callSaleController = require('./callSale.controller');
 const Joi = require('joi');
 
 const router = express.Router();
@@ -38,6 +39,29 @@ router.patch(
     reason: Joi.string().trim().max(500).allow('').optional(),
   })),
   callTransferController.decide
+);
+router.get('/call-sales/context', authorize(...ALLOWED_ROLES), callSaleController.context);
+router.get('/call-sales', authorize(...ALLOWED_ROLES), callSaleController.list);
+router.post(
+  '/call-sales',
+  authorize('employee', 'team_lead', 'floor_head'),
+  validate(Joi.object({
+    saleDate: Joi.string().isoDate().required(),
+    businessName: Joi.string().trim().min(2).max(150).required(),
+    ownerName: Joi.string().trim().min(2).max(150).required(),
+    product: Joi.string().valid('pos', 'atm_service', 'accounting', 'osap', 'digital_media_service', 'pr', 'insurance').required(),
+  })),
+  callSaleController.create
+);
+router.patch(
+  '/call-sales/:id/decision',
+  authorize('team_lead', 'floor_head', 'manager'),
+  validate(idParamsSchema, 'params'),
+  validate(Joi.object({
+    status: Joi.string().valid('approved', 'rejected').required(),
+    reason: Joi.string().trim().max(500).allow('').optional(),
+  })),
+  callSaleController.decide
 );
 router.get('/', authorize(...ALLOWED_ROLES), controller.list);
 router.get('/eligible-employees', authorize(...ALLOWED_ROLES), controller.eligibleEmployees);

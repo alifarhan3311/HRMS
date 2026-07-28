@@ -45,6 +45,22 @@ export const projectsApi = api.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/projects/call-transfers/${id}/decision`, method: 'PATCH', body }),
       invalidatesTags: ['CallTransfers', 'Notifications'],
     }),
+    getCallSaleContext: builder.query({
+      query: () => '/projects/call-sales/context',
+      providesTags: ['CallSales'],
+    }),
+    listCallSales: builder.query({
+      query: (params) => ({ url: '/projects/call-sales', params }),
+      providesTags: ['CallSales'],
+    }),
+    createCallSale: builder.mutation({
+      query: (body) => ({ url: '/projects/call-sales', method: 'POST', body }),
+      invalidatesTags: ['CallSales', 'Notifications'],
+    }),
+    decideCallSale: builder.mutation({
+      query: ({ id, ...body }) => ({ url: `/projects/call-sales/${id}/decision`, method: 'PATCH', body }),
+      invalidatesTags: ['CallSales', 'Notifications'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -60,4 +76,8 @@ export const {
   useListCallTransfersQuery,
   useCreateCallTransferMutation,
   useDecideCallTransferMutation,
+  useGetCallSaleContextQuery,
+  useListCallSalesQuery,
+  useCreateCallSaleMutation,
+  useDecideCallSaleMutation,
 } = projectsApi;
