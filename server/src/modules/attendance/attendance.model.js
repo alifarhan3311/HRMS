@@ -28,7 +28,11 @@ const attendanceSchema = new mongoose.Schema(
     employeeCode: { type: String },
     workMode: { type: String, enum: ['office', 'wfh'], default: 'office' },
     date: { type: Date, required: true },
-    shiftDate: { type: String },
+    shiftDate: {
+      type: String,
+      required: true,
+      match: /^\d{4}-\d{2}-\d{2}$/,
+    },
     shiftId: { type: mongoose.Schema.Types.ObjectId, ref: 'Shift' },
     shiftName: { type: String },
     employeeDepartment: { type: String },

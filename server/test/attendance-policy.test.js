@@ -9,6 +9,7 @@ const {
   completedFixedShiftStatus,
 } = require('../src/modules/attendance/attendance.service');
 const { isSaturdayShiftDate, saturdayStatus } = require('../src/modules/attendance/saturdayPolicy');
+const Attendance = require('../src/modules/attendance/attendance.model');
 
 const start = new Date('2026-07-23T20:00:00.000Z');
 const schedule = { scheduledStart: start };
@@ -129,4 +130,16 @@ test('Saturday policy allows only present or absent for normal attendance', () =
     'holiday',
   );
   assert.equal(saturdayStatus({ shiftDate: '2026-07-24', hasSignIn: true }), null);
+});
+
+test('attendance records require one normalized shift date for duplicate prevention', () => {
+  const record = new Attendance({
+    employeeId: '667788990011223344556671',
+    companyId: '667788990011223344556677',
+    date: new Date('2026-07-27T12:00:00.000Z'),
+    status: 'present',
+  });
+  assert.ok(record.validateSync()?.errors?.shiftDate);
+  record.shiftDate = '2026-07-27';
+  assert.equal(record.validateSync(), undefined);
 });
