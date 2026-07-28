@@ -336,7 +336,7 @@ function CategoryManagerModal({ isOpen, onClose, categories }) {
 }
 
 function ExpenseDetailModal({ expense, isOpen, onClose }) {
-  const [whatsAppNumber, setWhatsAppNumber] = useState('');
+  const [whatsAppNumber, setWhatsAppNumber] = useState('03142757473');
   if (!expense) return null;
   const status = STATUS_STYLES[expense.status] || STATUS_STYLES.recorded;
   const details = [
