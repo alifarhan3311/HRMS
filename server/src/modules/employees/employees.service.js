@@ -487,6 +487,23 @@ async function updateEmployee(id, payload, actor) {
   const forbidden = ['passwordHash', 'password', 'companyId', 'role', 'employeeCode', 'employeeCardNumber'];
   forbidden.forEach((f) => delete payload[f]);
 
+  if (
+    payload.currentSalary !== undefined
+    && String(payload.currentSalary) !== String(existing.currentSalary || '')
+  ) {
+    payload.salaryHistory = [
+      ...(existing.salaryHistory || []),
+      {
+        previousSalary: existing.currentSalary || '',
+        salary: String(payload.currentSalary),
+        effectiveDate: new Date(),
+        changedBy: actor.id,
+        changedByRole: actor.role,
+        reason: 'Employee profile salary update',
+      },
+    ];
+  }
+
   const updated = await repository.updateById(id, payload);
   if (!updated) throw createHttpError(404, 'Employee not found.');
   if (existing.role === 'manager') {

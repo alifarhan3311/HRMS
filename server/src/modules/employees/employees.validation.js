@@ -22,6 +22,12 @@ const paymentMethodSchema = Joi.string().valid(...SALARY_PAYMENT_METHODS).empty(
 const accountNumberSchema = Joi.string().trim().pattern(/^[A-Za-z0-9+\-\s]{5,50}$/).empty('').optional()
   .messages({ 'string.pattern.base': 'Enter a valid account, IBAN, or wallet number.' });
 const accountTitleSchema = Joi.string().trim().min(2).max(100).empty('').optional();
+const salarySchema = Joi.string()
+  .trim()
+  .pattern(/^\d+(?:\.\d{1,2})?$/)
+  .empty('')
+  .optional()
+  .messages({ 'string.pattern.base': 'Salary must be zero or a positive number with up to 2 decimal places.' });
 const bloodGroupSchema = Joi.string().trim().custom((value, helpers) => {
   const normalized = value.toLowerCase();
   if (['unknown', 'not known', 'not specified', 'n/a', 'na'].includes(normalized)) {
@@ -65,7 +71,7 @@ const createSchema = Joi.object({
   status: Joi.string().valid(...STATUSES).optional(),
 
   // Salary
-  currentSalary: Joi.string().optional().allow(''),
+  currentSalary: salarySchema,
   salaryPaymentMethod: paymentMethodSchema,
   salaryAccountNumber: accountNumberSchema,
   salaryAccountTitle: accountTitleSchema,
@@ -113,6 +119,7 @@ const updateSchema = Joi.object({
   experience: Joi.string().trim().max(500).optional().allow(''),
   insuranceCardNumber: Joi.string().trim().max(50).optional().allow(''),
   biometricDeviceUserId: Joi.string().trim().max(32).pattern(/^[A-Za-z0-9_-]+$/).optional().allow(''),
+  currentSalary: salarySchema,
   salaryPaymentMethod: paymentMethodSchema,
   salaryAccountNumber: accountNumberSchema,
   salaryAccountTitle: accountTitleSchema,
