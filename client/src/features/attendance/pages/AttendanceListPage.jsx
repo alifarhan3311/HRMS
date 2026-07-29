@@ -477,7 +477,7 @@ export default function AttendanceListPage() {
   const { user } = useSelector((s) => s.auth);
   const isAdminHR = ['hr', 'super_admin'].includes(user?.role);
   const isManagerUp = ['hr', 'super_admin', 'manager', 'floor_head', 'team_lead'].includes(user?.role);
-  const canSelectEmployee = ['manager', 'hr', 'super_admin'].includes(user?.role);
+  const canSelectEmployee = ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin'].includes(user?.role);
   const canViewLeaveBalances = canSelectEmployee;
 
   const [ym, setYm] = useState(nowYM());
@@ -506,14 +506,21 @@ export default function AttendanceListPage() {
       .some((value) => value.toLowerCase().includes(needle));
   });
 
-  const selectedEmployeeId = canSelectEmployee ? (filters.employeeId || user?.id) : user?.id;
+  // For management roles an empty employee filter means the complete visible
+  // team/company. Do not silently replace it with the logged-in user's id.
+  const selectedEmployeeId = canSelectEmployee
+    ? (filters.employeeId || (user?.role === 'manager' ? user?.id : ''))
+    : user?.id;
+  const isTeamRole = ['team_lead', 'floor_head'].includes(user?.role);
+  const isTeamOverview = isTeamRole && !selectedEmployeeId;
+  const isMyAttendance = String(selectedEmployeeId || '') === String(user?.id || user?._id || '');
   const viewedEmployee = employees.find(employee => employee._id === selectedEmployeeId);
   const monthParams = {
     year: ym.year,
     month: ym.month,
     ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
   };
-  const { data: summaryData } = useGetMonthlySummaryQuery(monthParams);
+  const { data: summaryData } = useGetMonthlySummaryQuery(monthParams, { skip: !selectedEmployeeId });
   const { data: rangeData, isLoading: rangeLoading, isFetching: rangeFetching } = useGetAttendanceRangeSummaryQuery({
     employeeId: selectedEmployeeId,
     workMode: filters.workMode,
@@ -521,7 +528,7 @@ export default function AttendanceListPage() {
     dateTo: reportRange.dateTo,
   }, { skip: !selectedEmployeeId });
   const { data: listData, isLoading: listLoading, isFetching, refetch } = useListAttendanceQuery({
-    page, limit: 30, status: filters.status, workMode: filters.workMode,
+    page, limit: selectedEmployeeId ? 30 : 2000, status: filters.status, workMode: filters.workMode,
     dateFrom: reportRange.dateFrom,
     dateTo: reportRange.dateTo,
     ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
@@ -553,14 +560,53 @@ export default function AttendanceListPage() {
     }
   }
 
-  const summary = rangeData?.data?.summary || {};
-  const trend = rangeData?.data?.trend || [];
-  const reportRecords = rangeData?.data?.records || [];
-  const calRecords = summaryData?.data?.records || [];
   const listRecords = listData?.items || [];
+  const overviewSummary = listRecords.reduce((result, record) => {
+    if (result[record.status] !== undefined) result[record.status] += 1;
+    result.workedHours += Number(record.totalHours || 0);
+    result.lateMinutes += Number(record.lateMinutes || 0);
+    result.earlyLeaveMinutes += Number(record.earlyLeaveMinutes || 0);
+    return result;
+  }, {
+    present: 0, late: 0, absent: 0, on_leave: 0, half_day: 0, holiday: 0,
+    workedHours: 0, lateMinutes: 0, earlyLeaveMinutes: 0,
+  });
+  overviewSummary.totalRecords = listRecords.length;
+  overviewSummary.workedHours = Number(overviewSummary.workedHours.toFixed(2));
+  overviewSummary.averageHours = listRecords.length
+    ? Number((overviewSummary.workedHours / listRecords.length).toFixed(2))
+    : 0;
+  overviewSummary.attendanceRate = listRecords.length
+    ? Number((((overviewSummary.present + overviewSummary.late + overviewSummary.half_day) / listRecords.length) * 100).toFixed(1))
+    : 0;
+  const summary = selectedEmployeeId ? (rangeData?.data?.summary || {}) : overviewSummary;
+  const trend = selectedEmployeeId ? (rangeData?.data?.trend || []) : [];
+  const reportRecords = selectedEmployeeId ? (rangeData?.data?.records || []) : listRecords;
+  const calRecords = selectedEmployeeId ? (summaryData?.data?.records || []) : listRecords;
   const total = listData?.total || 0;
   const totalPages = listData?.totalPages || 1;
   const pendingRegs = pendingData?.data || [];
+  const todayDateKey = inputDate(new Date());
+  const rangeIncludesToday = reportRange.dateFrom <= todayDateKey && reportRange.dateTo >= todayDateKey;
+  const hasTodayRecord = listRecords.some((record) => (
+    (record.shiftDate || inputDate(record.date)) === todayDateKey
+  ));
+  const showAwaitingPunch = isMyAttendance
+    && rangeIncludesToday
+    && !hasTodayRecord
+    && !filters.status
+    && (!filters.workMode || filters.workMode === (user?.workMode || 'office'));
+  const displayRecords = showAwaitingPunch
+    ? [{
+      _id: `awaiting-punch-${todayDateKey}`,
+      isAwaitingPunch: true,
+      employeeId: { _id: user?.id || user?._id, fullName: user?.fullName },
+      employeeName: user?.fullName,
+      date: `${todayDateKey}T12:00:00.000Z`,
+      shiftDate: todayDateKey,
+      workMode: user?.workMode || 'office',
+    }, ...listRecords]
+    : listRecords;
 
   useEffect(() => {
     if (!employeePickerOpen) return undefined;
@@ -710,10 +756,40 @@ export default function AttendanceListPage() {
                   setPage(1);
                 }}
               >
-                <X className="h-3.5 w-3.5" /> My attendance
+                <X className="h-3.5 w-3.5" /> {isTeamOverview ? 'Team attendance' : 'Clear selection'}
               </Button>
             )}
           </div>
+          {isTeamRole && (
+            <div className="mb-3 flex w-fit rounded-xl border border-border bg-muted/40 p-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={isMyAttendance ? 'primary' : 'ghost'}
+                onClick={() => {
+                  setFilters((previous) => ({ ...previous, employeeId: user?.id || user?._id }));
+                  setEmployeeSearch(user?.fullName || '');
+                  setEmployeePickerOpen(false);
+                  setPage(1);
+                }}
+              >
+                My Attendance
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={isTeamOverview ? 'primary' : 'ghost'}
+                onClick={() => {
+                  setFilters((previous) => ({ ...previous, employeeId: '' }));
+                  setEmployeeSearch('');
+                  setEmployeePickerOpen(false);
+                  setPage(1);
+                }}
+              >
+                My Team
+              </Button>
+            </div>
+          )}
           <div ref={employeePickerRef} className="relative max-w-xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-primary" />
             <input
@@ -768,7 +844,9 @@ export default function AttendanceListPage() {
             )}
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Showing: <span className="font-medium text-foreground">{selectedEmployee?.fullName || `${user?.fullName || 'My'} attendance`}</span>
+            Showing: <span className="font-medium text-foreground">
+              {selectedEmployee?.fullName || (isTeamOverview ? 'My Team Attendance' : user?.role === 'hr' || user?.role === 'super_admin' ? 'All Employees' : `${user?.fullName || 'My'} attendance`)}
+            </span>
           </p>
         </div>
       )}
@@ -840,7 +918,7 @@ export default function AttendanceListPage() {
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
           <span><strong className="text-foreground">Period:</strong> {fmtDate(reportRange.dateFrom)} – {fmtDate(reportRange.dateTo)}</span>
-          <span><strong className="text-foreground">Employee:</strong> {selectedEmployee?.fullName || user?.fullName}</span>
+          <span><strong className="text-foreground">Employee:</strong> {selectedEmployee?.fullName || (isTeamOverview ? 'My Team' : ['hr', 'super_admin'].includes(user?.role) ? 'All Employees' : user?.fullName)}</span>
           {rangeFetching && <span className="text-primary">Updating report...</span>}
         </div>
       </div>
@@ -939,7 +1017,7 @@ export default function AttendanceListPage() {
                 <option value="wfh">WFH Only</option>
                 <option value="office">Office Only</option>
               </select>
-              <span className="text-xs text-muted-foreground ml-auto">{total} records</span>
+              <span className="text-xs text-muted-foreground ml-auto">{total + (showAwaitingPunch ? 1 : 0)} records</span>
             </div>
             <div className="hidden grid-cols-[1fr_auto_auto_auto] gap-4 border-b border-border bg-muted/25 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:grid">
               <span>Employee / Date</span><span>Status</span><span>Timing / Hours</span><span>Actions</span>
@@ -956,14 +1034,16 @@ export default function AttendanceListPage() {
                   </div>
                 ))}
               </div>
-            ) : listRecords.length === 0 ? (
+            ) : displayRecords.length === 0 ? (
               <div className="py-16 text-center text-muted-foreground text-sm">
                 No attendance records found for this period.
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {listRecords.map((rec, i) => {
-                  const st = STATUS_STYLES[rec.status] || STATUS_STYLES.present;
+                {displayRecords.map((rec, i) => {
+                  const st = rec.isAwaitingPunch
+                    ? { label: 'Awaiting Punch', variant: 'gray' }
+                    : STATUS_STYLES[rec.status] || STATUS_STYLES.present;
                   const recordEmployee = employees.find(employee => employee._id === (rec.employeeId?._id || rec.employeeId));
                   return (
                     <motion.div key={rec._id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -985,14 +1065,16 @@ export default function AttendanceListPage() {
                         </span>
                       </div>
                       <div className="hidden sm:block text-xs text-muted-foreground space-y-0.5 text-right">
-                        <p>{fmtTime(rec.signInTime, rec.shiftTimezone)} – {fmtTime(rec.signOutTime, rec.shiftTimezone)}</p>
+                        <p>{rec.isAwaitingPunch
+                          ? 'No biometric punch yet'
+                          : `${fmtTime(rec.signInTime, rec.shiftTimezone)} – ${fmtTime(rec.signOutTime, rec.shiftTimezone)}`}</p>
                         {rec.totalHours > 0 && <p>{rec.totalHours}h</p>}
                       </div>
                       {rec.lateMinutes > 0 && (
                         <span className="text-xs text-amber-500">{rec.lateMinutes}m late</span>
                       )}
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {isAdminHR && (
+                        {isAdminHR && !rec.isAwaitingPunch && (
                           <button onClick={() => setCorrectionRecord(rec)} title="Correct"
                             className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground">
                             <Edit className="h-3.5 w-3.5" />
