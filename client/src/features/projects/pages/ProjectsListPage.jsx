@@ -50,7 +50,7 @@ function CallTransferPanel({ user }) {
     record.status === 'approved'
     && String(record.submittedBy?._id || record.submittedBy) === String(user?.id || user?._id)
   )).length;
-  const filteredEmployees = (context?.employees || []).filter((employee) => (
+  const filteredEmployees = (context?.transferRecipients || []).filter((employee) => (
     employee.fullName.toLowerCase().includes(search.toLowerCase())
     || employee.employeeCode?.toLowerCase().includes(search.toLowerCase())
   ));
@@ -159,7 +159,7 @@ function CallTransferPanel({ user }) {
                 setSearch(e.target.value);
                 setForm((value) => ({ ...value, transferredEmployeeId: '' }));
               }}
-              placeholder="Search Call Center employee..."
+              placeholder="Search Call Center Team Lead..."
               autoComplete="off"
             />
             <div className="max-h-44 overflow-y-auto rounded-xl border border-border bg-background p-1">
@@ -176,7 +176,7 @@ function CallTransferPanel({ user }) {
                   </button>
                 );
               })}
-              {!filteredEmployees.length && <p className="px-3 py-4 text-center text-xs text-muted-foreground">No Call Center employee found.</p>}
+              {!filteredEmployees.length && <p className="px-3 py-4 text-center text-xs text-muted-foreground">No Call Center Team Lead found.</p>}
             </div>
           </div>
           <Input label="Transfer Date" required type="date" value={form.transferDate} onChange={(e) => setForm((v) => ({ ...v, transferDate: e.target.value }))} />

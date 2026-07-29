@@ -39,8 +39,13 @@ async function context(actor) {
     ...departmentFilter,
     status: 'active',
   };
-  const [employees] = await Promise.all([
-    Employee.find(sameDepartment).select('fullName employeeCode designation role department joiningDate teamLeadId').sort({ fullName: 1 }),
+  const [employees, transferRecipients] = await Promise.all([
+    Employee.find(sameDepartment)
+      .select('fullName employeeCode designation role department joiningDate teamLeadId')
+      .sort({ fullName: 1 }),
+    Employee.find({ ...sameDepartment, role: 'team_lead' })
+      .select('fullName employeeCode designation role department')
+      .sort({ fullName: 1 }),
   ]);
   return {
     employee,
@@ -48,6 +53,7 @@ async function context(actor) {
     isCallCenter: CALL_CENTER.test(employee.department || ''),
     target: TARGET,
     employees,
+    transferRecipients,
   };
 }
 
@@ -61,8 +67,10 @@ async function create(payload, actor) {
     : String(payload.transferDate || '').slice(0, 10);
   const transferDate = new Date(`${rawTransferDate}T12:00:00.000Z`);
   if (Number.isNaN(transferDate.getTime())) throw createHttpError(422, 'A valid transfer date is required.');
-  const allowedIds = new Set(data.employees.map((item) => String(item._id)));
-  if (!allowedIds.has(String(payload.transferredEmployeeId))) throw createHttpError(422, 'Selected employee is outside your department.');
+  const allowedIds = new Set(data.transferRecipients.map((item) => String(item._id)));
+  if (!allowedIds.has(String(payload.transferredEmployeeId))) {
+    throw createHttpError(422, 'Select an active Call Center Team Lead.');
+  }
   const businessOwnerName = String(payload.businessOwnerName || '').trim();
   if (businessOwnerName.length < 2) throw createHttpError(422, 'Business owner name is required.');
   const record = await CallTransfer.create({
