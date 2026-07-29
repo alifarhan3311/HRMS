@@ -11,6 +11,7 @@
     "migrate:remove-finance-role": "node scripts/migrate-remove-finance-role.js",
     "migrate:casual-to-annual": "node scripts/migrate-casual-to-annual.js",
     "migrate:merge-manager": "node scripts/merge-duplicate-manager.js",
+    "migrate:repair-attendance-duplicates": "node scripts/repair-attendance-duplicates.js",
     "test": "node --test test/*.test.js",
     "lint": "eslint src --ext .js"
   },
