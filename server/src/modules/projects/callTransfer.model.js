@@ -7,6 +7,7 @@ const callTransferSchema = new mongoose.Schema({
   // Legacy employee reference retained for records created before business-owner capture.
   ownerManagerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   businessOwnerName: { type: String, trim: true, maxlength: 150 },
+  details: { type: String, trim: true, maxlength: 2000 },
   teamLeadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true, index: true },
   transferDate: { type: Date, required: true },
   targetMonth: { type: Number, required: true, min: 1, max: 12 },

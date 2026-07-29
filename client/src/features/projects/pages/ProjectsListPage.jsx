@@ -32,7 +32,7 @@ function CallTransferPanel({ user }) {
   const [tab, setTab] = useState(user?.role === 'team_lead' ? 'pending' : 'all');
   const [search, setSearch] = useState('');
   const [form, setForm] = useState({
-    transferredEmployeeId: '', transferDate: now.toISOString().slice(0, 10), businessOwnerName: '',
+    transferredEmployeeId: '', transferDate: now.toISOString().slice(0, 10), businessOwnerName: '', details: '',
   });
   const { data: contextData } = useGetCallTransferContextQuery();
   const context = contextData?.data;
@@ -73,7 +73,7 @@ function CallTransferPanel({ user }) {
       await createTransfer(form).unwrap();
       toast.success('Transfer sent to your Team Lead');
       setModalOpen(false);
-      setForm({ transferredEmployeeId: '', transferDate: now.toISOString().slice(0, 10), businessOwnerName: '' });
+      setForm({ transferredEmployeeId: '', transferDate: now.toISOString().slice(0, 10), businessOwnerName: '', details: '' });
     } catch (error) {
       toast.error(error?.data?.error?.message || 'Could not add transfer');
     }
@@ -139,10 +139,11 @@ function CallTransferPanel({ user }) {
       </div>
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left"><tr><th className="p-3">Employee</th><th className="p-3">Transferred To</th><th className="p-3">Date</th><th className="p-3">Owner / Manager</th><th className="p-3">Status</th>{user?.role === 'team_lead' && <th className="p-3">Actions</th>}</tr></thead>
+          <thead className="bg-muted/50 text-left"><tr><th className="p-3">Employee</th><th className="p-3">Transferred To</th><th className="p-3">Date</th><th className="p-3">Owner / Manager</th><th className="p-3">Details</th><th className="p-3">Status</th>{user?.role === 'team_lead' && <th className="p-3">Actions</th>}</tr></thead>
           <tbody>{records.map((record) => <tr key={record._id} className="border-t border-border">
             <td className="p-3 font-medium">{record.submittedBy?.fullName}</td><td className="p-3">{record.transferredEmployeeId?.fullName}</td>
             <td className="p-3">{fmtDate(record.transferDate)}</td><td className="p-3">{record.businessOwnerName || record.ownerManagerId?.fullName || '—'}</td>
+            <td className="max-w-xs whitespace-normal p-3" title={record.details || ''}>{record.details || '—'}</td>
             <td className="p-3 capitalize">{record.status}</td>
             {user?.role === 'team_lead' && <td className="p-3">{record.status === 'pending' && <div className="flex gap-2"><Button size="xs" disabled={deciding} onClick={() => decide(record, 'approved')}>Approve</Button><Button size="xs" variant="destructive" disabled={deciding} onClick={() => decide(record, 'rejected')}>Reject</Button></div>}</td>}
           </tr>)}</tbody>
@@ -184,6 +185,10 @@ function CallTransferPanel({ user }) {
             placeholder="Name of the business owner you called"
             value={form.businessOwnerName}
             onChange={(e) => setForm((v) => ({ ...v, businessOwnerName: e.target.value }))} />
+          <Textarea label="Transfer Details"
+            placeholder="Add call transfer details, discussion notes, or important information..."
+            value={form.details}
+            onChange={(e) => setForm((v) => ({ ...v, details: e.target.value }))} />
         </div><ModalFooter><Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button><Button type="submit" disabled={creating}>Submit Transfer</Button></ModalFooter></form>
       </Modal>
     </section>
@@ -201,7 +206,7 @@ function CallSalesPanel({ user }) {
   const [tab, setTab] = useState('pending');
   const [filters, setFilters] = useState({ employeeId: '', product: '', month: now.getMonth() + 1, year: now.getFullYear() });
   const [form, setForm] = useState({
-    saleDate: now.toISOString().slice(0, 10), businessName: '', ownerName: '', product: '',
+    saleDate: now.toISOString().slice(0, 10), businessName: '', ownerName: '', product: '', details: '',
   });
   const { data: contextData } = useGetCallSaleContextQuery();
   const context = contextData?.data;
@@ -221,7 +226,7 @@ function CallSalesPanel({ user }) {
       await createSale(form).unwrap();
       toast.success('Sale submitted for approval');
       setModalOpen(false);
-      setForm({ saleDate: now.toISOString().slice(0, 10), businessName: '', ownerName: '', product: '' });
+      setForm({ saleDate: now.toISOString().slice(0, 10), businessName: '', ownerName: '', product: '', details: '' });
     } catch (error) {
       toast.error(error?.data?.error?.message || 'Could not submit sale');
     }
@@ -261,10 +266,10 @@ function CallSalesPanel({ user }) {
         <Input type="number" value={filters.year} onChange={(e) => setFilters((v) => ({ ...v, year: e.target.value }))} className="w-28" />
       </div>
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-3">Employee</th><th className="p-3">Date</th><th className="p-3">Business</th><th className="p-3">Owner</th><th className="p-3">Product</th><th className="p-3">Status / Stage</th><th className="p-3">Actions</th></tr></thead>
+        <table className="w-full text-sm"><thead className="bg-muted/50 text-left"><tr><th className="p-3">Employee</th><th className="p-3">Date</th><th className="p-3">Business</th><th className="p-3">Owner</th><th className="p-3">Product</th><th className="p-3">Details</th><th className="p-3">Status / Stage</th><th className="p-3">Actions</th></tr></thead>
           <tbody>{records.map((record) => {
             const isCurrentApprover = String(record.currentApproverId?._id || record.currentApproverId || '') === String(user?.id || user?._id);
-            return <tr key={record._id} className="border-t border-border"><td className="p-3 font-medium">{record.submittedBy?.fullName}</td><td className="p-3">{fmtDate(record.saleDate)}</td><td className="p-3">{record.businessName}</td><td className="p-3">{record.ownerName}</td><td className="p-3">{SALE_PRODUCTS[record.product]}</td><td className="p-3 capitalize">{record.status === 'pending' ? `Pending: ${record.currentApproverId?.role?.replace('_', ' ') || 'approval'}` : record.status}</td><td className="p-3">{isCurrentApprover && record.status === 'pending' && <div className="flex gap-2"><Button size="xs" disabled={deciding} onClick={() => decide(record, 'approved')}>Approve</Button><Button size="xs" variant="destructive" disabled={deciding} onClick={() => decide(record, 'rejected')}>Reject</Button></div>}</td></tr>;
+            return <tr key={record._id} className="border-t border-border"><td className="p-3 font-medium">{record.submittedBy?.fullName}</td><td className="p-3">{fmtDate(record.saleDate)}</td><td className="p-3">{record.businessName}</td><td className="p-3">{record.ownerName}</td><td className="p-3">{SALE_PRODUCTS[record.product]}</td><td className="max-w-xs whitespace-normal p-3" title={record.details || ''}>{record.details || '—'}</td><td className="p-3 capitalize">{record.status === 'pending' ? `Pending: ${record.currentApproverId?.role?.replace('_', ' ') || 'approval'}` : record.status}</td><td className="p-3">{isCurrentApprover && record.status === 'pending' && <div className="flex gap-2"><Button size="xs" disabled={deciding} onClick={() => decide(record, 'approved')}>Approve</Button><Button size="xs" variant="destructive" disabled={deciding} onClick={() => decide(record, 'rejected')}>Reject</Button></div>}</td></tr>;
           })}</tbody>
         </table>
         {!records.length && <p className="p-8 text-center text-sm text-muted-foreground">{isFetching ? 'Loading...' : 'No sales found.'}</p>}
@@ -275,6 +280,10 @@ function CallSalesPanel({ user }) {
           <Input label="Business Name" required value={form.businessName} onChange={(e) => setForm((v) => ({ ...v, businessName: e.target.value }))} />
           <Input label="Owner Name" required value={form.ownerName} onChange={(e) => setForm((v) => ({ ...v, ownerName: e.target.value }))} />
           <Select label="Product" required value={form.product} onChange={(e) => setForm((v) => ({ ...v, product: e.target.value }))}><option value="">Select product</option>{Object.entries(SALE_PRODUCTS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
+          <Textarea label="Sale Details"
+            placeholder="Add sale details, discussion notes, or important information..."
+            value={form.details}
+            onChange={(e) => setForm((v) => ({ ...v, details: e.target.value }))} />
         </div><ModalFooter><Button type="button" variant="ghost" onClick={() => setModalOpen(false)}>Cancel</Button><Button type="submit" disabled={creating}>Submit Sale</Button></ModalFooter></form>
       </Modal>
     </section>

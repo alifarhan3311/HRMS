@@ -100,6 +100,7 @@ async function create(payload, actor) {
     saleDate,
     businessName: payload.businessName,
     ownerName: payload.ownerName,
+    details: String(payload.details || '').trim(),
     product: payload.product,
     targetMonth: saleDate.getUTCMonth() + 1,
     targetYear: saleDate.getUTCFullYear(),

@@ -14,6 +14,7 @@ const callSaleSchema = new mongoose.Schema({
   saleDate: { type: Date, required: true },
   businessName: { type: String, required: true, trim: true, maxlength: 150 },
   ownerName: { type: String, required: true, trim: true, maxlength: 150 },
+  details: { type: String, trim: true, maxlength: 2000 },
   product: {
     type: String,
     enum: ['pos', 'atm_service', 'accounting', 'osap', 'digital_media_service', 'pr', 'insurance'],

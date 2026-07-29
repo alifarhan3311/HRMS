@@ -27,6 +27,7 @@ router.post(
     transferredEmployeeId: Joi.string().hex().length(24).required(),
     transferDate: Joi.string().isoDate().required(),
     businessOwnerName: Joi.string().trim().min(2).max(150).required(),
+    details: Joi.string().trim().max(2000).allow('').optional(),
   })),
   callTransferController.create
 );
@@ -49,6 +50,7 @@ router.post(
     saleDate: Joi.string().isoDate().required(),
     businessName: Joi.string().trim().min(2).max(150).required(),
     ownerName: Joi.string().trim().min(2).max(150).required(),
+    details: Joi.string().trim().max(2000).allow('').optional(),
     product: Joi.string().valid('pos', 'atm_service', 'accounting', 'osap', 'digital_media_service', 'pr', 'insurance').required(),
   })),
   callSaleController.create

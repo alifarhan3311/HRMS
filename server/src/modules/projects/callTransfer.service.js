@@ -78,6 +78,7 @@ async function create(payload, actor) {
     submittedBy: actor.id,
     transferredEmployeeId: payload.transferredEmployeeId,
     businessOwnerName,
+    details: String(payload.details || '').trim(),
     teamLeadId: data.employee.teamLeadId,
     transferDate,
     targetMonth: transferDate.getUTCMonth() + 1,
