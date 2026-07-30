@@ -170,6 +170,23 @@ test('flexible biometric policy waits until half the required duration before ch
   }), 'sign_out');
 });
 
+test('flexible checkout after midnight remains a sign-out for the open shift', () => {
+  const signIn = new Date('2026-07-27T14:11:31.000Z');
+  const record = {
+    shiftType: 'flexible',
+    signInTime: signIn,
+    effectiveRequiredMinutes: 480,
+    scheduledStart: signIn,
+    scheduledEnd: new Date('2026-07-27T22:11:31.000Z'),
+  };
+  assert.equal(classifyBiometricPunch({
+    record,
+    punchTime: new Date('2026-07-27T23:21:24.000Z'),
+    schedule: record,
+    shift: { shiftType: 'flexible', requiredMinutes: 480 },
+  }), 'sign_out');
+});
+
 test('reconnect uses capped exponential backoff', () => {
   assert.equal(nextReconnectDelay(0, 2000), 2000);
   assert.equal(nextReconnectDelay(3, 2000), 16000);

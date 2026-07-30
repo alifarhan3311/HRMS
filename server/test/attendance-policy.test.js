@@ -66,6 +66,25 @@ test('fixed shift completed through scheduled end preserves a genuine late arriv
   );
 });
 
+test('recovered sign-out reconstructs arrival status after an incomplete auto-close', () => {
+  assert.equal(
+    completedFixedShiftStatus(
+      {
+        shiftType: 'fixed',
+        status: 'incomplete',
+        signInTime: new Date('2026-07-27T16:04:34.000Z'),
+        scheduledStart: new Date('2026-07-27T16:00:00.000Z'),
+        shiftGraceMinutes: 15,
+        shiftLateHalfDayAfterMinutes: 150,
+      },
+      new Date('2026-07-27T23:30:28.000Z'),
+      new Date('2026-07-27T23:30:00.000Z'),
+      new Date('2026-07-27T16:00:00.000Z'),
+    ),
+    'present',
+  );
+});
+
 test('fixed shifts of seven hours or less have no grace and use a 120 minute half-day arrival threshold', () => {
   const shift = normalizeDurationPolicy({}, {
     shiftType: 'fixed', startTime: '10:00', endTime: '16:30',

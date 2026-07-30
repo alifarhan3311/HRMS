@@ -35,6 +35,18 @@ async function findOpenByEmployee(employeeId) {
     .sort({ signInTime: -1 });
 }
 
+async function findCheckoutCandidate(employeeId, punchTime, recoveryWindowMinutes = 240) {
+  const punch = new Date(punchTime);
+  const earliestEnd = new Date(punch.getTime() - (recoveryWindowMinutes * 60000));
+  return Attendance.findOne({
+    employeeId,
+    signInTime: { $exists: true, $lt: punch },
+    signOutTime: { $exists: false },
+    scheduledStart: { $lte: punch },
+    scheduledEnd: { $gte: earliestEnd },
+  }).sort({ signInTime: -1 });
+}
+
 async function findAll({ filter = {}, page = 1, limit = 30, sort = '-date' } = {}) {
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -122,6 +134,7 @@ module.exports = {
   findByEmployeeAndDate,
   findByEmployeeAndShiftDate,
   findOpenByEmployee,
+  findCheckoutCandidate,
   findAll,
   updateById,
   upsertByEmployeeShiftDate,

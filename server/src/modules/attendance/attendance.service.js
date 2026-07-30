@@ -260,7 +260,7 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
         shiftDate: record.shiftDate,
         hasSignIn: true,
         isFullDayClosure: fullDayClosure,
-      }) || completedFixedShiftStatus(record, now, policy.effectiveEnd) || attendanceStatus(
+      }) || completedFixedShiftStatus(record, now, policy.effectiveEnd, policy.effectiveStart) || attendanceStatus(
         record.status,
         workedMinutes,
         policy.effectiveRequiredMinutes,
@@ -324,8 +324,23 @@ async function ingestBiometricPunch({ employee, punchTime, punchKey, deviceId, d
     companyId: employee.companyId,
     branchId: employee.branchId,
   };
-  const { shift, schedule } = await resolveShiftContext(employee._id, employee.companyId, new Date(punchTime));
-  const existing = await repository.findByEmployeeAndShiftDate(employee._id, schedule.shiftDate);
+  const pendingCheckout = await repository.findCheckoutCandidate(employee._id, punchTime);
+  const context = pendingCheckout
+    ? {
+        shift: {
+          shiftType: pendingCheckout.shiftType,
+          requiredMinutes: pendingCheckout.shiftRequiredMinutes,
+        },
+        schedule: {
+          shiftDate: pendingCheckout.shiftDate,
+          scheduledStart: pendingCheckout.scheduledStart,
+          scheduledEnd: pendingCheckout.scheduledEnd,
+        },
+      }
+    : await resolveShiftContext(employee._id, employee.companyId, new Date(punchTime));
+  const { shift, schedule } = context;
+  const existing = pendingCheckout
+    || await repository.findByEmployeeAndShiftDate(employee._id, schedule.shiftDate);
   let record;
   const action = classifyBiometricPunch({ record: existing, punchTime, schedule, shift });
 
@@ -391,11 +406,22 @@ function attendanceStatus(currentStatus, workedMinutes, requiredMinutes, halfDay
   return 'absent';
 }
 
-function completedFixedShiftStatus(record, signOutTime, effectiveEnd) {
+function completedFixedShiftStatus(record, signOutTime, effectiveEnd, effectiveStart = record.scheduledStart) {
   if ((record.shiftType || 'fixed') === 'flexible') return null;
   if (!record.signInTime || !signOutTime || !effectiveEnd) return null;
   if (new Date(signOutTime) < new Date(effectiveEnd)) return null;
-  return ['present', 'late'].includes(record.status) ? record.status : null;
+  if (effectiveStart) {
+    return calculateArrivalStatus(
+      new Date(record.signInTime),
+      { scheduledStart: new Date(effectiveStart) },
+      {
+        shiftType: 'fixed',
+        graceMinutes: Number(record.shiftGraceMinutes || 0),
+        lateHalfDayAfterMinutes: Number(record.shiftLateHalfDayAfterMinutes || 0),
+      },
+    ).status;
+  }
+  return ['present', 'late', 'half_day'].includes(record.status) ? record.status : null;
 }
 
 async function resolveShiftContext(employeeId, companyId, now = new Date()) {

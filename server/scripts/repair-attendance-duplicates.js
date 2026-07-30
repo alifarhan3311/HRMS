@@ -10,10 +10,7 @@ function isEmptyAutomaticAbsence(record) {
   return record.status === 'absent'
     && !record.signInTime
     && !record.signOutTime
-    && (
-      /automatically reconciled by hr automation/i.test(record.notes || '')
-      || /missed sign-in/i.test(record.notes || '')
-    );
+    && /automatically reconciled by hr automation/i.test(record.notes || '');
 }
 
 async function repair() {
@@ -42,8 +39,8 @@ async function repair() {
   const duplicateIds = [];
   groups.forEach((group) => {
     if (group.length < 2) return;
-    const hasRealAttendance = group.some((record) => record.signInTime || record.signOutTime);
-    if (!hasRealAttendance) return;
+    const hasPreferredRecord = group.some((record) => !isEmptyAutomaticAbsence(record));
+    if (!hasPreferredRecord) return;
     group.filter(isEmptyAutomaticAbsence).forEach((record) => duplicateIds.push(record._id));
   });
 
@@ -73,6 +70,24 @@ async function repair() {
 
   if (duplicateIds.length) await collection.deleteMany({ _id: { $in: duplicateIds } });
   if (backfills.length) await collection.bulkWrite(backfills, { ordered: false });
+  await mongoose.connection.db.command({
+    collMod: collection.collectionName,
+    validator: {
+      $jsonSchema: {
+        bsonType: 'object',
+        required: ['shiftDate'],
+        properties: {
+          shiftDate: {
+            bsonType: 'string',
+            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
+            description: 'A normalized duty date is required for duplicate prevention.',
+          },
+        },
+      },
+    },
+    validationLevel: 'moderate',
+    validationAction: 'error',
+  });
   await collection.createIndex(
     { employeeId: 1, shiftDate: 1 },
     { unique: true, partialFilterExpression: { shiftDate: { $type: 'string' } } },
@@ -81,6 +96,7 @@ async function repair() {
   console.log(JSON.stringify({
     deletedAutomaticDuplicateAbsences: duplicateIds.length,
     backfilledShiftDates: backfills.length,
+    shiftDateValidatorEnforced: true,
   }, null, 2));
 }
 
