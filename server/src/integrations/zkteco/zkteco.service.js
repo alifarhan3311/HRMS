@@ -30,6 +30,7 @@ function config() {
     commKey: Number(process.env.ZKTECO_COMM_KEY || 0),
     companyId: process.env.ZKTECO_COMPANY_ID,
     pollInterval: Math.max(1000, Number(process.env.ZKTECO_POLL_INTERVAL || 5000)),
+    reconcileInterval: Math.max(10000, Number(process.env.ZKTECO_RECONCILE_INTERVAL || 30000)),
     reconnectDelay: Math.max(1000, Number(process.env.ZKTECO_RECONNECT_DELAY || 2000)),
     timeout: Math.max(1000, Number(process.env.ZKTECO_TIMEOUT || 10000)),
     timezone: process.env.ZKTECO_TIMEZONE || 'Asia/Karachi',
@@ -140,6 +141,20 @@ function punchFingerprint(punch, id = deviceId()) {
   ].join('|')).digest('hex');
 }
 
+function inputFromStoredPunch(rawPunch) {
+  return {
+    deviceUserId: rawPunch.deviceUserId,
+    machineTimestamp: rawPunch.machineTimestamp,
+    correctedTimestamp: rawPunch.correctedTimestamp || rawPunch.punchTime,
+    biometricOffsetHours: rawPunch.biometricOffsetHours,
+    punchTime: rawPunch.punchTime,
+    verificationMode: rawPunch.verificationMode,
+    punchStatus: rawPunch.punchStatus,
+    source: rawPunch.transportSource || 'polling',
+    raw: rawPunch.raw,
+  };
+}
+
 function employeeMappingFilter(companyId, deviceUserId) {
   return { companyId, biometricDeviceUserId: String(deviceUserId), status: 'active' };
 }
@@ -152,6 +167,10 @@ function attendanceActionForRecord(record) {
 
 function nextReconnectDelay(attempt, baseDelay) {
   return Math.min(baseDelay * (2 ** attempt), 60000);
+}
+
+function pollingIntervalForMode(nativeRealtime, cfg = config()) {
+  return nativeRealtime ? cfg.reconcileInterval : cfg.pollInterval;
 }
 
 function dataChangedPayload(id = deviceId(), now = new Date()) {
@@ -175,15 +194,15 @@ async function advanceCursor(punchTime, cfg = config()) {
   );
 }
 
-async function processPunch(input) {
+async function processPunch(input, storedPunch = null) {
   const cfg = config();
   if (!input.deviceUserId) {
     logger.warn('[zkteco] Attendance event ignored because device user ID is empty');
     return { duplicate: false, status: 'ignored' };
   }
   const fingerprint = punchFingerprint(input, deviceId(cfg));
-  let rawPunch;
-  try {
+  let rawPunch = storedPunch;
+  if (!rawPunch) try {
     rawPunch = await BiometricPunch.create({
       fingerprint,
       deviceId: deviceId(cfg),
@@ -311,6 +330,16 @@ async function syncNewLogs() {
     .sort((a, b) => a.punchTime - b.punchTime);
 
   let processed = 0;
+  const strandedPunches = await BiometricPunch.find({
+    deviceId: deviceId(cfg),
+    processingStatus: 'received',
+    punchTime: { $gte: syncState.initializedAt },
+    createdAt: { $lte: new Date(Date.now() - 10_000) },
+  }).sort({ punchTime: 1 }).limit(100);
+  for (const rawPunch of strandedPunches) {
+    const result = await processPunch(inputFromStoredPunch(rawPunch), rawPunch);
+    if (!result.duplicate) processed += 1;
+  }
   for (const punch of records) {
     const result = await processPunch(punch);
     if (!result.duplicate) processed += 1;
@@ -329,6 +358,7 @@ async function syncNewLogs() {
     previousCount,
     appendedCount,
     newLogs: records.length,
+    recoveredStrandedPunches: strandedPunches.length,
     processed,
   });
   return { fetched: records.length, processed };
@@ -361,6 +391,7 @@ function scheduleReconnect(reason) {
 function startPolling() {
   clearTimeout(state.pollTimer);
   const cfg = config();
+  const interval = pollingIntervalForMode(state.nativeRealtime, cfg);
   const poll = async () => {
     if (state.stopped || !state.connected) return;
     try {
@@ -370,12 +401,15 @@ function startPolling() {
       scheduleReconnect(error.message);
       return;
     }
-    state.pollTimer = setTimeout(poll, cfg.pollInterval);
+    state.pollTimer = setTimeout(poll, interval);
     state.pollTimer.unref();
   };
-  state.pollTimer = setTimeout(poll, cfg.pollInterval);
+  state.pollTimer = setTimeout(poll, interval);
   state.pollTimer.unref();
-  logger.info('[zkteco] Attendance polling enabled', { intervalMs: cfg.pollInterval });
+  logger.info('[zkteco] Attendance reconciliation polling enabled', {
+    intervalMs: interval,
+    nativeRealtime: state.nativeRealtime,
+  });
 }
 
 async function connect() {
@@ -418,7 +452,6 @@ async function connect() {
     await syncNewLogs();
     if (!cfg.nativeRealtime) {
       state.nativeRealtime = false;
-      startPolling();
     } else try {
       await enqueueSdk(() => zk.getRealTimeLogs(event => {
         try {
@@ -433,8 +466,11 @@ async function connect() {
     } catch (error) {
       state.nativeRealtime = false;
       recordError('realtime-subscription', error);
-      startPolling();
     }
+    // Native realtime delivery is not durable: the device can retain a punch
+    // while dropping its live event. Polling always remains active as a
+    // reconciliation channel and fingerprint uniqueness keeps it idempotent.
+    startPolling();
   } finally {
     state.connecting = false;
   }
@@ -513,6 +549,7 @@ function getServiceStatus() {
   return {
     connected: state.connected,
     nativeRealtime: state.nativeRealtime,
+    reconciliationPolling: Boolean(state.pollTimer),
     lastConnection: state.lastConnection,
     errors: state.lastErrors,
     deviceId: deviceId(),
@@ -528,8 +565,10 @@ module.exports = {
   normalizePunch,
   applyBiometricTimeOffset,
   punchFingerprint,
+  inputFromStoredPunch,
   employeeMappingFilter,
   attendanceActionForRecord,
   nextReconnectDelay,
+  pollingIntervalForMode,
   dataChangedPayload,
 };

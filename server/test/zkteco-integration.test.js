@@ -10,6 +10,8 @@ const {
   nextReconnectDelay,
   dataChangedPayload,
   applyBiometricTimeOffset,
+  pollingIntervalForMode,
+  inputFromStoredPunch,
 } = require('../src/integrations/zkteco/zkteco.service');
 const { classifyBiometricPunch } = require('../src/modules/attendance/attendance.service');
 
@@ -19,6 +21,37 @@ const punch = {
   verificationMode: 'face',
   punchStatus: '0',
 };
+
+test('native realtime keeps slower reconciliation polling enabled', () => {
+  const cfg = { pollInterval: 5000, reconcileInterval: 30000 };
+  assert.equal(pollingIntervalForMode(true, cfg), 30000);
+  assert.equal(pollingIntervalForMode(false, cfg), 5000);
+});
+
+test('stored received punches can be reconstructed after a process restart', () => {
+  const stored = {
+    deviceUserId: '23',
+    machineTimestamp: new Date('2026-07-29T11:32:18.000Z'),
+    correctedTimestamp: new Date('2026-07-29T23:32:18.000Z'),
+    biometricOffsetHours: 12,
+    punchTime: new Date('2026-07-29T23:32:18.000Z'),
+    verificationMode: 'finger',
+    punchStatus: 'unknown',
+    transportSource: 'realtime',
+    raw: { deviceUserId: '23' },
+  };
+  assert.deepEqual(inputFromStoredPunch(stored), {
+    deviceUserId: '23',
+    machineTimestamp: stored.machineTimestamp,
+    correctedTimestamp: stored.correctedTimestamp,
+    biometricOffsetHours: 12,
+    punchTime: stored.punchTime,
+    verificationMode: 'finger',
+    punchStatus: 'unknown',
+    source: 'realtime',
+    raw: stored.raw,
+  });
+});
 
 test('biometric duplicate fingerprint is stable and changes with dedupe fields', () => {
   const first = punchFingerprint(punch, '192.168.1.5:4370');
