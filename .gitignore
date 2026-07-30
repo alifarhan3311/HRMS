@@ -19,6 +19,12 @@
 *.pfx
 *.jks
 *.keystore
+/id_ed25519
+/id_ed25519.pub
+
+# Generated local frontend artifacts
+/client/client.zip
+/client/vite.config.*.timestamp-*.mjs
 
 # Generated credentials and seed output
 **/seed-data/
