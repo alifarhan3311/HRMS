@@ -7,10 +7,6 @@ const { emitToUser } = require('../../config/socket');
 const TARGET = 3;
 const CALL_CENTER = /^call[\s_-]*center$/i;
 
-function isManagement(role) {
-  return ['hr', 'admin', 'super_admin', 'manager'].includes(role);
-}
-
 function isProbation(employee, date = new Date()) {
   const joined = new Date(employee.joiningDate);
   const completed = new Date(joined);
@@ -29,14 +25,16 @@ function populate(query) {
 
 async function context(actor) {
   const employee = await Employee.findOne({ _id: actor.id, companyId: actor.companyId, status: 'active' })
-    .select('fullName department role joiningDate teamLeadId managerId');
+    .select('fullName department managedDepartments role joiningDate teamLeadId managerId');
   if (!employee) throw createHttpError(404, 'Employee profile not found.');
-  const departmentFilter = isManagement(actor.role)
-    ? { department: CALL_CENTER }
-    : { department: employee.department };
+  const hasCallCenterAccess = [employee.department, ...(employee.managedDepartments || [])]
+    .some((department) => CALL_CENTER.test(department || ''));
+  if (!hasCallCenterAccess) {
+    throw createHttpError(403, 'Call Center projects are only available to Call Center employees.');
+  }
   const sameDepartment = {
     companyId: actor.companyId,
-    ...departmentFilter,
+    department: CALL_CENTER,
     status: 'active',
   };
   const [employees, transferRecipients] = await Promise.all([
@@ -50,7 +48,7 @@ async function context(actor) {
   return {
     employee,
     underProbation: isProbation(employee),
-    isCallCenter: CALL_CENTER.test(employee.department || ''),
+    isCallCenter: hasCallCenterAccess,
     target: TARGET,
     employees,
     transferRecipients,
@@ -99,9 +97,10 @@ async function create(payload, actor) {
 }
 
 async function list(query, actor) {
+  await context(actor);
   const filter = { companyId: actor.companyId };
   if (actor.role === 'team_lead') filter.teamLeadId = actor.id;
-  else if (!isManagement(actor.role)) filter.submittedBy = actor.id;
+  else if (actor.role !== 'manager') filter.submittedBy = actor.id;
   if (query.status) filter.status = query.status;
   if (query.employeeId) filter.submittedBy = query.employeeId;
   if (query.month) filter.targetMonth = Number(query.month);
@@ -118,6 +117,7 @@ async function list(query, actor) {
 }
 
 async function decide(id, payload, actor) {
+  await context(actor);
   if (actor.role !== 'team_lead') throw createHttpError(403, 'Only the assigned Team Lead can decide a transfer.');
   const record = await CallTransfer.findOne({ _id: id, companyId: actor.companyId, teamLeadId: actor.id });
   if (!record) throw createHttpError(404, 'Transfer not found.');

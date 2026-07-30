@@ -89,7 +89,7 @@ function CallTransferPanel({ user }) {
     }
   }
 
-  if (context && !context.isCallCenter && !['hr', 'admin', 'super_admin'].includes(user?.role)) return null;
+  if (context && !context.isCallCenter) return null;
   return (
     <section className="glass-card space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -108,7 +108,7 @@ function CallTransferPanel({ user }) {
           {approved >= 3 && <p className="mt-2 text-sm font-semibold text-emerald-600">Congratulations! Monthly target completed.</p>}
         </div>
       )}
-      {['team_lead', 'manager', 'hr', 'admin', 'super_admin'].includes(user?.role) && (
+      {['team_lead', 'floor_head', 'manager'].includes(user?.role) && (
         <div className="grid gap-3 md:grid-cols-2">
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
             <h3 className="font-semibold">Under Probation ({probationEmployees.length})</h3>
@@ -244,7 +244,7 @@ function CallSalesPanel({ user }) {
     }
   }
 
-  if (context && !context.isCallCenter && !['hr', 'admin', 'super_admin'].includes(user?.role)) return null;
+  if (context && !context.isCallCenter) return null;
   return (
     <section className="glass-card space-y-4 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -389,7 +389,9 @@ function ProjectForm({ initial, onSubmit, onClose, isLoading, draftKey, employee
 
 export default function ProjectsListPage() {
   const { user } = useSelector(s => s.auth);
-  const canManage = ['admin', 'super_admin', 'manager'].includes(user?.role);
+  const canManage = user?.role === 'manager';
+  const isCallCenter = [user?.department, ...(user?.managedDepartments || [])]
+    .some((department) => /^call[\s_-]*center$/i.test(department || ''));
 
   const [formOpen, setFormOpen]   = useState(false);
   const [editProj, setEditProj]   = useState(null);
@@ -438,8 +440,8 @@ export default function ProjectsListPage() {
         </div>
       </motion.div>
 
-      <CallTransferPanel user={user} />
-      <CallSalesPanel user={user} />
+      {isCallCenter && <CallTransferPanel user={user} />}
+      {isCallCenter && <CallSalesPanel user={user} />}
 
       {/* Status stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

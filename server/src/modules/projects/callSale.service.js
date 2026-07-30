@@ -18,7 +18,7 @@ function populate(query) {
 
 async function employeeProfile(actor) {
   const employee = await Employee.findOne({ _id: actor.id, companyId: actor.companyId, status: 'active' })
-    .select('fullName department designation role joiningDate managerId floorHeadId teamLeadId companyId');
+    .select('fullName department managedDepartments designation role joiningDate managerId floorHeadId teamLeadId companyId');
   if (!employee) throw createHttpError(404, 'Employee profile not found.');
   return employee;
 }
@@ -52,17 +52,22 @@ async function buildApprovalChain(employee) {
 
 async function context(actor) {
   const employee = await employeeProfile(actor);
+  const hasCallCenterAccess = [employee.department, ...(employee.managedDepartments || [])]
+    .some((department) => CALL_CENTER.test(department || ''));
+  if (!hasCallCenterAccess) {
+    throw createHttpError(403, 'Call Center projects are only available to Call Center employees.');
+  }
   const employeeFilter = { companyId: actor.companyId, department: CALL_CENTER, status: 'active' };
   if (actor.role === 'team_lead') employeeFilter.teamLeadId = actor.id;
   else if (actor.role === 'floor_head') employeeFilter.floorHeadId = actor.id;
   else if (actor.role === 'manager') employeeFilter.managerId = actor.id;
-  else if (!['hr', 'admin', 'super_admin'].includes(actor.role)) employeeFilter._id = actor.id;
+  else employeeFilter._id = actor.id;
   const employees = await Employee.find(employeeFilter)
     .select('fullName employeeCode designation role joiningDate')
     .sort({ fullName: 1 });
   return {
     employee,
-    isCallCenter: CALL_CENTER.test(employee.department || ''),
+    isCallCenter: hasCallCenterAccess,
     afterProbation: !isProbation(employee),
     target: TARGETS[employee.role] || 0,
     products: ['pos', 'atm_service', 'accounting', 'osap', 'digital_media_service', 'pr', 'insurance'],
@@ -112,10 +117,9 @@ async function create(payload, actor) {
 }
 
 async function list(query, actor) {
+  await context(actor);
   const filter = { companyId: actor.companyId };
-  if (['hr', 'admin', 'super_admin'].includes(actor.role)) {
-    // company-wide visibility
-  } else if (['manager', 'floor_head', 'team_lead'].includes(actor.role)) {
+  if (['manager', 'floor_head', 'team_lead'].includes(actor.role)) {
     filter.$or = [{ submittedBy: actor.id }, { 'approvalChain.approverId': actor.id }];
   } else filter.submittedBy = actor.id;
   if (query.status) filter.status = query.status;
@@ -136,6 +140,7 @@ async function list(query, actor) {
 }
 
 async function decide(id, payload, actor) {
+  await context(actor);
   const record = await CallSale.findOne({
     _id: id,
     companyId: actor.companyId,

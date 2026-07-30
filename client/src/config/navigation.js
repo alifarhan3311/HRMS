@@ -73,7 +73,7 @@ export const NAV_GROUPS = [
       {
         id: 'projects', label: 'Projects', path: '/projects',
         icon: FolderKanban,
-        roles: ['employee', 'team_lead', 'floor_head', 'manager', 'hr', 'admin', 'super_admin'],
+        roles: ['employee', 'team_lead', 'floor_head', 'manager'],
       },
       {
         id: 'recruitment', label: 'Recruitment', path: '/recruitment',

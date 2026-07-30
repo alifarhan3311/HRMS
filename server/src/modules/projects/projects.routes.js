@@ -13,8 +13,8 @@ const callSaleController = require('./callSale.controller');
 const Joi = require('joi');
 
 const router = express.Router();
-const ALLOWED_ROLES = ['admin','manager','floor_head','team_lead','super_admin','hr','employee'];
-const MANAGE_ROLES = ['admin', 'manager', 'super_admin'];
+const ALLOWED_ROLES = ['manager', 'floor_head', 'team_lead', 'employee'];
+const MANAGE_ROLES = ['manager'];
 
 router.use(authenticate);
 
@@ -85,7 +85,7 @@ router.put(
 );
 router.delete(
   '/:id',
-  authorize('admin', 'super_admin'),
+  authorize('manager'),
   validate(idParamsSchema, 'params'),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.remove

@@ -8,10 +8,9 @@ const createHttpError = require('http-errors');
 const repository = require('./projects.repository');
 const Employee = require('../employees/employees.model');
 
-const MANAGE_ROLES = ['super_admin', 'admin', 'manager'];
+const MANAGE_ROLES = ['manager'];
 
 function canAccessProject(project, actor) {
-  if (['super_admin', 'admin'].includes(actor.role)) return true;
   const actorId = String(actor.id);
   return [project.createdBy, project.projectManagerId, project.teamLeadId]
     .filter(Boolean).some((value) => String(value?._id || value) === actorId)
@@ -20,7 +19,6 @@ function canAccessProject(project, actor) {
 
 async function eligibleEmployeeFilter(actor) {
   const base = { companyId: actor.companyId, status: 'active' };
-  if (['super_admin', 'admin'].includes(actor.role)) return base;
   if (actor.role === 'manager') {
     const leads = await Employee.find({ ...base, role: 'team_lead', managerId: actor.id }).distinct('_id');
     return { ...base, $or: [{ _id: actor.id }, { managerId: actor.id }, { teamLeadId: { $in: leads } }] };
@@ -68,14 +66,12 @@ async function getProjectById(id, actor) {
 
 async function listProjects(query, actor) {
   const filter = { companyId: actor.companyId };
-  if (!['super_admin', 'admin'].includes(actor.role)) {
-    filter.$or = [
-      { createdBy: actor.id },
-      { projectManagerId: actor.id },
-      { teamLeadId: actor.id },
-      { 'teamMembers.employeeId': actor.id },
-    ];
-  }
+  filter.$or = [
+    { createdBy: actor.id },
+    { projectManagerId: actor.id },
+    { teamLeadId: actor.id },
+    { 'teamMembers.employeeId': actor.id },
+  ];
   return repository.findAll({
     filter,
     page: Number(query.page) || 1,
@@ -96,7 +92,10 @@ async function updateProject(id, payload, actor) {
 }
 
 async function deleteProject(id, actor) {
-  if (!['super_admin', 'admin'].includes(actor.role)) throw createHttpError(403, 'Only Admin can delete projects.');
+  if (actor.role !== 'manager') throw createHttpError(403, 'Only a Manager can delete projects.');
+  const existing = await repository.findById(id);
+  if (!existing) throw createHttpError(404, 'Project not found.');
+  if (!canAccessProject(existing, actor)) throw createHttpError(403, 'You cannot delete a project outside your team.');
   const deleted = await repository.deleteById(id);
   if (!deleted) throw createHttpError(404, 'Project not found.');
   return deleted;
