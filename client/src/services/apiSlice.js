@@ -65,6 +65,8 @@ export const api = createApi({
     'Notifications',
     'Settings',
     'Reports',
+    'Exits',
+    'ActionCenter',
   ],
   endpoints: () => ({}), // each feature injects its own endpoints
 });

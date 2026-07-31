@@ -16,6 +16,7 @@ import {
   CartesianGrid, ResponsiveContainer, Tooltip, Legend,
 } from 'recharts';
 import StatCard from '../../../components/ui/StatCard';
+import { Link } from 'react-router-dom';
 
 const CHART_COLORS = ['#C9971F', '#22c55e', '#f59e0b', '#ef4444', '#8B5E34'];
 
@@ -37,8 +38,7 @@ export default function HRDashboard({ data }) {
   return (
     <div className="space-y-6">
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold tracking-tight">HR Dashboard</h1>
-        <p className="text-muted-foreground">Team overview, approvals & alerts</p>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold tracking-tight">HR Dashboard</h1><p className="text-muted-foreground">Team overview, approvals & alerts</p></div><Link to="/action-center" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm">Open HR Action Center</Link></div>
       </motion.div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

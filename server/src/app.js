@@ -192,6 +192,8 @@ app.use('/api/v1/shifts', require('./modules/shifts/shifts.routes'));
 app.use('/api/v1/notifications', require('./modules/notifications/notifications.routes'));
 app.use('/api/v1/audit-logs', require('./modules/auditLogs/auditLogs.routes'));
 app.use('/api/v1/company-settings', require('./modules/companySettings/companySettings.routes'));
+app.use('/api/v1/exits', require('./modules/exits/exits.routes'));
+app.use('/api/v1/action-center', require('./modules/actionCenter/actionCenter.routes'));
 
 // -------------------------------------------------------------------------
 // 404 handler — anything not matched by a route above

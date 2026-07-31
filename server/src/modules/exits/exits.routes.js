@@ -1,0 +1,13 @@
+const router = require('express').Router();
+const c = require('./exits.controller');
+const { authenticate, authorize } = require('../../middlewares/auth.middleware');
+const ALL = ['employee', 'team_lead', 'floor_head', 'manager', 'hr', 'admin', 'super_admin'];
+router.use(authenticate);
+router.get('/', authorize(...ALL), c.list);
+router.post('/', authorize(...ALL), c.submit);
+router.patch('/:id/review', authorize('team_lead', 'floor_head', 'manager'), c.review);
+router.patch('/:id/decision', authorize('hr', 'super_admin'), c.decide);
+router.patch('/:id/clearance', authorize('hr', 'super_admin'), c.clearance);
+router.patch('/:id/complete', authorize('hr', 'super_admin'), c.complete);
+router.patch('/:id/withdraw', authorize(...ALL), c.withdraw);
+module.exports = router;
