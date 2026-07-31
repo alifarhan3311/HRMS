@@ -76,6 +76,10 @@ function calcTotalHours(signIn, signOut) {
   return Math.round((ms / 3600000) * 100) / 100; // round to 2 decimal places
 }
 
+function completionToleranceMinutes(record, requiredMinutes) {
+  return (record.shiftType || 'fixed') === 'fixed' && Number(requiredMinutes) > 420 ? 15 : 0;
+}
+
 function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0) {
   const clockMinutes = Math.max(0, Math.round((new Date(signOut) - new Date(signIn)) / 60000));
   const workedMinutes = clockMinutes;
@@ -85,7 +89,14 @@ function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0) {
     totalHours: Number((clockMinutes / 60).toFixed(2)),
     workedMinutes,
     overtimeMinutes: Math.max(0, workedMinutes - Number(record.shiftOvertimeAfterMinutes || requiredMinutes)),
-    status: attendanceStatus(lateMinutes > 0 ? 'late' : 'present', workedMinutes, requiredMinutes, halfDayMinutes),
+    status: attendanceStatus(
+      lateMinutes > 0 ? 'late' : 'present',
+      workedMinutes,
+      requiredMinutes,
+      halfDayMinutes,
+      false,
+      completionToleranceMinutes(record, requiredMinutes),
+    ),
   };
 }
 
@@ -211,6 +222,25 @@ async function signIn({
 // -------------------------------------------------------------------------
 // Sign Out
 // -------------------------------------------------------------------------
+function isRecoveredMissedPunchPenalty(record, recovered = {}) {
+  if (!record?.lateCountAppliedAt) return false;
+  if (record.missedPunchType === 'sign_out') return Boolean(recovered.signOutTime);
+  if (record.missedPunchType === 'sign_in') return Boolean(recovered.signInTime);
+  return false;
+}
+
+async function clearRecoveredMissedPunchPenalty(record, recovered = {}) {
+  if (!isRecoveredMissedPunchPenalty(record, recovered)) return false;
+  await repository.updateById(record._id, {
+    $unset: { missedPunchType: '', lateCountAppliedAt: '' },
+  });
+  await Employee.updateOne(
+    { _id: record.employeeId?._id || record.employeeId, lateCount: { $gt: 0 } },
+    { $inc: { lateCount: -1 } },
+  );
+  return true;
+}
+
 async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
   const record = recordId ? await repository.findById(recordId) : await repository.findOpenByEmployee(employeeId);
   if (!record) throw createHttpError(400, 'No open shift sign-in record was found.');
@@ -266,6 +296,7 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
         policy.effectiveRequiredMinutes,
         policy.effectiveHalfDayMinutes,
         fullDayClosure,
+        completionToleranceMinutes(record, policy.effectiveRequiredMinutes),
       );
 
   const updated = await repository.updateById(record._id, {
@@ -286,7 +317,8 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
     ...(notes && { notes }),
   });
 
-  return updated;
+  const penaltyCleared = await clearRecoveredMissedPunchPenalty(record, { signOutTime: now });
+  return penaltyCleared ? repository.findById(record._id) : updated;
 }
 
 function classifyBiometricPunch({ record, punchTime, schedule, shift }) {
@@ -396,12 +428,21 @@ async function getTodayAttendance(employeeId, actor) {
   };
 }
 
-function attendanceStatus(currentStatus, workedMinutes, requiredMinutes, halfDayMinutes, isFullDayClosure = false) {
+function attendanceStatus(
+  currentStatus,
+  workedMinutes,
+  requiredMinutes,
+  halfDayMinutes,
+  isFullDayClosure = false,
+  completionTolerance = 0,
+) {
   if (isFullDayClosure) return 'holiday';
   // A fixed-shift employee who crossed the arrival half-day boundary remains
   // half-day even when they stay late enough to complete the raw hours.
   if (currentStatus === 'half_day') return 'half_day';
-  if (workedMinutes >= requiredMinutes) return currentStatus === 'late' ? 'late' : 'present';
+  if (workedMinutes >= Math.max(0, requiredMinutes - completionTolerance)) {
+    return currentStatus === 'late' ? 'late' : 'present';
+  }
   if (workedMinutes >= halfDayMinutes) return 'half_day';
   return 'absent';
 }
@@ -670,7 +711,11 @@ async function manualCorrection(id, payload, actor) {
   }
 
   const updated = await repository.updateById(id, update);
-  return updated;
+  const penaltyCleared = await clearRecoveredMissedPunchPenalty(record, {
+    signInTime: signInTime ? correctedSignIn : null,
+    signOutTime: signOutTime ? correctedSignOut : null,
+  });
+  return penaltyCleared ? repository.findById(id) : updated;
 }
 
 // -------------------------------------------------------------------------
@@ -836,6 +881,8 @@ async function reviewRegularization(id, { action, remarks }, actor) {
     'regularization.reviewedAt': new Date(),
     'regularization.remarks': remarks || '',
   };
+  let recoveredPunches = {};
+  let waivedAppliedPenalty = false;
 
   if (action === 'approve') {
     if (record.regularization.requestType === 'late_waiver') {
@@ -846,6 +893,7 @@ async function reviewRegularization(id, { action, remarks }, actor) {
         { _id: record.employeeId._id || record.employeeId, lateCount: { $gt: 0 } },
         { $inc: { lateCount: -1 } },
       );
+      waivedAppliedPenalty = Boolean(record.lateCountAppliedAt);
     } else {
       const settings = await settingsService.getPolicy(record.companyId);
       const correctedSignIn = record.regularization.requestedSignInTime || record.signInTime;
@@ -871,6 +919,10 @@ async function reviewRegularization(id, { action, remarks }, actor) {
         ));
         update.autoClosedAt = null;
       }
+      recoveredPunches = {
+        signInTime: record.regularization.requestedSignInTime ? correctedSignIn : null,
+        signOutTime: record.regularization.requestedSignOutTime ? correctedSignOut : null,
+      };
       if (isSaturdayShiftDate(record.shiftDate) && correctedSignIn) {
         update.status = 'present';
         update.lateMinutes = 0;
@@ -879,6 +931,13 @@ async function reviewRegularization(id, { action, remarks }, actor) {
   }
 
   await repository.updateById(id, update);
+  if (waivedAppliedPenalty) {
+    await repository.updateById(id, {
+      $unset: { missedPunchType: '', lateCountAppliedAt: '' },
+    });
+  } else if (action === 'approve') {
+    await clearRecoveredMissedPunchPenalty(record, recoveredPunches);
+  }
 
   await notificationService.createNotification({
     recipientId: record.employeeId._id || record.employeeId,
@@ -971,7 +1030,14 @@ async function applyClosureToAttendance(closure) {
       const workedMinutes = clockMinutes;
       update.workedMinutes = workedMinutes;
       update.overtimeMinutes = Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
-      update.status = attendanceStatus(record.status, workedMinutes, policy.effectiveRequiredMinutes, policy.effectiveHalfDayMinutes);
+      update.status = attendanceStatus(
+        record.status,
+        workedMinutes,
+        policy.effectiveRequiredMinutes,
+        policy.effectiveHalfDayMinutes,
+        false,
+        completionToleranceMinutes(record, policy.effectiveRequiredMinutes),
+      );
       update.earlyLeaveMinutes = calcEarlyLeaveMinutes(record.signOutTime, { scheduledEnd: policy.effectiveEnd });
     }
     await repository.updateById(record._id, update);
@@ -1015,7 +1081,14 @@ async function removeClosureFromAttendance(closure) {
       update.$set.earlyLeaveMinutes = calcEarlyLeaveMinutes(record.signOutTime, { scheduledEnd: policy.effectiveEnd });
       const lateMinutes = calcLateMinutes(record.signInTime, { scheduledStart: policy.effectiveStart, graceMinutes: record.shiftGraceMinutes || 0 });
       update.$set.lateMinutes = lateMinutes;
-      update.$set.status = attendanceStatus(lateMinutes > 0 ? 'late' : 'present', workedMinutes, policy.effectiveRequiredMinutes, policy.effectiveHalfDayMinutes);
+      update.$set.status = attendanceStatus(
+        lateMinutes > 0 ? 'late' : 'present',
+        workedMinutes,
+        policy.effectiveRequiredMinutes,
+        policy.effectiveHalfDayMinutes,
+        false,
+        completionToleranceMinutes(record, policy.effectiveRequiredMinutes),
+      );
     }
     await repository.updateById(record._id, update);
     adjusted += 1;
@@ -1038,7 +1111,9 @@ module.exports = {
   applyClosureToAttendance,
   removeClosureFromAttendance,
   correctedWorkMetrics,
+  completionToleranceMinutes,
   completedFixedShiftStatus,
   classifyBiometricPunch,
+  isRecoveredMissedPunchPenalty,
   ingestBiometricPunch,
 };

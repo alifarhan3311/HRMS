@@ -24,6 +24,7 @@ import StatCard from '../../../components/ui/StatCard';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import { Avatar } from '../../../components/ui/Avatar';
+import AccountingTasksPanel from '../components/AccountingTasksPanel';
 
 function CallTransferPanel({ user }) {
   const now = new Date();
@@ -392,6 +393,9 @@ export default function ProjectsListPage() {
   const canManage = user?.role === 'manager';
   const isCallCenter = [user?.department, ...(user?.managedDepartments || [])]
     .some((department) => /^call[\s_-]*center$/i.test(department || ''));
+  const isAccounting = ['employee', 'team_lead', 'manager'].includes(user?.role)
+    && [user?.department, ...(user?.managedDepartments || [])]
+      .some((department) => /^account(?:ing|s)?$/i.test(String(department || '').trim()));
 
   const [formOpen, setFormOpen]   = useState(false);
   const [editProj, setEditProj]   = useState(null);
@@ -442,6 +446,7 @@ export default function ProjectsListPage() {
 
       {isCallCenter && <CallTransferPanel user={user} />}
       {isCallCenter && <CallSalesPanel user={user} />}
+      {isAccounting && <AccountingTasksPanel user={user} />}
 
       {/* Status stats */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

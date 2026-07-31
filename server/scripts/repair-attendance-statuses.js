@@ -11,6 +11,10 @@ function arrivalStatus(record) {
   return 'present';
 }
 
+function completionTolerance(record, requiredMinutes) {
+  return record.shiftType === 'fixed' && requiredMinutes > 420 ? 15 : 0;
+}
+
 async function repair() {
   const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
   if (!uri) throw new Error('MONGO_URI (or MONGODB_URI) is not configured.');
@@ -33,10 +37,21 @@ async function repair() {
     scheduledEnd: 1,
     shiftGraceMinutes: 1,
     shiftLateHalfDayAfterMinutes: 1,
+    shiftType: 1,
+    shiftRequiredMinutes: 1,
+    effectiveRequiredMinutes: 1,
+    workedMinutes: 1,
   }).toArray();
 
   const corrections = records
-    .filter((record) => new Date(record.signOutTime) >= new Date(record.scheduledEnd))
+    .filter((record) => {
+      const requiredMinutes = Number(record.effectiveRequiredMinutes || record.shiftRequiredMinutes || 480);
+      const workedMinutes = Number.isFinite(Number(record.workedMinutes))
+        ? Number(record.workedMinutes)
+        : Math.max(0, Math.round((new Date(record.signOutTime) - new Date(record.signInTime)) / 60000));
+      return new Date(record.signOutTime) >= new Date(record.scheduledEnd)
+        || workedMinutes >= requiredMinutes - completionTolerance(record, requiredMinutes);
+    })
     .map((record) => ({ record, correctedStatus: arrivalStatus(record) }))
     .filter(({ record, correctedStatus }) => correctedStatus !== record.status);
 

@@ -6,7 +6,9 @@ const { arrivalStatus } = require('../src/modules/attendance/shiftTime');
 const { appliesToEmployee } = require('../src/modules/attendance/closurePolicy');
 const {
   correctedWorkMetrics,
+  completionToleranceMinutes,
   completedFixedShiftStatus,
+  isRecoveredMissedPunchPenalty,
 } = require('../src/modules/attendance/attendance.service');
 const { isSaturdayShiftDate, saturdayStatus } = require('../src/modules/attendance/saturdayPolicy');
 const Attendance = require('../src/modules/attendance/attendance.model');
@@ -85,6 +87,27 @@ test('recovered sign-out reconstructs arrival status after an incomplete auto-cl
   );
 });
 
+test('recovered missing punch penalties clear only when the matching punch exists', () => {
+  const appliedAt = new Date('2026-07-30T03:00:00.000Z');
+  assert.equal(isRecoveredMissedPunchPenalty({
+    missedPunchType: 'sign_out',
+    lateCountAppliedAt: appliedAt,
+  }, {
+    signOutTime: new Date('2026-07-30T04:30:00.000Z'),
+  }), true);
+  assert.equal(isRecoveredMissedPunchPenalty({
+    missedPunchType: 'sign_out',
+    lateCountAppliedAt: appliedAt,
+  }, {
+    signInTime: new Date('2026-07-29T22:00:00.000Z'),
+  }), false);
+  assert.equal(isRecoveredMissedPunchPenalty({
+    missedPunchType: 'sign_out',
+  }, {
+    signOutTime: new Date('2026-07-30T04:30:00.000Z'),
+  }), false);
+});
+
 test('fixed shifts of seven hours or less have no grace and use a 120 minute half-day arrival threshold', () => {
   const shift = normalizeDurationPolicy({}, {
     shiftType: 'fixed', startTime: '10:00', endTime: '16:30',
@@ -95,6 +118,32 @@ test('fixed shifts of seven hours or less have no grace and use a 120 minute hal
   assert.equal(arrivalStatus(new Date(start.getTime() + 59 * 1000), schedule, shift).status, 'present');
   assert.equal(arrivalStatus(new Date(start.getTime() + 1 * 60000), schedule, shift).status, 'late');
   assert.equal(arrivalStatus(new Date(start.getTime() + 121 * 60000), schedule, shift).status, 'half_day');
+});
+
+test('fixed shifts longer than seven hours allow a 15 minute completion shortfall', () => {
+  const fixedRecord = {
+    shiftType: 'fixed',
+    shiftRequiredMinutes: 480,
+    shiftHalfDayMinutes: 240,
+  };
+  assert.equal(completionToleranceMinutes(fixedRecord, 480), 15);
+  assert.equal(
+    correctedWorkMetrics(
+      fixedRecord,
+      new Date('2026-07-17T14:03:00.000Z'),
+      new Date('2026-07-17T21:58:00.000Z'),
+    ).status,
+    'present',
+  );
+  assert.equal(
+    correctedWorkMetrics(
+      { ...fixedRecord, shiftType: 'flexible' },
+      new Date('2026-07-17T14:03:00.000Z'),
+      new Date('2026-07-17T21:58:00.000Z'),
+    ).status,
+    'half_day',
+  );
+  assert.equal(completionToleranceMinutes({ shiftType: 'fixed' }, 390), 0);
 });
 
 test('approved correction ignores obsolete break snapshots and uses full clock time', () => {

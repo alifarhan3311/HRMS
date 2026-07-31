@@ -5,6 +5,13 @@ const attendanceService = require('../../modules/attendance/attendance.service')
 const { emitToCompany } = require('../../config/socket');
 const logger = require('../../utils/logger');
 const { BiometricPunch, BiometricSyncState } = require('./biometricPunch.model');
+const {
+  isEventPacketTCP,
+  isEventPacketUDP,
+  decodeRecordRealTimeLog52,
+  decodeRecordRealTimeLog18,
+} = require('node-zklib/utils');
+const { PACKET_SIZES } = require('node-zklib/constants');
 
 const sdkPackage = require('node-zklib/package.json');
 
@@ -17,6 +24,7 @@ const state = {
   pollTimer: null,
   reconnectAttempt: 0,
   nativeRealtime: false,
+  realtimeCleanup: null,
   lastConnection: null,
   lastErrors: [],
   sdkQueue: Promise.resolve(),
@@ -30,7 +38,7 @@ function config() {
     commKey: Number(process.env.ZKTECO_COMM_KEY || 0),
     companyId: process.env.ZKTECO_COMPANY_ID,
     pollInterval: Math.max(1000, Number(process.env.ZKTECO_POLL_INTERVAL || 5000)),
-    reconcileInterval: Math.max(10000, Number(process.env.ZKTECO_RECONCILE_INTERVAL || 30000)),
+    reconcileInterval: Math.max(10000, Number(process.env.ZKTECO_RECONCILE_INTERVAL || 300000)),
     reconnectDelay: Math.max(1000, Number(process.env.ZKTECO_RECONNECT_DELAY || 2000)),
     timeout: Math.max(1000, Number(process.env.ZKTECO_TIMEOUT || 10000)),
     timezone: process.env.ZKTECO_TIMEZONE || 'Asia/Karachi',
@@ -173,6 +181,52 @@ function pollingIntervalForMode(nativeRealtime, cfg = config()) {
   return nativeRealtime ? cfg.reconcileInterval : cfg.pollInterval;
 }
 
+function reconciliationCandidates(normalizedLogs, lastLogTime) {
+  const cursor = new Date(lastLogTime || 0);
+  const cursorTime = Number.isNaN(cursor.getTime()) ? 0 : cursor.getTime();
+  return normalizedLogs.filter((item) => item.punchTime.getTime() > cursorTime);
+}
+
+function removeRealtimeListener() {
+  if (state.realtimeCleanup) state.realtimeCleanup();
+  state.realtimeCleanup = null;
+}
+
+// node-zklib only attaches its TCP callback when the socket has no existing
+// data listeners. Command-response listeners already exist on a live client,
+// so MB20-VL events can be registered successfully but never reach the app.
+// Attach one service-owned event listener and remove it on every reconnect.
+function attachRealtimeListener(zk, onEvent) {
+  removeRealtimeListener();
+  if (zk.connectionType === 'tcp') {
+    const socket = zk.zklibTcp?.socket;
+    if (!socket) throw new Error('TCP socket is unavailable for realtime attendance.');
+    const listener = (data) => {
+      try {
+        if (isEventPacketTCP(data) && data.length > 16) onEvent(decodeRecordRealTimeLog52(data));
+      } catch (error) {
+        recordError('realtime-decode', error);
+      }
+    };
+    socket.on('data', listener);
+    state.realtimeCleanup = () => socket.removeListener('data', listener);
+    return;
+  }
+  const socket = zk.zklibUdp?.socket;
+  if (!socket) throw new Error('UDP socket is unavailable for realtime attendance.');
+  const listener = (data) => {
+    try {
+      if (isEventPacketUDP(data) && data.length === PACKET_SIZES.REALTIME_LOG_UDP) {
+        onEvent(decodeRecordRealTimeLog18(data));
+      }
+    } catch (error) {
+      recordError('realtime-decode', error);
+    }
+  };
+  socket.on('message', listener);
+  state.realtimeCleanup = () => socket.removeListener('message', listener);
+}
+
 function dataChangedPayload(id = deviceId(), now = new Date()) {
   return {
     resource: 'attendance',
@@ -220,16 +274,23 @@ async function processPunch(input, storedPunch = null) {
     });
   } catch (error) {
     if (error.code === 11000) {
-      logger.info('[zkteco] Duplicate attendance event ignored', {
-        deviceUserId: input.deviceUserId,
-        punchTime: input.punchTime,
-      });
-      return { duplicate: true, status: 'ignored' };
+      const existing = await BiometricPunch.findOne({ fingerprint });
+      if (!existing || !['received', 'error', 'unmapped'].includes(existing.processingStatus)) {
+        logger.info('[zkteco] Duplicate attendance event ignored', {
+          deviceUserId: input.deviceUserId,
+          punchTime: input.punchTime,
+        });
+        return { duplicate: true, status: 'ignored' };
+      }
+      rawPunch = existing;
+    } else {
+      throw error;
     }
-    throw error;
   }
 
   try {
+    rawPunch.processingAttempts = Number(rawPunch.processingAttempts || 0) + 1;
+    rawPunch.lastProcessingAttempt = new Date();
     logger.info('[zkteco] Attendance event received', {
       deviceUserId: input.deviceUserId,
       punchTime: input.punchTime,
@@ -259,6 +320,7 @@ async function processPunch(input, storedPunch = null) {
     });
     const ignored = result.action.endsWith('_ignored');
     rawPunch.processingStatus = ignored ? 'ignored' : 'processed';
+    rawPunch.error = undefined;
     rawPunch.employeeId = employee._id;
     rawPunch.attendanceId = result.record._id;
     rawPunch.attendanceAction = result.action;
@@ -284,7 +346,6 @@ async function processPunch(input, storedPunch = null) {
     rawPunch.processingStatus = 'error';
     rawPunch.error = error.message;
     await rawPunch.save().catch(() => {});
-    await advanceCursor(input.punchTime, cfg).catch(() => {});
     recordError('process-punch', error);
     return { duplicate: false, status: 'error', error: error.message };
   }
@@ -314,16 +375,18 @@ async function syncNewLogs() {
       try { return normalizePunch(item, 'polling'); } catch (error) { recordError('normalize-log', error); return null; }
     })
     .filter(Boolean);
-  const hadCountCursor = Number.isInteger(syncState.lastLogCount);
-  const isExistingCursorUpgrade = !hadCountCursor
-    && Date.now() - new Date(syncState.initializedAt).getTime() > 60_000;
-  const previousCount = hadCountCursor
-    ? syncState.lastLogCount
-    : Math.max(0, downloadedLogs.length - (isExistingCursorUpgrade ? 1 : 0));
-  const appendedCount = Math.max(0, downloadedLogs.length - previousCount);
-  const candidateRecords = hadCountCursor
-    ? (appendedCount > 0 ? normalizedLogs.slice(-appendedCount) : [])
-    : normalizedLogs.filter(item => item.punchTime > syncState.lastLogTime);
+  const latestStoredPunch = await BiometricPunch.findOne({ deviceId: deviceId(cfg) })
+    .sort({ punchTime: -1 })
+    .select('punchTime')
+    .lean();
+  const durableCursor = [syncState.lastLogTime, syncState.initializedAt, latestStoredPunch?.punchTime]
+    .filter(Boolean)
+    .reduce((latest, value) => new Date(value) > latest ? new Date(value) : latest, new Date(0));
+  // A partial SDK response is not a device-log-count snapshot. Count-based
+  // slicing permanently missed new punches whenever an older prefix arrived.
+  // The durable timestamp cursor plus fingerprint uniqueness is safe for full,
+  // partial, restarted and repeated fetches.
+  const candidateRecords = reconciliationCandidates(normalizedLogs, durableCursor);
   const records = [...new Map(
     candidateRecords.map(item => [punchFingerprint(item, deviceId(cfg)), item]),
   ).values()]
@@ -332,7 +395,7 @@ async function syncNewLogs() {
   let processed = 0;
   const strandedPunches = await BiometricPunch.find({
     deviceId: deviceId(cfg),
-    processingStatus: 'received',
+    processingStatus: { $in: ['received', 'error', 'unmapped'] },
     punchTime: { $gte: syncState.initializedAt },
     createdAt: { $lte: new Date(Date.now() - 10_000) },
   }).sort({ punchTime: 1 }).limit(100);
@@ -348,15 +411,17 @@ async function syncNewLogs() {
     { deviceId: deviceId(cfg) },
     {
       $set: {
-        lastLogCount: Math.max(previousCount, downloadedLogs.length),
+        lastLogCount: Math.max(Number(syncState.lastLogCount || 0), downloadedLogs.length),
+        lastDownloadedCount: downloadedLogs.length,
         lastSuccessfulSync: new Date(),
+        ...(response?.err ? { lastPartialSync: new Date() } : {}),
       },
     },
   );
   logger.info('[zkteco] Attendance fetch completed', {
     downloaded: downloadedLogs.length,
-    previousCount,
-    appendedCount,
+    cursorTime: durableCursor,
+    partial: Boolean(response?.err),
     newLogs: records.length,
     recoveredStrandedPunches: strandedPunches.length,
     processed,
@@ -374,6 +439,7 @@ function clearTimers() {
 function scheduleReconnect(reason) {
   if (state.stopped || state.reconnectTimer) return;
   state.connected = false;
+  removeRealtimeListener();
   const cfg = config();
   const delay = nextReconnectDelay(state.reconnectAttempt, cfg.reconnectDelay);
   state.reconnectAttempt += 1;
@@ -449,21 +515,25 @@ async function connect() {
       },
       { upsert: true },
     );
-    await syncNewLogs();
     if (!cfg.nativeRealtime) {
       state.nativeRealtime = false;
     } else try {
-      await enqueueSdk(() => zk.getRealTimeLogs(event => {
+      const handleRealtimeEvent = event => {
         try {
           const punch = normalizePunch(event, 'realtime');
           processPunch(punch).catch(error => recordError('realtime-event', error));
         } catch (error) {
           recordError('realtime-normalize', error);
         }
-      }));
+      };
+      attachRealtimeListener(zk, handleRealtimeEvent);
+      // Registration still goes through the SDK; event decoding is handled by
+      // the listener above to avoid the SDK listener-count defect.
+      await enqueueSdk(() => zk.getRealTimeLogs(() => {}));
       state.nativeRealtime = true;
       logger.info('[zkteco] Native realtime attendance subscription active');
     } catch (error) {
+      removeRealtimeListener();
       state.nativeRealtime = false;
       recordError('realtime-subscription', error);
     }
@@ -494,6 +564,7 @@ async function stopBiometricService() {
   state.stopped = true;
   state.connected = false;
   clearTimers();
+  removeRealtimeListener();
   const device = state.device;
   state.device = null;
   if (device) await device.disconnect().catch(() => {});
@@ -571,4 +642,5 @@ module.exports = {
   nextReconnectDelay,
   pollingIntervalForMode,
   dataChangedPayload,
+  reconciliationCandidates,
 };

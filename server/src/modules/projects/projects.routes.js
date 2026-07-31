@@ -10,13 +10,40 @@ const validate = require('../../middlewares/validate.middleware');
 const { createSchema, updateSchema, idParamsSchema } = require('./projects.validation');
 const callTransferController = require('./callTransfer.controller');
 const callSaleController = require('./callSale.controller');
+const accountingTaskController = require('./accountingTask.controller');
 const Joi = require('joi');
 
 const router = express.Router();
 const ALLOWED_ROLES = ['manager', 'floor_head', 'team_lead', 'employee'];
 const MANAGE_ROLES = ['manager'];
+const ACCOUNTING_TASK_ROLES = ['manager', 'team_lead', 'employee'];
 
 router.use(authenticate);
+
+router.get('/accounting-tasks/context', authorize(...ACCOUNTING_TASK_ROLES), accountingTaskController.context);
+router.get('/accounting-tasks', authorize(...ACCOUNTING_TASK_ROLES), accountingTaskController.list);
+router.post(
+  '/accounting-tasks',
+  authorize('employee'),
+  validate(Joi.object({
+    tasks: Joi.array().min(1).max(100).items(Joi.object({
+      taskDate: Joi.string().isoDate().required(),
+      title: Joi.string().trim().min(2).max(200).required(),
+      description: Joi.string().trim().min(2).max(3000).required(),
+    })).required(),
+  })),
+  accountingTaskController.create
+);
+router.patch(
+  '/accounting-tasks/:id/decision',
+  authorize('team_lead'),
+  validate(idParamsSchema, 'params'),
+  validate(Joi.object({
+    status: Joi.string().valid('approved', 'rejected').required(),
+    reason: Joi.string().trim().max(500).allow('').optional(),
+  })),
+  accountingTaskController.decide
+);
 
 router.get('/call-transfers/context', authorize(...ALLOWED_ROLES), callTransferController.context);
 router.get('/call-transfers', authorize(...ALLOWED_ROLES), callTransferController.list);

@@ -61,6 +61,22 @@ export const projectsApi = api.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/projects/call-sales/${id}/decision`, method: 'PATCH', body }),
       invalidatesTags: ['CallSales', 'Notifications'],
     }),
+    getAccountingTaskContext: builder.query({
+      query: () => '/projects/accounting-tasks/context',
+      providesTags: ['AccountingTasks'],
+    }),
+    listAccountingTasks: builder.query({
+      query: (params) => ({ url: '/projects/accounting-tasks', params }),
+      providesTags: ['AccountingTasks'],
+    }),
+    createAccountingTasks: builder.mutation({
+      query: (body) => ({ url: '/projects/accounting-tasks', method: 'POST', body }),
+      invalidatesTags: ['AccountingTasks', 'Notifications'],
+    }),
+    decideAccountingTask: builder.mutation({
+      query: ({ id, ...body }) => ({ url: `/projects/accounting-tasks/${id}/decision`, method: 'PATCH', body }),
+      invalidatesTags: ['AccountingTasks', 'Notifications'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -80,4 +96,8 @@ export const {
   useListCallSalesQuery,
   useCreateCallSaleMutation,
   useDecideCallSaleMutation,
+  useGetAccountingTaskContextQuery,
+  useListAccountingTasksQuery,
+  useCreateAccountingTasksMutation,
+  useDecideAccountingTaskMutation,
 } = projectsApi;

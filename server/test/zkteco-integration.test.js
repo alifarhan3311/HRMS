@@ -12,6 +12,7 @@ const {
   applyBiometricTimeOffset,
   pollingIntervalForMode,
   inputFromStoredPunch,
+  reconciliationCandidates,
 } = require('../src/integrations/zkteco/zkteco.service');
 const { classifyBiometricPunch } = require('../src/modules/attendance/attendance.service');
 
@@ -26,6 +27,18 @@ test('native realtime keeps slower reconciliation polling enabled', () => {
   const cfg = { pollInterval: 5000, reconcileInterval: 30000 };
   assert.equal(pollingIntervalForMode(true, cfg), 30000);
   assert.equal(pollingIntervalForMode(false, cfg), 5000);
+});
+
+test('partial attendance downloads use the durable timestamp cursor instead of log counts', () => {
+  const logs = [
+    { punchTime: new Date('2026-07-31T10:00:00.000Z') },
+    { punchTime: new Date('2026-07-31T11:00:00.000Z') },
+    { punchTime: new Date('2026-07-31T12:00:00.000Z') },
+  ];
+  assert.deepEqual(
+    reconciliationCandidates(logs, new Date('2026-07-31T10:30:00.000Z')),
+    logs.slice(1),
+  );
 });
 
 test('stored received punches can be reconstructed after a process restart', () => {

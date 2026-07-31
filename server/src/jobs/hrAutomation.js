@@ -75,7 +75,6 @@ function saturdayMissedSignOutClosure(now = new Date()) {
     overtimeMinutes: 0,
     status: 'present',
     lateMinutes: 0,
-    missedPunchType: 'sign_out',
   };
 }
 
@@ -516,7 +515,16 @@ async function reconcileAttendance(now = new Date()) {
       record.overtimeMinutes = 0;
       record.missedPunchType = 'sign_out';
       if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) {
+        const hadAppliedPenalty = Boolean(record.lateCountAppliedAt);
         Object.assign(record, saturdayMissedSignOutClosure(now));
+        record.missedPunchType = undefined;
+        record.lateCountAppliedAt = undefined;
+        if (hadAppliedPenalty) {
+          await Employee.updateOne(
+            { _id: record.employeeId, lateCount: { $gt: 0 } },
+            { $inc: { lateCount: -1 } },
+          );
+        }
       } else {
         record.status = 'incomplete';
       }
@@ -545,7 +553,9 @@ async function reconcileAttendance(now = new Date()) {
     for (const record of expiredOpenRecords) {
       if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) {
         Object.assign(record, saturdayMissedSignOutClosure(now));
-        record.notes = `${record.notes || ''} [Saturday sign-in counted as present; missed sign-out counted as one late.]`.trim();
+        record.missedPunchType = undefined;
+        record.lateCountAppliedAt = undefined;
+        record.notes = `${record.notes || ''} [Saturday sign-in counted as present; sign-out is not required.]`.trim();
         await record.save();
         continue;
       }

@@ -17,6 +17,7 @@ const notificationService = require('../notifications/notifications.service');
 const settingsService = require('../companySettings/companySettings.service');
 const logger = require('../../utils/logger');
 const { emitToCompany } = require('../../config/socket');
+const { isSaturdayShiftDate } = require('../attendance/saturdayPolicy');
 const {
   buildManagerEmployeeScope,
   managerCanAccessEmployee,
@@ -254,18 +255,22 @@ async function reservedLateAttendanceIds(employeeId, excludeLeaveId = null) {
 
 async function getEligibleLates(actor) {
   const reservedIds = await reservedLateAttendanceIds(actor.id);
-  return Attendance.find({
+  const records = await Attendance.find({
     employeeId: actor.id,
     companyId: actor.companyId,
     _id: { $nin: reservedIds },
     $or: [
       { status: 'late', lateMinutes: { $gt: 0 } },
-      { lateCountAppliedAt: { $exists: true } },
+      {
+        lateCountAppliedAt: { $exists: true },
+        missedPunchType: { $in: ['sign_in', 'sign_out'] },
+      },
     ],
   })
     .select('_id shiftDate date signInTime signOutTime lateMinutes status missedPunchType shiftName')
     .sort({ shiftDate: -1, date: -1 })
     .lean();
+  return records.filter((record) => !isSaturdayShiftDate(record.shiftDate));
 }
 
 async function applyLeaveAgainstLates({ leaveType, attendanceIds, reason }, actor) {
@@ -295,10 +300,13 @@ async function applyLeaveAgainstLates({ leaveType, attendanceIds, reason }, acto
     companyId: actor.companyId,
     $or: [
       { status: 'late', lateMinutes: { $gt: 0 } },
-      { lateCountAppliedAt: { $exists: true } },
+      {
+        lateCountAppliedAt: { $exists: true },
+        missedPunchType: { $in: ['sign_in', 'sign_out'] },
+      },
     ],
   }).sort({ shiftDate: 1, date: 1 });
-  if (lateRecords.length !== 3) {
+  if (lateRecords.length !== 3 || lateRecords.some((record) => isSaturdayShiftDate(record.shiftDate))) {
     throw createHttpError(422, 'All 3 selected records must be your eligible lates.');
   }
 

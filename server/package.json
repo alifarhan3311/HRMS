@@ -14,6 +14,7 @@
     "migrate:repair-attendance-duplicates": "node scripts/repair-attendance-duplicates.js",
     "migrate:repair-attendance-statuses": "node scripts/repair-attendance-statuses.js",
     "migrate:repair-flexible-pairing": "node scripts/repair-flexible-pairing.js",
+    "migrate:repair-stale-late-penalties": "node scripts/repair-stale-late-penalties.js",
     "test": "node --test test/*.test.js",
     "lint": "eslint src --ext .js"
   },

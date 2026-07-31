@@ -24,6 +24,8 @@ const biometricPunchSchema = new mongoose.Schema({
   attendanceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Attendance' },
   attendanceAction: String,
   error: String,
+  processingAttempts: { type: Number, default: 0 },
+  lastProcessingAttempt: Date,
   raw: mongoose.Schema.Types.Mixed,
   companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', required: true, index: true },
 }, { timestamps: true });
@@ -38,6 +40,8 @@ const biometricSyncStateSchema = new mongoose.Schema({
   lastLogCount: { type: Number, min: 0 },
   lastConnection: Date,
   lastSuccessfulSync: Date,
+  lastPartialSync: Date,
+  lastDownloadedCount: { type: Number, min: 0 },
   libraryUsed: String,
 }, { timestamps: true });
 
