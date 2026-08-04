@@ -42,6 +42,18 @@ function daysBetween(from, to) {
   };
 }
 
+function upcomingBirthday(dateOfBirth, from = new Date(), windowDays = 30) {
+  if (!dateOfBirth) return null;
+  const dob = new Date(dateOfBirth);
+  if (Number.isNaN(dob.getTime())) return null;
+  const today = startOfDay(from);
+  let next = new Date(today.getFullYear(), dob.getMonth(), dob.getDate());
+  if (next < today) next = new Date(today.getFullYear() + 1, dob.getMonth(), dob.getDate());
+  const daysUntil = Math.round((next.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  if (daysUntil < 0 || daysUntil > windowDays) return null;
+  return { nextBirthday: next, daysUntil };
+}
+
 async function getUpcomingHolidays(companyId, limit = 5) {
   return Holiday.find({
     companyId,
@@ -162,8 +174,6 @@ async function getHRDashboard(user) {
   const today = startOfDay();
   const monthStart = startOfMonth();
   const monthEnd = endOfMonth();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
   const employeeFilter = { companyId: user.companyId };
   if (user.role === 'manager') Object.assign(employeeFilter, await buildManagerEmployeeScope(user));
   else if (user.role !== 'super_admin') employeeFilter.role = { $ne: 'super_admin' };
@@ -205,13 +215,13 @@ async function getHRDashboard(user) {
     })
       .select('fullName dateOfBirth department')
       .lean()
-      .then((employees) =>
-        employees.filter((emp) => {
-          if (!emp.dateOfBirth) return false;
-          const dob = new Date(emp.dateOfBirth);
-          return dob.getMonth() === tomorrow.getMonth() && dob.getDate() === tomorrow.getDate();
+      .then((employees) => employees
+        .map((emp) => {
+          const upcoming = upcomingBirthday(emp.dateOfBirth, today, 30);
+          return upcoming ? { ...emp, ...upcoming } : null;
         })
-      ),
+        .filter(Boolean)
+        .sort((a, b) => a.daysUntil - b.daysUntil)),
     Employee.find({
       ...employeeFilter,
       joiningDate: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },

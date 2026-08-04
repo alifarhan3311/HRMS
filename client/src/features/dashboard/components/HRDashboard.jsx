@@ -58,7 +58,7 @@ export default function HRDashboard({ data }) {
           delay={0.12}
           title="Birthday Alerts"
           value={data.birthdayAlerts?.length ?? 0}
-          subtitle="Tomorrow"
+          subtitle="Next 30 days"
           icon={Cake}
         />
         <StatCard
@@ -215,16 +215,21 @@ export default function HRDashboard({ data }) {
         <motion.div className="glass-card p-5">
           <h3 className="mb-3 font-semibold flex items-center gap-2">
             <Cake className="h-4 w-4 text-pink-500" />
-            Birthday Alerts (Tomorrow)
+            Upcoming Birthdays (Next 30 Days)
           </h3>
           <div className="flex flex-wrap gap-2">
             {data.birthdayAlerts.map((emp) => (
-              <span
+              <div
                 key={emp._id}
-                className="rounded-full bg-pink-100 px-3 py-1 text-sm dark:bg-pink-900/30"
+                className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm dark:border-pink-900/40 dark:bg-pink-900/20"
               >
-                {emp.fullName}
-              </span>
+                <p className="font-medium">{emp.fullName}</p>
+                <p className="text-xs text-muted-foreground">
+                  {emp.daysUntil === 0 ? 'Today' : emp.daysUntil === 1 ? 'Tomorrow' : `In ${emp.daysUntil} days`}
+                  {' · '}{new Date(emp.nextBirthday).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })}
+                  {emp.department ? ` · ${emp.department}` : ''}
+                </p>
+              </div>
             ))}
           </div>
         </motion.div>
