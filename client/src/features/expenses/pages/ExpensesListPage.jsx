@@ -497,38 +497,24 @@ export default function ExpensesListPage() {
   const isHR = user?.role === 'hr';
   const isSuperAdmin = user?.role === 'super_admin';
   const [submitOpen, setSubmitOpen] = useState(false);
-  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [detailExpense, setDetailExpense] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({ status: '', category: '' });
+  const [filters, setFilters] = useState({ status: '' });
 
   const { data, isLoading, isFetching, refetch } = useListExpensesQuery(
     { page, limit: 15, ...filters },
     { skip: !isHR && !isSuperAdmin },
   );
-  const { data: categoriesData } = useListExpenseCategoriesQuery(undefined, {
-    skip: !isHR && !isSuperAdmin,
-  });
   const [submitExpense, { isLoading: submitting }] = useSubmitExpenseMutation();
   const [submitBulkExpenses, { isLoading: submittingBulk }] = useSubmitBulkExpensesMutation();
   const [submitExpenseSheet, { isLoading: submittingSheet }] = useSubmitExpenseSheetMutation();
   const [deleteExpense, { isLoading: deletingExpense }] = useDeleteExpenseMutation();
 
   const expenses = data?.items || [];
-  const categoryRecords = categoriesData?.data || [];
-  const categories = categoryRecords.filter((category) => category.active).map((category) => category.name);
   const total = data?.total || 0;
   const totalPages = data?.totalPages || 1;
   const totalAmount = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-  const categoryTotals = expenses.reduce((totals, expense) => {
-    totals[expense.category] = (totals[expense.category] || 0) + (expense.amount || 0);
-    return totals;
-  }, {});
-  const catData = Object.entries(categoryTotals).map(([category, amount]) => ({
-    name: category.replace(' Expenses', '').replace(' Bills', ''),
-    amount,
-  }));
 
   async function handleSubmit(payload) {
     try {
@@ -585,9 +571,6 @@ export default function ExpensesListPage() {
           </Button>
           {isHR && (
             <>
-              <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setCategoriesOpen(true)}>
-                <Settings2 className="h-4 w-4" /> Categories
-              </Button>
               <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setSubmitOpen(true)}>
                 <Plus className="h-4 w-4" /> Add Expenses
               </Button>
@@ -596,24 +579,18 @@ export default function ExpensesListPage() {
         </div>
       </motion.div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <StatCard title="Page Total" value={fmtPKR(totalAmount)} icon={Receipt} />
         <StatCard title="Expense Entries" value={total} icon={ListChecks} />
-        <StatCard title="Categories" value={categoryRecords.length} icon={Tags} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      <div>
         <div className="glass-card overflow-hidden">
           <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
             <select className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
               value={filters.status} onChange={(event) => { setFilters((current) => ({ ...current, status: event.target.value })); setPage(1); }}>
               <option value="">All Statuses</option>
               {Object.entries(STATUS_STYLES).map(([key, value]) => <option key={key} value={key}>{value.label}</option>)}
-            </select>
-            <select className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-primary"
-              value={filters.category} onChange={(event) => { setFilters((current) => ({ ...current, category: event.target.value })); setPage(1); }}>
-              <option value="">All Categories</option>
-              {categories.map((category) => <option key={category} value={category}>{category}</option>)}
             </select>
             <span className="ml-auto text-xs text-muted-foreground">{total} expenses</span>
           </div>
@@ -674,22 +651,6 @@ export default function ExpensesListPage() {
           )}
         </div>
 
-        <div className="glass-card p-5">
-          <h3 className="mb-4 flex items-center gap-2 font-semibold"><BarChart3 className="h-4 w-4" /> By Category</h3>
-          {!catData.length ? (
-            <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">No data yet</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={catData} layout="vertical" margin={{ left: 0, right: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(value) => `${value / 1000}k`} />
-                <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 10 }} />
-                <Tooltip formatter={(value) => fmtPKR(value)} />
-                <Bar dataKey="amount" fill="#6366f1" radius={[0, 6, 6, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
       </div>
 
       <ExpenseDetailModal expense={detailExpense} isOpen={Boolean(detailExpense)} onClose={() => setDetailExpense(null)} />
@@ -708,8 +669,6 @@ export default function ExpensesListPage() {
             <ExpenseSheetForm onSubmit={handleSheetSubmit} onClose={() => setSubmitOpen(false)}
               isLoading={submittingSheet} />
           </Modal>
-          <CategoryManagerModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)}
-            categories={categoryRecords} />
         </>
       )}
     </div>
