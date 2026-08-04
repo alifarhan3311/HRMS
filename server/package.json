@@ -27,6 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.4.0",
     "morgan": "^1.10.0",
+    "multer": "^2.0.2",
     "node-zklib": "github:caobo171/node-zklib",
     "nodemailer": "^6.9.13",
     "rate-limit-redis": "^4.2.0",

@@ -101,6 +101,49 @@ async function submitBulkExpenses(rows, actor) {
   return { batchId, count: expenses.length, total, items: expenses };
 }
 
+async function submitExpenseSheet(payload, file, actor) {
+  if (!file) throw createHttpError(422, 'Expense sheet image is required.');
+  const bytes = file.buffer;
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const isPng = bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const isWebp = bytes.subarray(0, 4).toString('ascii') === 'RIFF'
+    && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+  if (!isJpeg && !isPng && !isWebp) throw createHttpError(422, 'The uploaded file is not a valid JPG, PNG or WEBP image.');
+  const expense = await repository.create({
+    category: 'Miscellaneous Expenses',
+    vendorName: 'Uploaded expense sheet',
+    amount: Number(payload.amount),
+    expenseDate: new Date(payload.expenseDate),
+    paymentMethod: 'Online',
+    remarks: 'Expense sheet image uploaded by HR',
+    expenseSheetImage: file.buffer,
+    expenseSheetMimeType: file.mimetype,
+    expenseSheetFileName: file.originalname,
+    submittedBy: actor.id,
+    status: 'recorded',
+    approvalChain: [],
+    companyId: actor.companyId,
+    branchId: actor.branchId,
+  });
+  await notifySuperAdmins(actor.companyId, {
+    companyId: actor.companyId,
+    type: 'expense_recorded',
+    title: 'Expense sheet uploaded',
+    message: `HR uploaded an expense sheet totalling PKR ${Number(payload.amount).toLocaleString()}.`,
+    link: '/expenses', metadata: { expenseId: expense._id },
+    dedupeKey: `expense-sheet:${expense._id}`,
+  });
+  return expense.toObject({ getters: true });
+}
+
+async function getExpenseImage(id, actor) {
+  assertExpenseViewer(actor);
+  const expense = await repository.findImageById(id);
+  if (!expense || String(expense.companyId) !== String(actor.companyId)) throw createHttpError(404, 'Expense image not found.');
+  if (!expense.expenseSheetImage) throw createHttpError(404, 'Expense image not found.');
+  return expense;
+}
+
 async function listExpenses(query, actor) {
   assertExpenseViewer(actor);
   const { page = 1, limit = 20, status, category, dateFrom, dateTo, sort = '-createdAt' } = query;
@@ -131,4 +174,4 @@ async function getExpenseById(id, actor) {
   return expense;
 }
 
-module.exports = { submitExpense, submitBulkExpenses, listExpenses, getExpenseById };
+module.exports = { submitExpense, submitBulkExpenses, submitExpenseSheet, listExpenses, getExpenseById, getExpenseImage };

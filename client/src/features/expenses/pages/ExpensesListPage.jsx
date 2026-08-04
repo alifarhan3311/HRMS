@@ -16,6 +16,7 @@ import {
   useUpdateExpenseCategoryMutation,
   useDeleteExpenseCategoryMutation,
   useSubmitBulkExpensesMutation,
+  useSubmitExpenseSheetMutation,
 } from '../api/expenses.api';
 import { toast } from '../../../utils/toast';
 import StatCard from '../../../components/ui/StatCard';
@@ -251,6 +252,67 @@ function BulkExpenseForm({ onSubmit, onClose, isLoading }) {
   );
 }
 
+function ExpenseSheetForm({ onSubmit, onClose, isLoading }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [expenseDate, setExpenseDate] = useState(today);
+  const [amount, setAmount] = useState('');
+  const [image, setImage] = useState(null);
+  const [preview, setPreview] = useState('');
+
+  function acceptImage(file) {
+    if (!file) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return toast.error('Upload a JPG, PNG or WEBP image.');
+    if (file.size > 8 * 1024 * 1024) return toast.error('Image must be 8 MB or smaller.');
+    if (preview) URL.revokeObjectURL(preview);
+    setImage(file); setPreview(URL.createObjectURL(file));
+  }
+
+  function selectImage(event) {
+    acceptImage(event.target.files?.[0]);
+  }
+
+  useEffect(() => {
+    function handlePaste(event) {
+      const imageItem = [...(event.clipboardData?.items || [])].find((item) => item.type.startsWith('image/'));
+      if (!imageItem) return;
+      event.preventDefault();
+      const pasted = imageItem.getAsFile();
+      if (!pasted) return;
+      const extension = pasted.type === 'image/png' ? 'png' : pasted.type === 'image/webp' ? 'webp' : 'jpg';
+      acceptImage(new File([pasted], `expense-sheet-${Date.now()}.${extension}`, { type: pasted.type }));
+      toast.success('Screenshot pasted successfully');
+    }
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [preview]);
+
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+
+  async function submit(event) {
+    event.preventDefault();
+    if (!image) return toast.error('Select an expense sheet image.');
+    if (!amount || Number(amount) <= 0) return toast.error('Enter the sheet total amount.');
+    const body = new FormData();
+    body.append('image', image); body.append('expenseDate', expenseDate); body.append('amount', amount);
+    await onSubmit(body);
+  }
+
+  return <form onSubmit={submit}>
+    <div className="space-y-4 px-6 py-5">
+      <label className="flex min-h-52 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-primary/35 bg-primary/5 p-4 text-center hover:bg-primary/10">
+        {preview ? <img src={preview} alt="Expense sheet preview" className="max-h-80 w-full rounded-xl object-contain" /> : <><Upload className="mb-3 h-9 w-9 text-primary"/><p className="font-semibold">Upload or paste Excel sheet picture</p><p className="mt-1 text-xs text-muted-foreground">Select JPG/PNG/WEBP, or copy from Snipping Tool and press Ctrl+V · Maximum 8 MB</p></>}
+        <input type="file" className="hidden" accept="image/jpeg,image/png,image/webp" onChange={selectImage}/>
+      </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Input label="Expense Date" required type="date" max={today} value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)}/>
+        <Input label="Sheet Total (PKR)" required type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)}/>
+      </div>
+      <p className="rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">The image is stored securely. Date and total keep dashboards and reports accurate.</p>
+    </div>
+    <ModalFooter><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" disabled={isLoading}>{isLoading ? 'Uploading...' : 'Upload Expense Sheet'}</Button></ModalFooter>
+  </form>;
+}
+
 function CategoryManagerModal({ isOpen, onClose, categories }) {
   const [form, setForm] = useState({ name: '', description: '', active: true });
   const [editingId, setEditingId] = useState(null);
@@ -370,6 +432,22 @@ function ExpenseDetailModal({ expense, isOpen, onClose }) {
     window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
   }
 
+  async function shareImage() {
+    try {
+      const response = await fetch(`/api/v1/expenses/${expense._id}/image`, { credentials: 'include' });
+      if (!response.ok) throw new Error('Could not load expense image');
+      const blob = await response.blob();
+      const file = new File([blob], expense.expenseSheetFileName || 'expense-sheet.jpg', { type: blob.type });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Expense Sheet', text: `Expense total: ${fmtPKR(expense.amount)}` });
+        return;
+      }
+      const url = URL.createObjectURL(blob); const link = document.createElement('a');
+      link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+      shareOnWhatsApp(); toast.success('Image downloaded. Attach it in the opened WhatsApp chat.');
+    } catch (error) { toast.error(error.message || 'Unable to share image'); }
+  }
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Expense Details" size="md">
       <div className="space-y-5 px-6 py-5">
@@ -390,6 +468,7 @@ function ExpenseDetailModal({ expense, isOpen, onClose }) {
           ))}
         </div>
         {expense.remarks && <div className="rounded-lg border border-border p-3 text-sm">{expense.remarks}</div>}
+        {expense.expenseSheetFileName && <div className="overflow-hidden rounded-xl border border-border"><img src={`/api/v1/expenses/${expense._id}/image`} alt="Uploaded expense sheet" className="max-h-[55vh] w-full bg-muted/20 object-contain"/></div>}
         <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4">
           <p className="mb-3 text-sm font-semibold">Share expense on WhatsApp</p>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -400,7 +479,7 @@ function ExpenseDetailModal({ expense, isOpen, onClose }) {
               onChange={(event) => setWhatsAppNumber(event.target.value)}
             />
             <Button type="button" variant="secondary" className="shrink-0 gap-2 text-emerald-700"
-              onClick={shareOnWhatsApp}>
+              onClick={expense.expenseSheetFileName ? shareImage : shareOnWhatsApp}>
               <MessageCircle className="h-4 w-4" /> Share
             </Button>
           </div>
@@ -429,6 +508,7 @@ export default function ExpensesListPage() {
   });
   const [submitExpense, { isLoading: submitting }] = useSubmitExpenseMutation();
   const [submitBulkExpenses, { isLoading: submittingBulk }] = useSubmitBulkExpensesMutation();
+  const [submitExpenseSheet, { isLoading: submittingSheet }] = useSubmitExpenseSheetMutation();
 
   const expenses = data?.items || [];
   const categoryRecords = categoriesData?.data || [];
@@ -467,6 +547,13 @@ export default function ExpensesListPage() {
       toast.error(error?.data?.error?.message || 'Unable to record expenses');
       return false;
     }
+  }
+
+  async function handleSheetSubmit(body) {
+    try {
+      await submitExpenseSheet(body).unwrap(); toast.success('Expense sheet uploaded successfully');
+      setSubmitOpen(false); return true;
+    } catch (error) { toast.error(error?.data?.error?.message || 'Unable to upload expense sheet'); return false; }
   }
 
   return (
@@ -586,9 +673,9 @@ export default function ExpensesListPage() {
       <ExpenseDetailModal expense={detailExpense} isOpen={Boolean(detailExpense)} onClose={() => setDetailExpense(null)} />
       {isHR && (
         <>
-          <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Add Expenses" size="full">
-            <BulkExpenseForm onSubmit={handleBulkSubmit} onClose={() => setSubmitOpen(false)}
-              isLoading={submittingBulk} />
+          <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Upload Expense Sheet" size="lg">
+            <ExpenseSheetForm onSubmit={handleSheetSubmit} onClose={() => setSubmitOpen(false)}
+              isLoading={submittingSheet} />
           </Modal>
           <CategoryManagerModal isOpen={categoriesOpen} onClose={() => setCategoriesOpen(false)}
             categories={categoryRecords} />

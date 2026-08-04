@@ -11,6 +11,10 @@ async function findById(id) {
     .populate('submittedBy', 'fullName employeeCode department designation profilePicture');
 }
 
+async function findImageById(id) {
+  return Expense.findById(id).select('+expenseSheetImage expenseSheetMimeType expenseSheetFileName companyId');
+}
+
 async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' } = {}) {
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
@@ -22,4 +26,4 @@ async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' 
   return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-module.exports = { create, createMany, findById, findAll };
+module.exports = { create, createMany, findById, findImageById, findAll };

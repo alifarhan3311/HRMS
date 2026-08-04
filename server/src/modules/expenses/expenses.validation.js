@@ -25,4 +25,9 @@ const bulkCreateSchema = Joi.object({
   })).min(1).max(500).required(),
 });
 
-module.exports = { createSchema, bulkCreateSchema };
+const imageCreateSchema = Joi.object({
+  expenseDate: Joi.date().iso().max('now').required(),
+  amount: Joi.number().positive().precision(2).required(),
+});
+
+module.exports = { createSchema, bulkCreateSchema, imageCreateSchema };

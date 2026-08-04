@@ -83,6 +83,9 @@ function parseApiError(error) {
 // -------------------------------------------------------------------------
 axiosInstance.interceptors.request.use(
   (config) => {
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
     config.headers['X-Request-Id'] =
       config.headers['X-Request-Id'] || crypto.randomUUID?.() || `${Date.now()}`;
     return config;
