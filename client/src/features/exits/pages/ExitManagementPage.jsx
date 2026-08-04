@@ -3,6 +3,8 @@ import { useSelector } from 'react-redux';
 import { DoorOpen, Plus, CheckCircle2, XCircle } from 'lucide-react';
 import Button from '../../../components/ui/Button';
 import { Modal, ModalFooter } from '../../../components/ui/Modal';
+import { Input } from '../../../components/ui/Input';
+import SensitiveValue from '../../../components/ui/SensitiveValue';
 import { toast } from '../../../utils/toast';
 import { useListExitsQuery, useSubmitResignationMutation, useReviewExitMutation,
   useDecideExitMutation, useUpdateClearanceMutation, useCompleteExitMutation, useWithdrawExitMutation } from '../api/exits.api';
@@ -68,6 +70,6 @@ function ExitCard({ record:r, user, isHR, act, review, decide, clearance, comple
       {mine && ['pending_approval','hr_review'].includes(r.status) && <Button size="sm" variant="outline" onClick={()=>act(withdraw(r._id),'Resignation withdrawn.')}>Withdraw</Button>}
     </div>
     {isHR && r.status==='clearance' && <div className="mt-5 border-t border-border pt-5"><h3 className="font-semibold">Exit clearance</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{r.checklist.map(x=><label key={x.key} className="flex items-center gap-2 rounded-lg border border-border p-2 text-sm"><input type="checkbox" checked={x.completed} onChange={e=>patchChecklist(x.key,e.target.checked)}/>{x.label}</label>)}</div>
-      <h3 className="mt-5 font-semibold">Final settlement</h3><div className="mt-2 grid gap-3 sm:grid-cols-3">{moneyFields.map(k=><label className="text-xs capitalize" key={k}>{k.replace(/([A-Z])/g,' $1')}<input type="number" className={inputClass} value={settlement[k]} onChange={e=>setSettlement({...settlement,[k]:e.target.value})}/></label>)}</div><p className="mt-3 font-semibold">Net payable: PKR {net.toLocaleString()}</p><div className="mt-3 flex gap-2"><Button size="sm" variant="outline" onClick={()=>act(clearance({id:r._id,settlement}),'Settlement saved.')}>Save Settlement</Button><Button size="sm" onClick={()=>act(complete(r._id),'Employee exit completed.')}>Complete Exit</Button></div></div>}
+      <h3 className="mt-5 font-semibold">Final settlement</h3><div className="mt-2 grid gap-3 sm:grid-cols-3">{moneyFields.map(k=><Input key={k} label={k.replace(/([A-Z])/g,' $1')} type="number" sensitive value={settlement[k]} onChange={e=>setSettlement({...settlement,[k]:e.target.value})}/>)}</div><p className="mt-3 font-semibold">Net payable: <SensitiveValue value={net} formatter={(value) => `PKR ${Number(value).toLocaleString()}`} /></p><div className="mt-3 flex gap-2"><Button size="sm" variant="outline" onClick={()=>act(clearance({id:r._id,settlement}),'Settlement saved.')}>Save Settlement</Button><Button size="sm" onClick={()=>act(complete(r._id),'Employee exit completed.')}>Complete Exit</Button></div></div>}
   </section>;
 }

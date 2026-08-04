@@ -700,6 +700,7 @@ export default function EmployeeForm({
                   label="Current Salary (PKR)"
                   placeholder="50000"
                   type="number"
+                  sensitive
                   value={form.currentSalary}
                   onChange={(e) => set('currentSalary', e.target.value)}
                   error={errors.currentSalary}

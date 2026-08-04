@@ -14,6 +14,7 @@ import {
   useGetEmployeeDepartmentsQuery,
 } from '../api/employees.api';
 import { toast } from '../../../utils/toast';
+import SensitiveValue from '../../../components/ui/SensitiveValue';
 
 const DEFAULT_ROLES = ['employee', 'team_lead', 'floor_head', 'manager'];
 const HIDDEN_DEPARTMENTS = new Set([
@@ -177,6 +178,7 @@ export default function PromoteEmployeeModal({
             </Select>
             <Input
               label="Current / Old Salary (PKR)"
+              sensitive
               value={oldSalary ? oldSalary.toLocaleString('en-PK') : 'Not configured'}
               readOnly
               disabled
@@ -184,6 +186,7 @@ export default function PromoteEmployeeModal({
             <Input
               label="New Salary (PKR)"
               type="number"
+              sensitive
               placeholder="75000"
               value={form.currentSalary}
               onChange={(e) => set('currentSalary', e.target.value)}
@@ -191,6 +194,7 @@ export default function PromoteEmployeeModal({
             <Input
               label="Increment Amount (PKR)"
               type="number"
+              sensitive
               placeholder="10000"
               value={form.incrementAmount}
               onChange={(e) => set('incrementAmount', e.target.value)}
@@ -201,9 +205,8 @@ export default function PromoteEmployeeModal({
                   ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700'
                   : 'border-rose-500/20 bg-rose-500/10 text-rose-700'
               }`}>
-                Salary difference: <span className="font-semibold">
-                  {salaryDifference >= 0 ? '+' : '-'} PKR {Math.abs(salaryDifference).toLocaleString('en-PK')}
-                </span>
+                Salary difference: <SensitiveValue className="font-semibold" value={salaryDifference}
+                  formatter={(value) => `${Number(value) >= 0 ? '+' : '-'} PKR ${Math.abs(Number(value)).toLocaleString('en-PK')}`} />
               </div>
             )}
             <Input

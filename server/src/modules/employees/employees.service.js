@@ -394,7 +394,7 @@ async function getEmployeeById(id, actor) {
     reconciled.entitlements
   );
   obj.tenure = obj.joiningDate ? calcTenure(obj.joiningDate) : null;
-  const visible = ['manager', 'floor_head', 'team_lead'].includes(actor.role) && String(actor.id) !== String(obj._id)
+  const visible = !['hr', 'super_admin'].includes(actor.role) && String(actor.id) !== String(obj._id)
     ? redactManagerPrivateFields(obj)
     : obj;
   return enforceLeaveBalanceVisibility(visible, actor);
@@ -464,7 +464,7 @@ async function listEmployees(query, actor) {
       ),
       tenure: obj.joiningDate ? calcTenure(obj.joiningDate) : null,
     };
-    const visible = ['manager', 'floor_head', 'team_lead'].includes(actor.role)
+    const visible = !['hr', 'super_admin'].includes(actor.role) && String(actor.id) !== String(item._id)
       ? redactManagerPrivateFields(item)
       : item;
     return enforceLeaveBalanceVisibility(visible, actor);

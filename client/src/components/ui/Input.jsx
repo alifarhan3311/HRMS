@@ -6,11 +6,11 @@ import { forwardRef, useState } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 
 export const Input = forwardRef(function Input(
-  { label, error, icon: Icon, className = '', type = 'text', ...props },
+  { label, error, icon: Icon, className = '', type = 'text', sensitive = false, ...props },
   ref
 ) {
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const isPassword = type === 'password';
+  const isPassword = type === 'password' || sensitive;
 
   return (
     <div className="space-y-1.5">
@@ -26,7 +26,7 @@ export const Input = forwardRef(function Input(
         )}
         <input
           ref={ref}
-          type={isPassword && passwordVisible ? 'text' : type}
+          type={isPassword ? (passwordVisible ? (sensitive ? type : 'text') : 'password') : type}
           className={`w-full rounded-lg border bg-background py-2.5 text-sm outline-none transition-all duration-200
             placeholder:text-muted-foreground
             focus:border-primary focus:ring-2 focus:ring-primary/20 focus:scale-[1.01]
@@ -40,8 +40,8 @@ export const Input = forwardRef(function Input(
           <button
             type="button"
             onClick={() => setPasswordVisible((visible) => !visible)}
-            aria-label={passwordVisible ? 'Hide password' : 'Show password'}
-            title={passwordVisible ? 'Hide password' : 'Show password'}
+            aria-label={passwordVisible ? `Hide ${sensitive ? 'salary' : 'password'}` : `Show ${sensitive ? 'salary' : 'password'}`}
+            title={passwordVisible ? `Hide ${sensitive ? 'salary' : 'password'}` : `Show ${sensitive ? 'salary' : 'password'}`}
             className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
           >
             {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

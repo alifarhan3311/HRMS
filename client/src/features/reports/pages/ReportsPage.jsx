@@ -21,6 +21,7 @@ import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import Button from '../../../components/ui/Button';
 import { Input, Select } from '../../../components/ui/Input';
 import StatCard from '../../../components/ui/StatCard';
+import SensitiveValue from '../../../components/ui/SensitiveValue';
 import { toast } from '../../../utils/toast';
 
 const COLORS = ['#C9971F','#10b981','#E8B04B','#ef4444','#8B5E34','#B8860B'];
@@ -341,7 +342,7 @@ export default function ReportsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Attendance Records" value={attRecords.length} icon={Clock} />
         <StatCard title="Leave Days Taken"   value={totalLeaves}        icon={Calendar} />
-        <StatCard title="Total Payroll" value={`PKR ${totalPayroll.toLocaleString()}`} icon={Wallet} />
+        <StatCard title="Total Payroll" value={<SensitiveValue value={totalPayroll} formatter={(value) => `PKR ${Number(value).toLocaleString()}`} />} icon={Wallet} />
         {canViewExpenses && (
           <StatCard title="Total Expenses" value={`PKR ${(totalExpenses/1000).toFixed(0)}k`} icon={Receipt} />
         )}
@@ -536,8 +537,8 @@ export default function ReportsPage() {
                 <tr key={r._id || r.employeeId} className="hover:bg-accent/30 transition-colors">
                   <td className="py-2 px-3">{r.employeeName || r.employeeId?.fullName || '—'}</td>
                   <td className="py-2 px-3">{MONTHS[r.month-1]} {r.year}</td>
-                  <td className="py-2 px-3">PKR {Number(r.monthlySalary||0).toLocaleString()}</td>
-                  <td className="py-2 px-3 font-medium text-primary">PKR {Number(r.netPayable||0).toLocaleString()}</td>
+                  <td className="py-2 px-3"><SensitiveValue value={r.monthlySalary} formatter={(value) => `PKR ${Number(value || 0).toLocaleString()}`} /></td>
+                  <td className="py-2 px-3 font-medium text-primary"><SensitiveValue value={r.netPayable} formatter={(value) => `PKR ${Number(value || 0).toLocaleString()}`} /></td>
                   <td className="py-2 px-3">{Number(r.deductions || 0) > 0 ? 'Deductions applied' : 'Calculated'}</td>
                 </tr>
               ))}

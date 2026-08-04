@@ -29,6 +29,7 @@ import { Input, Select } from '../../../components/ui/Input';
 import { Avatar } from '../../../components/ui/Avatar';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useFormDraft } from '../../../hooks/useFormDraft';
+import SensitiveValue from '../../../components/ui/SensitiveValue';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -112,7 +113,7 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canGenerate, c
           ].map(item => (
             <div key={item.label} className="rounded-xl border border-border bg-muted/20 p-3">
               <p className="text-xs text-muted-foreground">{item.label}</p>
-              <p className={`mt-1 text-sm font-bold ${item.cls || ''}`}>{fmtPKR(item.value)}</p>
+              <p className={`mt-1 text-sm font-bold ${item.cls || ''}`}><SensitiveValue value={item.value} formatter={fmtPKR} /></p>
             </div>
           ))}
         </div>
@@ -134,19 +135,19 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canGenerate, c
                 <span className={`text-sm font-medium ${
                   row.type === 'add' ? 'text-emerald-600' :
                   row.type === 'deduct' ? 'text-red-500' : ''}`}>
-                  {row.type === 'deduct' ? '−' : row.type === 'add' ? '+' : ''} {fmtPKR(row.amount)}
+                  {row.type === 'deduct' ? '−' : row.type === 'add' ? '+' : ''} <SensitiveValue value={row.amount} formatter={fmtPKR} />
                 </span>
               </div>
             ))}
           </div>
           <div className="space-y-2 border-t border-border bg-muted/20 px-4 py-3 text-sm">
-            <div className="flex justify-between"><span>Gross Salary</span><span className="font-semibold text-emerald-600">{fmtPKR(payslip.grossSalary)}</span></div>
-            <div className="flex justify-between"><span>Total Deductions</span><span className="font-semibold text-red-500">− {fmtPKR(totalDeductions)}</span></div>
+            <div className="flex justify-between"><span>Gross Salary</span><SensitiveValue className="font-semibold text-emerald-600" value={payslip.grossSalary} formatter={fmtPKR} /></div>
+            <div className="flex justify-between"><span>Total Deductions</span><SensitiveValue className="font-semibold text-red-500" value={totalDeductions} formatter={(value) => `− ${fmtPKR(value)}`} /></div>
           </div>
           {/* Net total */}
           <div className="flex items-center justify-between px-4 py-3 bg-primary/5 border-t-2 border-primary/20">
             <span className="font-bold">Net Salary</span>
-            <span className="text-xl font-bold text-primary">{fmtPKR(payslip.netSalary)}</span>
+            <SensitiveValue className="text-xl font-bold text-primary" value={payslip.netSalary} formatter={fmtPKR} />
           </div>
         </div>
 
@@ -258,7 +259,7 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
             <div key={i} className="flex gap-2">
               <Input placeholder="Label (e.g. House Rent)" value={a.label}
                 onChange={(e) => setAllowance(i, 'label', e.target.value)} />
-              <Input placeholder="Amount" type="number" value={a.amount}
+              <Input placeholder="Amount" type="number" sensitive value={a.amount}
                 onChange={(e) => setAllowance(i, 'amount', e.target.value)} className="w-32" />
               <button type="button" onClick={() => removeAllowance(i)}
                 className="text-muted-foreground hover:text-destructive text-xs px-1">✕</button>
@@ -267,10 +268,10 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input label="Bonus (PKR)" type="number" placeholder="0" value={form.bonus} onChange={(e) => set('bonus', e.target.value)} />
-          <Input label="Incentives (PKR)" type="number" placeholder="0" value={form.incentives} onChange={(e) => set('incentives', e.target.value)} />
-          <Input label="Loan Deduction (PKR)" type="number" placeholder="0" value={form.loanDeduction} onChange={(e) => set('loanDeduction', e.target.value)} />
-          <Input label="Advance Salary (PKR)" type="number" placeholder="0" value={form.advanceSalary} onChange={(e) => set('advanceSalary', e.target.value)} />
+          <Input label="Bonus (PKR)" type="number" sensitive placeholder="0" value={form.bonus} onChange={(e) => set('bonus', e.target.value)} />
+          <Input label="Incentives (PKR)" type="number" sensitive placeholder="0" value={form.incentives} onChange={(e) => set('incentives', e.target.value)} />
+          <Input label="Loan Deduction (PKR)" type="number" sensitive placeholder="0" value={form.loanDeduction} onChange={(e) => set('loanDeduction', e.target.value)} />
+          <Input label="Advance Salary (PKR)" type="number" sensitive placeholder="0" value={form.advanceSalary} onChange={(e) => set('advanceSalary', e.target.value)} />
         </div>
         <Input label="Notes" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Optional notes..." />
       </div>
@@ -404,9 +405,9 @@ export default function PayrollListPage() {
               <tbody className="divide-y divide-border">{liveRows.map(row => (
                 <tr key={row.employeeId} className="hover:bg-accent/30">
                   <td className="px-4 py-3"><p className="font-medium">{row.employeeName}</p><p className="text-xs text-muted-foreground">{row.employeeCode} · {row.designation}</p></td>
-                  <td className="px-4 py-3">{fmtPKR(row.monthlySalary)}</td>
-                  <td className="px-4 py-3">{fmtPKR(row.dailySalary)}</td>
-                  <td className="px-4 py-3 font-medium text-emerald-600">{fmtPKR(row.earnedSalary)}</td>
+                  <td className="px-4 py-3"><SensitiveValue value={row.monthlySalary} formatter={fmtPKR} /></td>
+                  <td className="px-4 py-3"><SensitiveValue value={row.dailySalary} formatter={fmtPKR} /></td>
+                  <td className="px-4 py-3 font-medium text-emerald-600"><SensitiveValue value={row.earnedSalary} formatter={fmtPKR} /></td>
                   <td className="px-4 py-3 text-emerald-600">{row.present}</td>
                   <td className="px-4 py-3 text-red-500">{row.absent}</td>
                   <td className="px-4 py-3 text-orange-500">{row.halfDay}</td>
@@ -414,8 +415,8 @@ export default function PayrollListPage() {
                   <td className="px-4 py-3 text-red-500">{row.unpaidLeave}</td>
                   <td className="px-4 py-3 text-red-600">{row.sandwichLeave}</td>
                   <td className="px-4 py-3 text-amber-500">{row.late}</td>
-                  <td className="px-4 py-3 text-red-500">− {fmtPKR(row.deductions)}</td>
-                  <td className="px-4 py-3 font-bold text-primary">{fmtPKR(row.netPayable)}</td>
+                  <td className="px-4 py-3 text-red-500"><SensitiveValue value={row.deductions} formatter={(value) => `− ${fmtPKR(value)}`} /></td>
+                  <td className="px-4 py-3 font-bold text-primary"><SensitiveValue value={row.netPayable} formatter={fmtPKR} /></td>
                 </tr>
               ))}</tbody>
             </table>
@@ -505,13 +506,13 @@ export default function PayrollListPage() {
                       <span className="text-sm">{MONTHS[p.month - 1]} {p.year}</span>
                     </div>
                     <div className="flex items-center">
-                      <span className="text-sm">{fmtPKR(p.grossSalary)}</span>
+                      <SensitiveValue className="text-sm" value={p.grossSalary} formatter={fmtPKR} />
                     </div>
                     <div className="flex items-center">
-                      <span className="text-sm text-red-500">− {fmtPKR(Number(p.deductions || 0) + Number(p.taxDeduction || 0))}</span>
+                      <SensitiveValue className="text-sm text-red-500" value={Number(p.deductions || 0) + Number(p.taxDeduction || 0)} formatter={(value) => `− ${fmtPKR(value)}`} />
                     </div>
                     <div className="flex items-center">
-                      <span className="text-sm font-semibold text-primary">{fmtPKR(p.netSalary)}</span>
+                      <SensitiveValue className="text-sm font-semibold text-primary" value={p.netSalary} formatter={fmtPKR} />
                     </div>
                     <div className="flex items-center">
                       <Badge variant={st.variant}>{st.label}</Badge>

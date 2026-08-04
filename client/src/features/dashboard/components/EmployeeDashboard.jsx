@@ -20,6 +20,7 @@ import {
   Cell,
 } from 'recharts';
 import StatCard from '../../../components/ui/StatCard';
+import SensitiveValue from '../../../components/ui/SensitiveValue';
 
 const LEAVE_COLORS = ['#C9971F', '#E8B04B', '#B8860B', '#F0C878'];
 
@@ -75,7 +76,7 @@ export default function EmployeeDashboard({ data }) {
         <StatCard
           delay={0.06}
           title="This Month Salary"
-          value={data.salary?.netSalary ? `PKR ${Number(data.salary.netSalary).toLocaleString()}` : 'Pending'}
+          value={data.salary?.netSalary ? <SensitiveValue value={data.salary.netSalary} formatter={(value) => `PKR ${Number(value).toLocaleString()}`} /> : 'Pending'}
           subtitle={data.salary?.status || 'No payslip yet'}
           icon={Wallet}
         />

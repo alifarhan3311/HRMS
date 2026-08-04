@@ -7,7 +7,7 @@ const repository = require('./payroll.repository');
 const { authenticate, authorize, enforceTenantScope } = require('../../middlewares/auth.middleware');
 
 const router = express.Router();
-const PAYROLL_VIEWERS = ['super_admin','admin','hr','manager','team_lead','employee'];
+const PAYROLL_VIEWERS = ['super_admin','admin','hr','manager','floor_head','team_lead','employee'];
 const PAYROLL_ADMINS = ['super_admin','admin'];
 const ADMIN_HR = ['super_admin','admin','hr'];
 

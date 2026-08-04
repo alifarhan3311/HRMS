@@ -328,7 +328,7 @@ async function listPayslips(query, actor) {
   const { page = 1, limit = 20, month, year, status, employeeId, sort = '-year -month' } = query;
   const filter = { companyId: actor.companyId };
 
-  if (!['admin', 'super_admin', 'hr'].includes(actor.role)) {
+  if (!['super_admin', 'hr'].includes(actor.role)) {
     filter.employeeId = actor.id;
   } else if (employeeId) {
     filter.employeeId = employeeId;
@@ -345,7 +345,7 @@ async function getPayslipById(id, actor) {
   if (!record) throw createHttpError(404, 'Payslip not found.');
   if (String(record.companyId) !== String(actor.companyId)) throw createHttpError(404, 'Payslip not found.');
   const employeeId = record.employeeId?._id || record.employeeId;
-  if (!['admin', 'super_admin', 'hr'].includes(actor.role) && String(employeeId) !== String(actor.id)) {
+  if (!['super_admin', 'hr'].includes(actor.role) && String(employeeId) !== String(actor.id)) {
     throw createHttpError(403, 'You can only view your own payslips.');
   }
   return record.toObject({ getters: true });
@@ -356,7 +356,7 @@ async function getLivePayroll(query, actor) {
   const month = Number(query.month || now.getMonth() + 1);
   const year = Number(query.year || now.getFullYear());
   const employeeFilter = { companyId: actor.companyId, status: { $in: ['active', 'on_leave'] } };
-  if (!['admin', 'super_admin', 'hr'].includes(actor.role)) {
+  if (!['super_admin', 'hr'].includes(actor.role)) {
     employeeFilter._id = actor.id;
   }
   const [employees, settings] = await Promise.all([

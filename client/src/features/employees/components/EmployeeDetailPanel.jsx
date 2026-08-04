@@ -11,6 +11,7 @@ import {
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge, RoleBadge, Badge } from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
+import SensitiveValue from '../../../components/ui/SensitiveValue';
 
 const PAYMENT_METHOD_LABELS = {
   allied_bank: 'Allied Bank (ABL)', askari_bank: 'Askari Bank', bank_alfalah: 'Bank Alfalah',
@@ -25,7 +26,7 @@ const PAYMENT_METHOD_LABELS = {
   upaisa: 'UPaisa', zindigi: 'Zindigi', other: 'Other Bank / Wallet',
 };
 
-function InfoRow({ icon: Icon, label, value }) {
+function InfoRow({ icon: Icon, label, value, sensitive = false }) {
   if (!value) return null;
   return (
     <div className="flex items-start gap-3 py-2.5 border-b border-border/50 last:border-0">
@@ -34,7 +35,7 @@ function InfoRow({ icon: Icon, label, value }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{label}</p>
-        <p className="text-sm font-medium truncate">{value}</p>
+        <p className="text-sm font-medium truncate">{sensitive ? <SensitiveValue value={value} /> : value}</p>
       </div>
     </div>
   );
@@ -233,7 +234,7 @@ export default function EmployeeDetailPanel({
 
               {/* Salary */}
               <Section title="Compensation">
-                <InfoRow icon={Banknote} label="Current Salary" value={formatCurrency(employee.currentSalary)} />
+                <InfoRow icon={Banknote} label="Current Salary" value={formatCurrency(employee.currentSalary)} sensitive />
                 <InfoRow icon={CreditCard} label="Salary Bank / Wallet" value={PAYMENT_METHOD_LABELS[employee.salaryPaymentMethod] || employee.salaryPaymentMethod} />
                 <InfoRow icon={CreditCard} label="Account Number" value={employee.salaryAccountNumber} />
                 <InfoRow icon={User} label="Account Title" value={employee.salaryAccountTitle} />
@@ -308,7 +309,7 @@ export default function EmployeeDetailPanel({
                         {p.incrementAmount > 0 && (
                           <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
                             <ArrowUpRight className="h-3 w-3" />
-                            +{formatCurrency(p.incrementAmount)} increment
+                            +<SensitiveValue value={formatCurrency(p.incrementAmount)} /> increment
                           </p>
                         )}
                         {p.remarks && (
