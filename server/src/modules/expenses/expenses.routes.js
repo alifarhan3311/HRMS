@@ -38,6 +38,8 @@ router.post('/sheet', authorize('hr'), upload.single('image'), validate(imageCre
 router.get('/', authorize(...EXPENSE_ROLES), controller.list);
 
 router.get('/:id/image', authorize(...EXPENSE_ROLES), controller.getImage);
+router.delete('/:id', authorize('hr'),
+  enforceTenantScope(async (req) => repository.findById(req.params.id)), controller.remove);
 
 router.get('/:id', authorize(...EXPENSE_ROLES),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),

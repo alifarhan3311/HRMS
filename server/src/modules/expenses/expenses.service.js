@@ -144,6 +144,13 @@ async function getExpenseImage(id, actor) {
   return expense;
 }
 
+async function deleteExpense(id, actor) {
+  const expense = await repository.findById(id);
+  if (!expense || String(expense.companyId) !== String(actor.companyId)) throw createHttpError(404, 'Expense not found.');
+  await repository.deleteById(id);
+  return { id };
+}
+
 async function listExpenses(query, actor) {
   assertExpenseViewer(actor);
   const { page = 1, limit = 20, status, category, dateFrom, dateTo, sort = '-createdAt' } = query;
@@ -174,4 +181,4 @@ async function getExpenseById(id, actor) {
   return expense;
 }
 
-module.exports = { submitExpense, submitBulkExpenses, submitExpenseSheet, listExpenses, getExpenseById, getExpenseImage };
+module.exports = { submitExpense, submitBulkExpenses, submitExpenseSheet, listExpenses, getExpenseById, getExpenseImage, deleteExpense };

@@ -19,5 +19,6 @@ const getImage = asyncHandler(async (req, res) => {
 });
 const list     = asyncHandler(async (req, res) => { const r = await service.listExpenses(req.query, req.user); res.json({ success: true, ...r }); });
 const getById  = asyncHandler(async (req, res) => { res.json({ success: true, data: await service.getExpenseById(req.params.id, req.user) }); });
+const remove = asyncHandler(async (req, res) => { res.json({ success: true, data: await service.deleteExpense(req.params.id, req.user) }); });
 
-module.exports = { submit, submitBulk, submitSheet, list, getById, getImage };
+module.exports = { submit, submitBulk, submitSheet, list, getById, getImage, remove };

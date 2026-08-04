@@ -14,6 +14,7 @@ async function findById(id) {
 async function findImageById(id) {
   return Expense.findById(id).select('+expenseSheetImage expenseSheetMimeType expenseSheetFileName companyId');
 }
+async function deleteById(id) { return Expense.findByIdAndDelete(id); }
 
 async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' } = {}) {
   const skip = (page - 1) * limit;
@@ -26,4 +27,4 @@ async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' 
   return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
 }
 
-module.exports = { create, createMany, findById, findImageById, findAll };
+module.exports = { create, createMany, findById, findImageById, findAll, deleteById };

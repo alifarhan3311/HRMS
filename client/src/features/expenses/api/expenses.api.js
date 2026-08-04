@@ -41,6 +41,10 @@ export const expensesApi = api.injectEndpoints({
       query: (body) => ({ url: '/expenses/sheet', method: 'POST', body }),
       invalidatesTags: ['Expenses', 'Dashboard', 'Reports'],
     }),
+    deleteExpense: builder.mutation({
+      query: (id) => ({ url: `/expenses/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['Expenses', 'Dashboard', 'Reports'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -55,4 +59,5 @@ export const {
   useSubmitExpenseMutation,
   useSubmitBulkExpensesMutation,
   useSubmitExpenseSheetMutation,
+  useDeleteExpenseMutation,
 } = expensesApi;

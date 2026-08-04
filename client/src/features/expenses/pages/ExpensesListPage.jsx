@@ -17,6 +17,7 @@ import {
   useDeleteExpenseCategoryMutation,
   useSubmitBulkExpensesMutation,
   useSubmitExpenseSheetMutation,
+  useDeleteExpenseMutation,
 } from '../api/expenses.api';
 import { toast } from '../../../utils/toast';
 import StatCard from '../../../components/ui/StatCard';
@@ -26,6 +27,7 @@ import { Modal, ModalFooter } from '../../../components/ui/Modal';
 import { Input, Select, Textarea } from '../../../components/ui/Input';
 import { Avatar } from '../../../components/ui/Avatar';
 import { Skeleton } from '../../../components/ui/Skeleton';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 
 const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Credit Card', 'Cheque', 'Online'];
@@ -400,6 +402,7 @@ function CategoryManagerModal({ isOpen, onClose, categories }) {
 function ExpenseDetailModal({ expense, isOpen, onClose }) {
   const [whatsAppNumber, setWhatsAppNumber] = useState('03142757473');
   if (!expense) return null;
+  const hasSheetImage = Boolean(expense.expenseSheetFileName);
   const status = STATUS_STYLES[expense.status] || STATUS_STYLES.recorded;
   const details = [
     ['Category', expense.category],
@@ -459,16 +462,16 @@ function ExpenseDetailModal({ expense, isOpen, onClose }) {
           </div>
           <Badge variant={status.variant} className="ml-auto">{status.label}</Badge>
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {!hasSheetImage && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {details.map(([label, value]) => (
             <div key={label} className="glass-card px-3 py-2">
               <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
               <p className="mt-0.5 text-sm font-medium">{value}</p>
             </div>
           ))}
-        </div>
-        {expense.remarks && <div className="rounded-lg border border-border p-3 text-sm">{expense.remarks}</div>}
-        {expense.expenseSheetFileName && <div className="overflow-hidden rounded-xl border border-border"><img src={`/api/v1/expenses/${expense._id}/image`} alt="Uploaded expense sheet" className="max-h-[55vh] w-full bg-muted/20 object-contain"/></div>}
+        </div>}
+        {!hasSheetImage && expense.remarks && <div className="rounded-lg border border-border p-3 text-sm">{expense.remarks}</div>}
+        {hasSheetImage && <div className="overflow-hidden rounded-xl border border-border"><img src={`/api/v1/expenses/${expense._id}/image`} alt="Uploaded expense sheet" className="max-h-[65vh] w-full bg-muted/20 object-contain"/></div>}
         <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/5 p-4">
           <p className="mb-3 text-sm font-semibold">Share expense on WhatsApp</p>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -479,7 +482,7 @@ function ExpenseDetailModal({ expense, isOpen, onClose }) {
               onChange={(event) => setWhatsAppNumber(event.target.value)}
             />
             <Button type="button" variant="secondary" className="shrink-0 gap-2 text-emerald-700"
-              onClick={expense.expenseSheetFileName ? shareImage : shareOnWhatsApp}>
+              onClick={hasSheetImage ? shareImage : shareOnWhatsApp}>
               <MessageCircle className="h-4 w-4" /> Share
             </Button>
           </div>
@@ -496,6 +499,7 @@ export default function ExpensesListPage() {
   const [submitOpen, setSubmitOpen] = useState(false);
   const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [detailExpense, setDetailExpense] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ status: '', category: '' });
 
@@ -509,6 +513,7 @@ export default function ExpensesListPage() {
   const [submitExpense, { isLoading: submitting }] = useSubmitExpenseMutation();
   const [submitBulkExpenses, { isLoading: submittingBulk }] = useSubmitBulkExpensesMutation();
   const [submitExpenseSheet, { isLoading: submittingSheet }] = useSubmitExpenseSheetMutation();
+  const [deleteExpense, { isLoading: deletingExpense }] = useDeleteExpenseMutation();
 
   const expenses = data?.items || [];
   const categoryRecords = categoriesData?.data || [];
@@ -554,6 +559,16 @@ export default function ExpensesListPage() {
       await submitExpenseSheet(body).unwrap(); toast.success('Expense sheet uploaded successfully');
       setSubmitOpen(false); return true;
     } catch (error) { toast.error(error?.data?.error?.message || 'Unable to upload expense sheet'); return false; }
+  }
+
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    try {
+      await deleteExpense(deleteTarget._id).unwrap();
+      if (detailExpense?._id === deleteTarget._id) setDetailExpense(null);
+      setDeleteTarget(null);
+      toast.success('Expense deleted successfully');
+    } catch (error) { toast.error(error?.data?.error?.message || 'Unable to delete expense'); }
   }
 
   return (
@@ -612,25 +627,32 @@ export default function ExpensesListPage() {
               <p className="mt-1 text-sm text-muted-foreground">New entries recorded by HR will appear here.</p>
             </div>
           ) : (
-            <div className="divide-y divide-border">
+            <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3">
               {expenses.map((expense, index) => {
                 const status = STATUS_STYLES[expense.status] || STATUS_STYLES.recorded;
                 return (
                   <motion.div key={expense._id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.025 }} onClick={() => setDetailExpense(expense)}
-                    className="group flex cursor-pointer items-center gap-4 px-5 py-3.5 transition-colors hover:bg-accent/30">
+                    className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-primary/30 hover:shadow-lg">
+                    <div className="relative aspect-[16/10] overflow-hidden bg-muted/30">
+                      {expense.expenseSheetFileName ? <img src={`/api/v1/expenses/${expense._id}/image`} alt="Expense sheet" className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" /> : <div className="flex h-full items-center justify-center bg-primary/5"><Receipt className="h-12 w-12 text-primary/40" /></div>}
+                      <div className="absolute left-3 top-3"><Badge variant={status.variant}>{status.label}</Badge></div>
+                      <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent" />
+                      <p className="absolute bottom-3 left-4 text-lg font-bold text-white drop-shadow">{fmtPKR(expense.amount)}</p>
+                    </div>
+                    <div className="flex items-center gap-3 p-4">
                     <Avatar name={expense.submittedBy?.fullName} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium">{expense.category}</span>
-                        <Badge variant={status.variant}>{status.label}</Badge>
                       </div>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {expense.vendorName} · {fmtDate(expense.expenseDate)} · {expense.submittedBy?.fullName || 'HR'}
                       </p>
                     </div>
-                    <span className="shrink-0 text-sm font-bold text-primary">{fmtPKR(expense.amount)}</span>
-                    <Eye className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                    <button type="button" title="View expense" className="rounded-lg border border-border p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"><Eye className="h-4 w-4" /></button>
+                    {isHR && <button type="button" title="Delete expense" disabled={deletingExpense} onClick={(event) => { event.stopPropagation(); setDeleteTarget(expense); }} className="rounded-lg border border-destructive/20 p-2 text-destructive transition hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></button>}
+                    </div>
                   </motion.div>
                 );
               })}
@@ -671,6 +693,15 @@ export default function ExpensesListPage() {
       </div>
 
       <ExpenseDetailModal expense={detailExpense} isOpen={Boolean(detailExpense)} onClose={() => setDetailExpense(null)} />
+      <ConfirmDialog
+        isOpen={Boolean(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Delete expense sheet?"
+        message="This expense and its uploaded image will be permanently deleted. This action cannot be undone."
+        confirmLabel="Delete Expense"
+        isLoading={deletingExpense}
+      />
       {isHR && (
         <>
           <Modal isOpen={submitOpen} onClose={() => setSubmitOpen(false)} title="Upload Expense Sheet" size="lg">
