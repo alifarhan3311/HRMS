@@ -57,7 +57,6 @@ client/                    React 18 + Vite + Tailwind
 server/                    Node.js + Express + Mongoose
   src/modules/             Domain modules and layered business logic
   src/middlewares/         Authentication, authorization, tenant, validation
-  scripts/seed.js          Development demo users
 docker-compose.yml         MongoDB, Redis, API, and web application
 ```
 
@@ -74,15 +73,6 @@ docker compose up --build
 
 The frontend runs on `http://localhost:5173`, the API on
 `http://localhost:5000`, MongoDB on `27017`, and Redis on `6379`.
-
-To create development demo accounts after the services are running:
-
-```bash
-docker compose exec server npm run seed
-```
-
-The seed command prints the demo credentials it creates. Do not use those
-credentials outside a local development environment.
 
 ## Local verification
 
