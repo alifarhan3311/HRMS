@@ -19,6 +19,40 @@ async function create(data) {
   }
 }
 
+async function claimEmailDelivery(id) {
+  return Notification.findOneAndUpdate(
+    {
+      _id: id,
+      'delivery.email.status': { $in: ['not_requested', 'failed'] },
+    },
+    {
+      $set: {
+        'delivery.email.status': 'pending',
+        'delivery.email.error': null,
+      },
+      $unset: { 'delivery.email.sentAt': '' },
+    },
+    { new: true },
+  );
+}
+
+async function finishEmailDelivery(id, status, error) {
+  const update = status === 'sent'
+    ? {
+      $set: { 'delivery.email.status': 'sent', 'delivery.email.sentAt': new Date() },
+      $unset: { 'delivery.email.error': '' },
+    }
+    : {
+      $set: { 'delivery.email.status': 'failed', 'delivery.email.error': error || 'Email delivery failed' },
+      $unset: { 'delivery.email.sentAt': '' },
+    };
+  return Notification.findOneAndUpdate(
+    { _id: id, 'delivery.email.status': 'pending' },
+    update,
+    { new: true },
+  );
+}
+
 async function findAll({ recipientId, companyId, read, page = 1, limit = 20 }) {
   const filter = { recipientId, companyId };
   if (read === true) filter.readAt = { $ne: null };
@@ -61,4 +95,14 @@ async function clear(recipientId, companyId) {
   return Notification.deleteMany({ recipientId, companyId });
 }
 
-module.exports = { create, findAll, findOwnedById, markRead, markAllRead, remove, clear };
+module.exports = {
+  create,
+  claimEmailDelivery,
+  finishEmailDelivery,
+  findAll,
+  findOwnedById,
+  markRead,
+  markAllRead,
+  remove,
+  clear,
+};

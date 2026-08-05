@@ -10,6 +10,14 @@ async function createNotification(data) {
   return notification;
 }
 
+async function claimEmailDelivery(notificationId) {
+  return repository.claimEmailDelivery(notificationId);
+}
+
+async function finishEmailDelivery(notificationId, status, error) {
+  return repository.finishEmailDelivery(notificationId, status, error);
+}
+
 async function listNotifications(query, actor) {
   const page = Math.max(Number(query.page) || 1, 1);
   const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
@@ -52,6 +60,8 @@ async function clearNotifications(actor) {
 
 module.exports = {
   createNotification,
+  claimEmailDelivery,
+  finishEmailDelivery,
   listNotifications,
   markRead,
   markAllRead,

@@ -112,20 +112,21 @@ function escapeHtml(value) {
 
 async function createBirthdayNotification({ data, emailEnabled, email, subject, html }) {
   const notification = await notificationService.createNotification(data);
-  if (!emailEnabled || !email || notification.delivery?.email?.status === 'sent') {
+  if (!emailEnabled || !email) {
     return { notification, emailed: false };
   }
 
-  notification.delivery.email = { status: 'pending' };
-  await notification.save();
+  // The atomic claim ensures that only one application instance sends the
+  // email when the scheduler runs concurrently across multiple pods.
+  const claimed = await notificationService.claimEmailDelivery(notification._id);
+  if (!claimed) return { notification, emailed: false };
+
   try {
     await sendCompanyMail(data.companyId, { to: email, subject, html });
-    notification.delivery.email = { status: 'sent', sentAt: new Date() };
-    await notification.save();
-    return { notification, emailed: true };
+    const completed = await notificationService.finishEmailDelivery(notification._id, 'sent');
+    return { notification: completed || claimed, emailed: true };
   } catch (error) {
-    notification.delivery.email = { status: 'failed', error: error.message };
-    await notification.save();
+    await notificationService.finishEmailDelivery(notification._id, 'failed', error.message);
     logger.error('[birthday-automation] Email delivery failed', {
       recipientId: String(data.recipientId),
       type: data.type,

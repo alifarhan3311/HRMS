@@ -127,6 +127,45 @@ function SubmitExpenseForm({ onSubmit, onClose, isLoading, categories, draftKey 
   );
 }
 
+function expenseWhatsAppUrl(expense, whatsAppNumber) {
+  let number = String(whatsAppNumber || '').replace(/\D/g, '');
+  if (number.startsWith('0')) number = `92${number.slice(1)}`;
+  if (number.length < 10) return null;
+  const message = [
+    '*HRMS Expense Sheet*',
+    `Amount: ${fmtPKR(expense.amount)}`,
+    `Date: ${fmtDate(expense.expenseDate)}`,
+    `Recorded by: ${expense.submittedBy?.fullName || 'HR'}`,
+    'The expense sheet image has been downloaded. Please attach it to this chat.',
+  ].join('\n');
+  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+}
+
+async function shareExpenseSheetOnWhatsApp(expense, whatsAppNumber) {
+  const whatsAppUrl = expenseWhatsAppUrl(expense, whatsAppNumber);
+  if (!whatsAppUrl) throw new Error('Enter a valid WhatsApp number');
+  // Open synchronously so browsers do not block the tab after the image fetch.
+  const chatWindow = window.open('', '_blank');
+  try {
+    const response = await fetch(`/api/v1/expenses/${expense._id}/image`, { credentials: 'include' });
+    if (!response.ok) throw new Error('Could not load expense image');
+    const blob = await response.blob();
+    const fileName = expense.expenseSheetFileName || 'expense-sheet.jpg';
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    if (chatWindow) chatWindow.location.href = whatsAppUrl;
+    else window.open(whatsAppUrl, '_blank', 'noopener,noreferrer');
+    return true;
+  } catch (error) {
+    if (chatWindow) chatWindow.close();
+    throw error;
+  }
+}
+
 function BulkExpenseForm({ onSubmit, onClose, isLoading }) {
   const today = new Date().toISOString().slice(0, 10);
   const emptyRow = () => ({ expenseDate: today, productName: '', quantity: 1, unitPrice: '' });
@@ -416,38 +455,18 @@ function ExpenseDetailModal({ expense, isOpen, onClose }) {
   ];
 
   function shareOnWhatsApp() {
-    let number = whatsAppNumber.replace(/\D/g, '');
-    if (number.startsWith('0')) number = `92${number.slice(1)}`;
-    if (number.length < 10) {
+    const url = expenseWhatsAppUrl(expense, whatsAppNumber);
+    if (!url) {
       toast.error('Enter a valid WhatsApp number');
       return;
     }
-    const message = [
-      '*HRMS Expense Details*',
-      `Category: ${expense.category}`,
-      `Product/Vendor: ${expense.productName || expense.vendorName || '-'}`,
-      `Amount: ${fmtPKR(expense.amount)}`,
-      `Date: ${fmtDate(expense.expenseDate)}`,
-      `Payment: ${expense.paymentMethod || '-'}`,
-      expense.remarks ? `Remarks: ${expense.remarks}` : '',
-      `Recorded by: ${expense.submittedBy?.fullName || 'HR'}`,
-    ].filter(Boolean).join('\n');
-    window.open(`https://wa.me/${number}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   async function shareImage() {
     try {
-      const response = await fetch(`/api/v1/expenses/${expense._id}/image`, { credentials: 'include' });
-      if (!response.ok) throw new Error('Could not load expense image');
-      const blob = await response.blob();
-      const file = new File([blob], expense.expenseSheetFileName || 'expense-sheet.jpg', { type: blob.type });
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Expense Sheet', text: `Expense total: ${fmtPKR(expense.amount)}` });
-        return;
-      }
-      const url = URL.createObjectURL(blob); const link = document.createElement('a');
-      link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-      shareOnWhatsApp(); toast.success('Image downloaded. Attach it in the opened WhatsApp chat.');
+      await shareExpenseSheetOnWhatsApp(expense, whatsAppNumber);
+      toast.success('Image downloaded and WhatsApp chat opened. Attach the image to send it.');
     } catch (error) { toast.error(error.message || 'Unable to share image'); }
   }
 
@@ -627,6 +646,23 @@ export default function ExpensesListPage() {
                         {expense.vendorName} · {fmtDate(expense.expenseDate)} · {expense.submittedBy?.fullName || 'HR'}
                       </p>
                     </div>
+                    <button
+                      type="button"
+                      title="Share expense sheet on WhatsApp"
+                      aria-label="Share expense sheet on WhatsApp"
+                      onClick={async (event) => {
+                        event.stopPropagation();
+                        try {
+                          await shareExpenseSheetOnWhatsApp(expense, '03142757473');
+                          toast.success('Image downloaded and WhatsApp chat opened. Attach the image to send it.');
+                        } catch (error) {
+                          toast.error(error.message || 'Unable to share expense sheet');
+                        }
+                      }}
+                      className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 p-2 text-emerald-600 transition hover:bg-emerald-500/15"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </button>
                     <button type="button" title="View expense" className="rounded-lg border border-border p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground"><Eye className="h-4 w-4" /></button>
                     {isHR && <button type="button" title="Delete expense" disabled={deletingExpense} onClick={(event) => { event.stopPropagation(); setDeleteTarget(expense); }} className="rounded-lg border border-destructive/20 p-2 text-destructive transition hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></button>}
                     </div>
