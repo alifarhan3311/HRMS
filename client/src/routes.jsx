@@ -27,6 +27,12 @@ const withRoles = (routes, roles) => routes.map((route) => ({
   element: <RoleRoute allowedRoles={roles}>{route.element}</RoleRoute>,
 }));
 
+const withDeclaredRoles = (routes) => routes.map((route) => (
+  route.allowedRoles
+    ? { ...route, element: <RoleRoute allowedRoles={route.allowedRoles}>{route.element}</RoleRoute> }
+    : route
+));
+
 const router = createBrowserRouter([
   ...authRoutes,
   {
@@ -40,7 +46,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       ...dashboardRoutes,
       ...withRoles(employeesRoutes, ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin']),
-      ...attendanceRoutes,
+      ...withDeclaredRoles(attendanceRoutes),
       ...leavesRoutes,
       ...exitsRoutes,
       ...withRoles(actionCenterRoutes, ['hr', 'super_admin']),

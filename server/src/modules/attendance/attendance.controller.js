@@ -82,8 +82,13 @@ const pendingRegularizations = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: records });
 });
 
+const regularizationApprovals = asyncHandler(async (req, res) => {
+  const result = await service.listRegularizationApprovals(req.query, req.user);
+  res.status(200).json({ success: true, data: result });
+});
+
 module.exports = {
   signIn, signOut, today, monthlySummary, rangeSummary, list,
   getById, manualCorrection, requestRegularization,
-  reviewRegularization, pendingRegularizations,
+  reviewRegularization, pendingRegularizations, regularizationApprovals,
 };

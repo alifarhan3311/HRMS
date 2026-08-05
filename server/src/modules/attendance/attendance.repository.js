@@ -12,6 +12,7 @@ async function findById(id) {
   return Attendance.findById(id)
     .populate('employeeId', 'fullName employeeCode department designation managerId floorHeadId teamLeadId')
     .populate('regularization.assignedApprover', 'fullName employeeCode designation role')
+    .populate('regularization.reportingReviewedBy', 'fullName employeeCode designation role')
     .populate('regularization.reviewedBy', 'fullName employeeCode designation role');
 }
 
@@ -124,8 +125,20 @@ async function getPendingRegularizations(filter) {
   return Attendance.find({ ...filter, regularizationStatus: 'pending' })
     .populate('employeeId', 'fullName employeeCode department')
     .populate('regularization.assignedApprover', 'fullName employeeCode designation role')
+    .populate('regularization.reportingReviewedBy', 'fullName employeeCode designation role')
     .sort('-createdAt')
     .limit(50);
+}
+
+async function getRegularizationApprovals(filter, limit = 200) {
+  return Attendance.find(filter)
+    .populate('employeeId', 'fullName employeeCode department designation')
+    .populate('regularization.assignedApprover', 'fullName employeeCode designation role')
+    .populate('regularization.reportingReviewedBy', 'fullName employeeCode designation role')
+    .populate('regularization.reviewedBy', 'fullName employeeCode designation role')
+    .sort({ 'regularization.requestedAt': -1 })
+    .limit(limit)
+    .lean();
 }
 
 module.exports = {
@@ -145,4 +158,5 @@ module.exports = {
   getMonthlyAggregation,
   getLateCountForMonth,
   getPendingRegularizations,
+  getRegularizationApprovals,
 };

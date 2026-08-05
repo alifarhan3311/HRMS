@@ -23,6 +23,8 @@ const biometricPunchSchema = new mongoose.Schema({
   employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   attendanceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Attendance' },
   attendanceAction: String,
+  backfilledAt: Date,
+  mappedAt: Date,
   error: String,
   processingAttempts: { type: Number, default: 0 },
   lastProcessingAttempt: Date,

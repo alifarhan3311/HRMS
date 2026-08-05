@@ -722,16 +722,25 @@ async function manualCorrection(id, payload, actor) {
 // Regularization request (Employee)
 // -------------------------------------------------------------------------
 async function resolveRegularizationApprover(employee, companyId) {
-  if (employee.teamLeadId) return employee.teamLeadId;
-  if (employee.floorHeadId) return employee.floorHeadId;
-  if (employee.managerId) return employee.managerId;
+  if (employee.teamLeadId) return { approverId: employee.teamLeadId, approvalStage: 'reporting' };
+  if (employee.floorHeadId) return { approverId: employee.floorHeadId, approvalStage: 'reporting' };
+  if (employee.managerId) return { approverId: employee.managerId, approvalStage: 'reporting' };
 
   const fallback = await Employee.findOne({
     companyId,
     role: { $in: ['hr', 'super_admin'] },
     status: 'active',
   }).select('_id');
-  return fallback?._id;
+  return fallback ? { approverId: fallback._id, approvalStage: 'hr' } : null;
+}
+
+async function resolveHrRegularizationApprover(companyId) {
+  const approver = await Employee.findOne({
+    companyId,
+    role: { $in: ['hr', 'super_admin'] },
+    status: 'active',
+  }).sort({ role: 1 }).select('_id');
+  return approver?._id;
 }
 
 async function getRangeSummary(employeeId, dateFrom, dateTo, actor, workMode) {
@@ -825,8 +834,8 @@ async function requestRegularization(id, payload, actor) {
   }
 
   const employee = await Employee.findById(actor.id).select('managerId floorHeadId teamLeadId companyId fullName');
-  const assignedApprover = await resolveRegularizationApprover(employee, actor.companyId);
-  if (!assignedApprover) {
+  const approvalAssignment = await resolveRegularizationApprover(employee, actor.companyId);
+  if (!approvalAssignment) {
     throw createHttpError(422, 'No manager, team lead, HR, or super administrator is available to review this request.');
   }
 
@@ -839,17 +848,18 @@ async function requestRegularization(id, payload, actor) {
       requestedAt: new Date(),
       requestedSignInTime: requestedSignInTime ? new Date(requestedSignInTime) : undefined,
       requestedSignOutTime: requestedSignOutTime ? new Date(requestedSignOutTime) : undefined,
-      assignedApprover,
+      assignedApprover: approvalAssignment.approverId,
+      approvalStage: approvalAssignment.approvalStage,
     },
   });
 
   await notificationService.createNotification({
-    recipientId: assignedApprover,
+    recipientId: approvalAssignment.approverId,
     companyId: actor.companyId,
     type: 'attendance_regularization_requested',
     title: requestType === 'late_waiver' ? 'Late waiver approval required' : 'Attendance correction approval required',
     message: `${employee.fullName} submitted a request for ${record.date.toLocaleDateString()}.`,
-    link: '/attendance',
+    link: '/attendance/approvals',
     metadata: { attendanceId: record._id, requestType },
     dedupeKey: `attendance-regularization-requested:${record._id}`,
   });
@@ -868,11 +878,46 @@ async function reviewRegularization(id, { action, remarks }, actor) {
     throw createHttpError(400, 'No pending regularization for this record.');
   }
 
-  const elevatedReviewer = ['super_admin', 'hr'].includes(actor.role);
+  const approvalStage = record.regularization?.approvalStage
+    || (['hr', 'super_admin'].includes(record.regularization?.assignedApprover?.role) ? 'hr' : 'reporting');
+  const elevatedReviewer = approvalStage === 'hr' && ['super_admin', 'hr'].includes(actor.role);
   const assignedId = record.regularization?.assignedApprover?._id
     || record.regularization?.assignedApprover;
   if (!elevatedReviewer && String(assignedId) !== String(actor.id)) {
     throw createHttpError(403, 'This request is assigned to another approver.');
+  }
+
+  if (approvalStage === 'reporting' && action === 'approve') {
+    const hrApprover = await resolveHrRegularizationApprover(record.companyId);
+    if (!hrApprover) throw createHttpError(422, 'No active HR user is available for final approval.');
+    await repository.updateById(id, {
+      'regularization.approvalStage': 'hr',
+      'regularization.reportingReviewedBy': actor.id,
+      'regularization.reportingReviewedAt': new Date(),
+      'regularization.reportingRemarks': remarks || '',
+      'regularization.assignedApprover': hrApprover,
+    });
+    await notificationService.createNotification({
+      recipientId: hrApprover,
+      companyId: record.companyId,
+      type: 'attendance_regularization_hr_approval_required',
+      title: 'Final attendance approval required',
+      message: `${actor.fullName || 'Reporting approver'} verified ${record.employeeId?.fullName || 'an employee'}'s attendance request.`,
+      link: '/attendance/approvals',
+      metadata: { attendanceId: record._id, requestType: record.regularization.requestType },
+      dedupeKey: `attendance-regularization-hr-stage:${record._id}`,
+    });
+    await notificationService.createNotification({
+      recipientId: record.employeeId._id || record.employeeId,
+      companyId: record.companyId,
+      type: 'attendance_regularization_forwarded_to_hr',
+      title: 'Attendance request forwarded to HR',
+      message: `${actor.fullName || 'Your reporting approver'} approved your request. HR final approval is pending.`,
+      link: '/attendance',
+      metadata: { attendanceId: record._id },
+      dedupeKey: `attendance-regularization-forwarded:${record._id}`,
+    });
+    return repository.findById(id);
   }
 
   const update = {
@@ -962,6 +1007,55 @@ async function getPendingRegularizations(actor) {
     filter.employeeId = { $in: await visibleAttendanceEmployeeIds(actor, false) };
   }
   return repository.getPendingRegularizations(filter);
+}
+
+async function listRegularizationApprovals(query, actor) {
+  const filter = {
+    companyId: actor.companyId,
+    regularizationStatus: { $in: ['pending', 'approved', 'rejected'] },
+  };
+  if (actor.role !== 'super_admin') {
+    filter.employeeId = { $in: await visibleAttendanceEmployeeIds(actor, false) };
+  }
+
+  if (query.employeeId) {
+    await assertCanViewEmployeeAttendance(actor, query.employeeId);
+    filter.employeeId = query.employeeId;
+  }
+  if (['pending', 'approved', 'rejected'].includes(query.status)) {
+    filter.regularizationStatus = query.status;
+  }
+  if (['time_correction', 'late_waiver'].includes(query.requestType)) {
+    filter['regularization.requestType'] = query.requestType;
+  }
+  if (query.dateFrom || query.dateTo) {
+    filter['regularization.requestedAt'] = {};
+    if (query.dateFrom) {
+      const start = new Date(query.dateFrom);
+      start.setUTCHours(0, 0, 0, 0);
+      filter['regularization.requestedAt'].$gte = start;
+    }
+    if (query.dateTo) {
+      const end = new Date(query.dateTo);
+      end.setUTCHours(23, 59, 59, 999);
+      filter['regularization.requestedAt'].$lte = end;
+    }
+  }
+
+  const records = await repository.getRegularizationApprovals(filter);
+  const department = String(query.department || '').trim().toLowerCase();
+  const filtered = department
+    ? records.filter((record) => String(record.employeeId?.department || '').toLowerCase() === department)
+    : records;
+  const summary = filtered.reduce((counts, record) => {
+    counts.total += 1;
+    if (Object.prototype.hasOwnProperty.call(counts, record.regularizationStatus)) {
+      counts[record.regularizationStatus] += 1;
+    }
+    return counts;
+  }, { total: 0, pending: 0, approved: 0, rejected: 0 });
+
+  return { records: filtered, summary };
 }
 
 async function applyClosureToAttendance(closure) {
@@ -1108,6 +1202,7 @@ module.exports = {
   requestRegularization,
   reviewRegularization,
   getPendingRegularizations,
+  listRegularizationApprovals,
   applyClosureToAttendance,
   removeClosureFromAttendance,
   correctedWorkMetrics,

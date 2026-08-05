@@ -37,6 +37,10 @@ export const attendanceApi = api.injectEndpoints({
       query: () => '/attendance/pending-regularizations',
       providesTags: ['Attendance'],
     }),
+    getRegularizationApprovals: builder.query({
+      query: (params) => ({ url: '/attendance/regularization-approvals', params }),
+      providesTags: ['Attendance'],
+    }),
     // Manual correction (HR/Admin)
     manualCorrection: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/attendance/${id}/correct`, method: 'PUT', body }),
@@ -64,6 +68,7 @@ export const {
   useGetAttendanceRangeSummaryQuery,
   useListAttendanceQuery,
   useGetPendingRegularizationsQuery,
+  useGetRegularizationApprovalsQuery,
   useManualCorrectionMutation,
   useRequestRegularizationMutation,
   useReviewRegularizationMutation,

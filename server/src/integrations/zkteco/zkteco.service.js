@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const ZKLib = require('node-zklib');
 const Employee = require('../../modules/employees/employees.model');
+const notificationService = require('../../modules/notifications/notifications.service');
 const attendanceService = require('../../modules/attendance/attendance.service');
 const { emitToCompany } = require('../../config/socket');
 const logger = require('../../utils/logger');
@@ -306,6 +307,19 @@ async function processPunch(input, storedPunch = null) {
       return { duplicate: false, status: 'unmapped' };
     }
 
+    if (employee.joiningDate) {
+      const joiningDay = new Date(employee.joiningDate);
+      joiningDay.setUTCHours(0, 0, 0, 0);
+      if (new Date(input.punchTime) < joiningDay) {
+        rawPunch.processingStatus = 'ignored';
+        rawPunch.error = 'BEFORE_JOINING_DATE';
+        rawPunch.employeeId = employee._id;
+        rawPunch.mappedAt = new Date();
+        await rawPunch.save();
+        return { duplicate: false, status: 'ignored', action: 'before_joining_ignored' };
+      }
+    }
+
     logger.info('[zkteco] Employee mapped', {
       deviceUserId: input.deviceUserId,
       employeeId: employee._id,
@@ -322,6 +336,7 @@ async function processPunch(input, storedPunch = null) {
     rawPunch.processingStatus = ignored ? 'ignored' : 'processed';
     rawPunch.error = undefined;
     rawPunch.employeeId = employee._id;
+    rawPunch.mappedAt = rawPunch.mappedAt || new Date();
     rawPunch.attendanceId = result.record._id;
     rawPunch.attendanceAction = result.action;
     await rawPunch.save();
@@ -349,6 +364,64 @@ async function processPunch(input, storedPunch = null) {
     recordError('process-punch', error);
     return { duplicate: false, status: 'error', error: error.message };
   }
+}
+
+async function notifyBackfillComplete(employee, summary) {
+  const recipients = await Employee.find({
+    companyId: employee.companyId,
+    role: { $in: ['hr', 'super_admin'] },
+    status: 'active',
+  }).select('_id');
+  await Promise.allSettled(recipients.map(({ _id }) => notificationService.createNotification({
+    recipientId: _id,
+    companyId: employee.companyId,
+    type: 'biometric_backfill_completed',
+    title: 'Biometric attendance restored',
+    message: `${employee.fullName} mapped successfully. ${summary.punchesProcessed} punches processed and ${summary.attendanceRecords} attendance records restored.`,
+    link: '/attendance',
+    metadata: { employeeId: employee._id, deviceUserId: employee.biometricDeviceUserId, ...summary },
+    dedupeKey: `biometric-backfill:${employee._id}:${employee.biometricDeviceUserId}`,
+  })));
+}
+
+async function backfillEmployeeAttendance(employeeId) {
+  const employee = await Employee.findById(employeeId);
+  if (!employee?.biometricDeviceUserId || employee.status !== 'active') {
+    return { punchesProcessed: 0, attendanceRecords: 0, ignored: 0 };
+  }
+  const joiningDay = employee.joiningDate ? new Date(employee.joiningDate) : new Date(0);
+  joiningDay.setUTCHours(0, 0, 0, 0);
+  const summary = { punchesProcessed: 0, attendanceRecords: 0, ignored: 0 };
+  const attendanceIds = new Set();
+  while (true) {
+    const punches = await BiometricPunch.find({
+      companyId: employee.companyId,
+      deviceUserId: String(employee.biometricDeviceUserId),
+      processingStatus: 'unmapped',
+    }).sort({ punchTime: 1 }).limit(250);
+    if (!punches.length) break;
+    for (const rawPunch of punches) {
+      if (rawPunch.punchTime < joiningDay) {
+        rawPunch.processingStatus = 'ignored';
+        rawPunch.error = 'BEFORE_JOINING_DATE';
+        rawPunch.employeeId = employee._id;
+        rawPunch.mappedAt = new Date();
+        rawPunch.backfilledAt = new Date();
+        await rawPunch.save();
+        summary.ignored += 1;
+        continue;
+      }
+      const result = await processPunch(inputFromStoredPunch(rawPunch), rawPunch);
+      rawPunch.backfilledAt = new Date();
+      await rawPunch.save();
+      summary.punchesProcessed += 1;
+      if (result.record?._id && !result.action?.endsWith('_ignored')) attendanceIds.add(String(result.record._id));
+      if (result.status === 'ignored') summary.ignored += 1;
+    }
+  }
+  summary.attendanceRecords = attendanceIds.size;
+  if (summary.punchesProcessed || summary.ignored) await notifyBackfillComplete(employee, summary);
+  return summary;
 }
 
 async function syncNewLogs() {
@@ -633,6 +706,7 @@ module.exports = {
   testDeviceConnection,
   getServiceStatus,
   processPunch,
+  backfillEmployeeAttendance,
   normalizePunch,
   applyBiometricTimeOffset,
   punchFingerprint,

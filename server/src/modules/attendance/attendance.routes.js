@@ -45,6 +45,7 @@ router.get(
 // Admin/HR views
 router.get('/', authorize(...ALL), validate(listQuerySchema, 'query'), controller.list);
 router.get('/pending-regularizations', authorize(...MANAGERS_UP), controller.pendingRegularizations);
+router.get('/regularization-approvals', authorize(...MANAGERS_UP), controller.regularizationApprovals);
 
 // Per-record operations
 router.get(

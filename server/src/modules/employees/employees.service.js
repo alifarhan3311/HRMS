@@ -12,6 +12,7 @@ const Attendance = require('../attendance/attendance.model');
 const LeaveRequest = require('../leaves/leaves.model');
 const settingsService = require('../companySettings/companySettings.service');
 const { emitToUser } = require('../../config/socket');
+const logger = require('../../utils/logger');
 const {
   normalizeDepartments,
   buildManagerEmployeeScope,
@@ -28,6 +29,18 @@ const MANAGEABLE_ROLES = {
 // -------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------
+
+function scheduleBiometricBackfill(employee) {
+  if (!employee?.biometricDeviceUserId || employee.status !== 'active') return;
+  setImmediate(() => {
+    const { backfillEmployeeAttendance } = require('../../integrations/zkteco/zkteco.service');
+    backfillEmployeeAttendance(employee._id).catch((error) => logger.error('[zkteco] Employee attendance backfill failed', {
+      employeeId: employee._id,
+      deviceUserId: employee.biometricDeviceUserId,
+      error: error.message,
+    }));
+  });
+}
 
 async function generateEmployeeIdentifiers(companyId) {
   const sequence = await repository.nextSequence(companyId);
@@ -375,6 +388,7 @@ async function createEmployee(payload, actor) {
       await repository.assignDepartmentManager(actor.companyId, department, employee._id);
     }
   }
+  scheduleBiometricBackfill(employee);
   return sanitize(employee);
 }
 
@@ -543,6 +557,14 @@ async function updateEmployee(id, payload, actor) {
       await repository.clearTeamLeadReferences(id);
     }
   }
+  if (
+    updated.biometricDeviceUserId
+    && updated.status === 'active'
+    && (
+      String(updated.biometricDeviceUserId) !== String(existing.biometricDeviceUserId || '')
+      || existing.status !== 'active'
+    )
+  ) scheduleBiometricBackfill(updated);
   return sanitize(updated);
 }
 

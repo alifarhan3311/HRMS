@@ -36,7 +36,7 @@ async function getActionCenter(query, actor) {
   const deviceAlerts = syncStates.filter((s) => !s.lastSuccessfulSync || s.lastSuccessfulSync < staleBefore);
   const groups = [
     { key: 'leaves', title: 'Pending Leaves', link: '/leaves', items: leaves.map(x => item(x._id, x.employeeId?.fullName || x.employeeName || 'Employee', `${x.leaveType} leave · ${x.totalDays} day(s)`, x.createdAt, '/leaves')) },
-    { key: 'regularizations', title: 'Attendance Regularizations', link: '/attendance', items: regularizations.map(x => item(x._id, x.employeeId?.fullName || x.employeeName || 'Employee', `${x.shiftDate} · ${x.regularization?.requestType || 'time correction'}`, x.regularization?.requestedAt, '/attendance')) },
+    { key: 'regularizations', title: 'Attendance Regularizations', link: '/attendance/approvals', items: regularizations.map(x => item(x._id, x.employeeId?.fullName || x.employeeName || 'Employee', `${x.shiftDate} · ${x.regularization?.requestType || 'time correction'}`, x.regularization?.requestedAt, '/attendance/approvals')) },
     { key: 'missing_signouts', title: 'Missing Sign-outs', link: '/attendance', items: missingSignOuts.map(x => item(x._id, x.employeeId?.fullName || x.employeeName || 'Employee', `${x.shiftDate} · Sign-out requires review`, x.date, '/attendance', 'danger')) },
     { key: 'biometric', title: 'Biometric Issues', link: '/settings', items: [
       ...biometricIssues.map(x => item(x._id, `Device user ${x.deviceUserId}`, `${x.processingStatus}: ${x.error || 'Employee mapping required'}`, x.punchTime, '/employees', 'danger')),

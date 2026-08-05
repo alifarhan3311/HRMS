@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Clock, CalendarDays, Wallet,
   Receipt, FolderKanban, Settings, FileText, UserPlus,
   GraduationCap, Package, BarChart3, MessageSquare,
-  TrendingUp, Bell, Building2, Shield, DoorOpen, ListChecks,
+  TrendingUp, Bell, Building2, Shield, DoorOpen, ListChecks, ClipboardCheck,
 } from 'lucide-react';
 
 export const ROLES = {
@@ -49,6 +49,10 @@ export const NAV_GROUPS = [
       {
         id: 'attendance', label: 'Attendance', path: '/attendance',
         icon: Clock, roles: 'all',
+      },
+      {
+        id: 'attendance-approvals', label: 'Attendance Approvals', path: '/attendance/approvals',
+        icon: ClipboardCheck, roles: ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin'],
       },
       {
         id: 'leaves', label: 'Leaves', path: '/leaves',

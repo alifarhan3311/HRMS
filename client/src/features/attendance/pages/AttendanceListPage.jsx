@@ -25,8 +25,6 @@ import {
   useSignOutMutation,
   useManualCorrectionMutation,
   useRequestRegularizationMutation,
-  useReviewRegularizationMutation,
-  useGetPendingRegularizationsQuery,
 } from '../api/attendance.api';
 import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import { useApplyLeaveMutation } from '../../leaves/api/leaves.api';
@@ -476,7 +474,6 @@ function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
 export default function AttendanceListPage() {
   const { user } = useSelector((s) => s.auth);
   const isAdminHR = ['hr', 'super_admin'].includes(user?.role);
-  const isManagerUp = ['hr', 'super_admin', 'manager', 'floor_head', 'team_lead'].includes(user?.role);
   const canSelectEmployee = ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin'].includes(user?.role);
   const canViewLeaveBalances = canSelectEmployee;
 
@@ -489,7 +486,6 @@ export default function AttendanceListPage() {
   const [page, setPage] = useState(1);
   const [correctionRecord, setCorrectionRecord] = useState(null);
   const [regularizeRecord, setRegularizeRecord] = useState(null);
-  const [reviewRecord, setReviewRecord] = useState(null);
   const [fullPageSigningOut, setFullPageSigningOut] = useState(false);
 
   const { data: employeesData, isLoading: employeesLoading } = useListEmployeesQuery(
@@ -533,10 +529,8 @@ export default function AttendanceListPage() {
     dateTo: reportRange.dateTo,
     ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),
   });
-  const { data: pendingData } = useGetPendingRegularizationsQuery(undefined, { skip: !isManagerUp });
   const [manualCorrection, { isLoading: correcting }] = useManualCorrectionMutation();
   const [requestReg, { isLoading: requesting }] = useRequestRegularizationMutation();
-  const [reviewReg, { isLoading: reviewing }] = useReviewRegularizationMutation();
   const [applyLeaveForEmployee] = useApplyLeaveMutation();
 
   async function markHrLeave(record) {
@@ -585,7 +579,6 @@ export default function AttendanceListPage() {
   const calRecords = selectedEmployeeId ? (summaryData?.data?.records || []) : listRecords;
   const total = listData?.total || 0;
   const totalPages = listData?.totalPages || 1;
-  const pendingRegs = pendingData?.data || [];
   const todayDateKey = inputDate(new Date());
   const rangeIncludesToday = reportRange.dateFrom <= todayDateKey && reportRange.dateTo >= todayDateKey;
   const hasTodayRecord = listRecords.some((record) => (
@@ -698,16 +691,6 @@ export default function AttendanceListPage() {
       toast.error(err?.data?.error?.message || 'Request failed');
     }
   }
-  async function handleReview(action) {
-    try {
-      await reviewReg({ id: reviewRecord._id, action }).unwrap();
-      toast.success(`Regularization ${action === 'approve' ? 'approved' : 'rejected'}`);
-      setReviewRecord(null);
-    } catch (err) {
-      toast.error(err?.data?.error?.message || 'Review failed');
-    }
-  }
-
   const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
   return (
@@ -1125,36 +1108,6 @@ export default function AttendanceListPage() {
         <div className="space-y-4">
           <MonthlyCalendar year={ym.year} month={ym.month} records={calRecords} />
 
-          {/* Pending regularizations (HR/Admin) */}
-          {isManagerUp && pendingRegs.length > 0 && (
-            <div className="glass-card p-4">
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-amber-500" />
-                Pending Regularizations ({pendingRegs.length})
-              </h3>
-              <div className="space-y-2">
-                {pendingRegs.slice(0, 5).map((r) => (
-                  <div key={r._id} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border text-sm">
-                    <div className="min-w-0">
-                      <p className="font-medium truncate">{r.employeeId?.fullName || r.employeeName || 'Former employee'}</p>
-                      <p className="text-xs text-muted-foreground">{fmtDate(r.date)}</p>
-                      <p className="text-xs text-muted-foreground capitalize">
-                        {(r.regularization?.requestType || 'time_correction').replace('_', ' ')}
-                        {r.regularization?.assignedApprover?.fullName
-                          ? ` · ${r.regularization.assignedApprover.fullName}`
-                          : ''}
-                      </p>
-                    </div>
-                    <div className="flex gap-1 shrink-0">
-                      <button onClick={() => { setReviewRecord(r); }} className="px-2 py-1 text-xs rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400">
-                        Review
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1165,36 +1118,6 @@ export default function AttendanceListPage() {
       <RegularizeModal record={regularizeRecord} isOpen={!!regularizeRecord}
         onClose={() => setRegularizeRecord(null)} onSubmit={handleRegularize} isLoading={requesting} />
 
-      {/* Review Modal */}
-      <Modal isOpen={!!reviewRecord} onClose={() => setReviewRecord(null)} title="Review Regularization" size="sm">
-        {reviewRecord && (
-          <div className="px-6 py-5 space-y-4">
-            <div className="text-sm">
-              <p className="font-medium">{reviewRecord.employeeId?.fullName || reviewRecord.employeeName || 'Former employee'}</p>
-              <p className="text-muted-foreground">{fmtDate(reviewRecord.date)}</p>
-              <p className="mt-1 text-xs capitalize text-muted-foreground">
-                {(reviewRecord.regularization?.requestType || 'time_correction').replace('_', ' ')}
-                {reviewRecord.regularization?.assignedApprover?.fullName
-                  ? ` · Assigned to ${reviewRecord.regularization.assignedApprover.fullName}`
-                  : ''}
-              </p>
-              <p className="mt-2 text-sm border border-border rounded-lg p-3 bg-muted/30">
-                {reviewRecord.regularization?.reason || 'No reason provided'}
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button variant="primary" size="sm" className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                onClick={() => handleReview('approve')} disabled={reviewing}>
-                {reviewing ? 'Processing...' : 'Approve'}
-              </Button>
-              <Button variant="danger" size="sm" className="flex-1"
-                onClick={() => handleReview('reject')} disabled={reviewing}>
-                Reject
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
     </div>
   );
 }
