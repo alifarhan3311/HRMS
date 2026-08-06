@@ -106,11 +106,22 @@ function calcWorkingDays(startDate, endDate, weekendDays = [0, 6], shift = null,
   return calculateLeaveDutyDates(startDate, endDate, weekendDays, shift, timeZone).length;
 }
 
-function buildApprovalChain() {
+function buildApprovalChain(leaveType) {
+  const firstApproverRole = leaveType === 'sick'
+    ? 'manager'
+    : leaveType === 'annual'
+      ? 'team_lead/manager'
+      : 'team_lead/floor_head/manager';
   return [
-    { stage: 1, approverRole: 'team_lead/manager', status: 'pending' },
+    { stage: 1, approverRole: firstApproverRole, status: 'pending' },
     { stage: 2, approverRole: 'hr', status: 'pending' },
   ];
+}
+
+function stageOneRoleAllowed(leaveType, role) {
+  if (leaveType === 'sick') return role === 'manager';
+  if (leaveType === 'annual') return ['team_lead', 'manager'].includes(role);
+  return ['team_lead', 'floor_head', 'manager'].includes(role);
 }
 
 async function visibleLeaveEmployeeIds(actor, includeSelf = true) {
@@ -187,14 +198,20 @@ async function stageApproverIds(leave, stage) {
 
   let recipientIds = [];
   if (stage === 1) {
-    // Employees go to their Team Lead first when one exists. A Team Lead's
-    // own request goes to their Manager, never back to themselves.
-    const directApprover = employee.role === 'floor_head'
-      ? employee.managerId
-      : employee.role === 'team_lead'
-        ? employee.floorHeadId || employee.managerId
-        : employee.teamLeadId || employee.floorHeadId || employee.managerId;
-    if (directApprover) recipientIds = [directApprover];
+    if (leave.leaveType === 'sick') {
+      // Sick leave always requires the assigned Manager before HR.
+      if (employee.managerId) recipientIds = [employee.managerId];
+    } else if (leave.leaveType === 'annual') {
+      // Either the assigned Team Lead or Manager can complete stage one.
+      recipientIds = [employee.teamLeadId, employee.managerId].filter(Boolean);
+    } else {
+      const directApprover = employee.role === 'floor_head'
+        ? employee.managerId
+        : employee.role === 'team_lead'
+          ? employee.floorHeadId || employee.managerId
+          : employee.teamLeadId || employee.floorHeadId || employee.managerId;
+      if (directApprover) recipientIds = [directApprover];
+    }
   } else if (stage === 2) {
     recipientIds = await Employee.find({
       companyId: leave.companyId,
@@ -251,6 +268,19 @@ async function reservedLateAttendanceIds(employeeId, excludeLeaveId = null) {
   };
   if (excludeLeaveId) filter._id = { $ne: excludeLeaveId };
   return LeaveRequest.find(filter).distinct('selectedLateAttendanceIds');
+}
+
+async function assertCanDecideLeaveStage(leave, actor, actorStage) {
+  if (actorStage !== 1) return;
+  if (!stageOneRoleAllowed(leave.leaveType, actor.role)) {
+    throw createHttpError(403, `${actor.role} cannot approve or reject ${leave.leaveType} leave at this stage.`);
+  }
+  if (['sick', 'annual'].includes(leave.leaveType)) {
+    const { recipientIds } = await stageApproverIds(leave, 1);
+    if (!recipientIds.some(id => String(id) === String(actor.id))) {
+      throw createHttpError(403, `This ${leave.leaveType} leave is assigned to another approver.`);
+    }
+  }
 }
 
 async function getEligibleLates(actor) {
@@ -430,7 +460,7 @@ async function applyLeave(payload, actor) {
     emergencyContact: emergencyContact || '',
     status: isHrOverride ? 'approved' : 'pending',
     currentStage: isHrOverride ? 2 : 1,
-    approvalChain: isHrOverride ? [] : buildApprovalChain(),
+    approvalChain: isHrOverride ? [] : buildApprovalChain(leaveType),
     companyId: actor.companyId,
     branchId: actor.branchId,
   });
@@ -453,7 +483,7 @@ async function applyLeave(payload, actor) {
     } else {
       leave.approvalChain = leave.approvalChain.map(step => (
         step.stage === 1
-          ? { ...step.toObject(), status: 'approved', remarks: 'No Team Lead/Manager assigned; routed directly to HR.', actionAt: new Date() }
+          ? { ...step.toObject(), status: 'approved', remarks: 'No eligible reporting approver assigned; routed directly to HR.', actionAt: new Date() }
           : step
       ));
       leave.currentStage = 2;
@@ -480,6 +510,7 @@ async function approveLeave(id, { remarks }, actor) {
   if (actorStage !== leave.currentStage) {
     throw createHttpError(403, `This leave is at stage ${leave.currentStage}. You can only approve at stage ${actorStage}.`);
   }
+  await assertCanDecideLeaveStage(leave, actor, actorStage);
 
   // Update chain
   const chain = leave.approvalChain.map((step) => {
@@ -556,6 +587,7 @@ async function rejectLeave(id, { remarks }, actor) {
   if (actorStage !== leave.currentStage) {
     throw createHttpError(403, `This leave is at stage ${leave.currentStage}. You can only reject at stage ${actorStage}.`);
   }
+  await assertCanDecideLeaveStage(leave, actor, actorStage);
 
   const chain = leave.approvalChain.map((step) => {
     const plainStep = step.toObject ? step.toObject() : step;
@@ -663,16 +695,24 @@ async function getPendingApprovals(actor) {
     ? null
     : await visibleLeaveEmployeeIds(actor, false);
   const records = await repository.getPendingByStage(actor.companyId, stage, employeeIds);
+  const visibleRecords = stage !== 1 ? records : (await Promise.all(records.map(async (record) => {
+    if (!stageOneRoleAllowed(record.leaveType, actor.role)) return null;
+    if (!['sick', 'annual'].includes(record.leaveType)) return record;
+    const { recipientIds } = await stageApproverIds(record, 1);
+    return recipientIds.some(id => String(id) === String(actor.id)) ? record : null;
+  }))).filter(Boolean);
   // Backfill notifications for requests created before staged approver
   // notifications were introduced. The dedupe key makes this idempotent.
-  await Promise.allSettled(records.map(record =>
+  await Promise.allSettled(visibleRecords.map(record =>
     notifyStageApprovers(record, stage, actor.id)
   ));
-  return records;
+  return visibleRecords;
 }
 
 module.exports = {
   calcWorkingDays,
+  buildApprovalChain,
+  stageOneRoleAllowed,
   calculateLeaveDutyDates,
   leaveEligibilityDate,
   getEligibleLates,

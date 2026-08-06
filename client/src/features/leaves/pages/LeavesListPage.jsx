@@ -45,6 +45,12 @@ const STATUS_STYLES = {
   cancelled: { label: 'Cancelled', variant: 'gray'   },
 };
 const STAGE_ROLES = { 1: 'Team Lead / Manager', 2: 'HR (Final)' };
+const APPROVER_ROLE_LABELS = {
+  manager: 'Manager',
+  'team_lead/manager': 'Team Lead / Manager',
+  'team_lead/floor_head/manager': 'Team Lead / Floor Head / Manager',
+  hr: 'HR (Final)',
+};
 
 function fmtDate(d) {
   if (!d) return '—';
@@ -207,7 +213,7 @@ function ApprovalTimeline({ chain = [], currentStage }) {
                 {isDone ? '✓' : isRej ? '✗' : step.stage}
               </div>
               <span className="text-[10px] text-muted-foreground mt-1 whitespace-nowrap">
-                {STAGE_ROLES[step.stage]}
+                {APPROVER_ROLE_LABELS[step.approverRole] || STAGE_ROLES[step.stage]}
               </span>
             </div>
             {i < chain.length - 1 && (
