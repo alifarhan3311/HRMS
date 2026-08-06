@@ -77,7 +77,13 @@ function calcTotalHours(signIn, signOut) {
 }
 
 function completionToleranceMinutes(record, requiredMinutes) {
-  return (record.shiftType || 'fixed') === 'fixed' && Number(requiredMinutes) > 420 ? 15 : 0;
+  if ((record.shiftType || 'fixed') === 'flexible') {
+    // Flexible duty remains present while the shortfall is below 2h30.
+    // Since work is stored in whole minutes, 149 minutes is the inclusive
+    // completion tolerance; a 150-minute shortfall becomes half-day.
+    return 149;
+  }
+  return Number(requiredMinutes) > 420 ? 15 : 0;
 }
 
 function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0) {

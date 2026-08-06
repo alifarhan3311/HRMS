@@ -141,7 +141,7 @@ test('fixed shifts longer than seven hours allow a 15 minute completion shortfal
       new Date('2026-07-17T14:03:00.000Z'),
       new Date('2026-07-17T21:58:00.000Z'),
     ).status,
-    'half_day',
+    'present',
   );
   assert.equal(completionToleranceMinutes({ shiftType: 'fixed' }, 390), 0);
 });
@@ -165,6 +165,9 @@ test('flexible 8-hour shifts have no late status and reach worked half-day at fo
   assert.equal(shift.halfDayMinutes, 240);
   assert.equal(shift.graceMinutes, 0);
   assert.equal(arrivalStatus(new Date(start.getTime() + 600 * 60000), schedule, shift).status, 'present');
+  const record = { shiftType: 'flexible', shiftRequiredMinutes: 480, shiftHalfDayMinutes: 240 };
+  assert.equal(correctedWorkMetrics(record, start, new Date(start.getTime() + 331 * 60000)).status, 'present');
+  assert.equal(correctedWorkMetrics(record, start, new Date(start.getTime() + 330 * 60000)).status, 'half_day');
 });
 
 test('flexible 6-hour shifts have no late status and reach worked half-day at three hours', () => {
@@ -178,6 +181,9 @@ test('flexible 6-hour shifts have no late status and reach worked half-day at th
   assert.equal(shift.startTime, '00:00');
   assert.equal(shift.endTime, '06:00');
   assert.equal(arrivalStatus(new Date(start.getTime() + 600 * 60000), schedule, shift).status, 'present');
+  const record = { shiftType: 'flexible', shiftRequiredMinutes: 360, shiftHalfDayMinutes: 180 };
+  assert.equal(correctedWorkMetrics(record, start, new Date(start.getTime() + 211 * 60000)).status, 'present');
+  assert.equal(correctedWorkMetrics(record, start, new Date(start.getTime() + 210 * 60000)).status, 'half_day');
 });
 
 test('holiday scope matching supports all, department, and assigned shift targets', () => {
