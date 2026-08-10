@@ -6,12 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Mail, Phone, MapPin, Briefcase, Calendar, User, Heart,
   Droplets, GraduationCap, Banknote, TrendingUp, Clock, Shield,
-  CreditCard, Award, Edit, UserX, UserCheck, ArrowUpRight, KeyRound, CalendarRange,
+  CreditCard, Award, Edit, UserX, UserCheck, ArrowUpRight, KeyRound, CalendarRange, Package,
 } from 'lucide-react';
 import { Avatar } from '../../../components/ui/Avatar';
 import { StatusBadge, RoleBadge, Badge } from '../../../components/ui/Badge';
 import Button from '../../../components/ui/Button';
 import SensitiveValue from '../../../components/ui/SensitiveValue';
+import { useGetEmployeeAssetsQuery } from '../../assets/api/assets.api';
 
 const PAYMENT_METHOD_LABELS = {
   allied_bank: 'Allied Bank (ABL)', askari_bank: 'Askari Bank', bank_alfalah: 'Bank Alfalah',
@@ -52,6 +53,19 @@ function Section({ title, children }) {
       </div>
     </div>
   );
+}
+
+function EmployeeAssets({ employeeId }) {
+  const { data, isLoading } = useGetEmployeeAssetsQuery(employeeId, { skip: !employeeId });
+  const assets = data?.data?.items || [];
+  return <Section title="Company Assets">
+    {isLoading && <p className="py-3 text-sm text-muted-foreground">Loading assets...</p>}
+    {!isLoading && !assets.length && <p className="py-3 text-sm text-muted-foreground">No company assets assigned.</p>}
+    {assets.map(asset => <div key={asset._id} className="flex items-center justify-between gap-3 border-b border-border/50 py-3 last:border-0">
+      <div className="flex min-w-0 items-center gap-3"><Package className="h-4 w-4 shrink-0 text-primary"/><div className="min-w-0"><p className="truncate text-sm font-medium">{asset.name}</p><p className="text-xs text-muted-foreground">{asset.assetCode} · {asset.category}</p></div></div>
+      <Badge variant={asset.status === 'assigned' ? 'green' : 'yellow'}>{asset.status.replaceAll('_', ' ')}</Badge>
+    </div>)}
+  </Section>;
 }
 
 export default function EmployeeDetailPanel({
@@ -231,6 +245,8 @@ export default function EmployeeDetailPanel({
                 <InfoRow icon={CreditCard} label="Employee Card" value={employee.employeeCardNumber} />
                 <InfoRow icon={Shield} label="Insurance Card" value={employee.insuranceCardNumber} />
               </Section>
+
+              <EmployeeAssets employeeId={employee._id || employee.id} />
 
               {/* Salary */}
               <Section title="Compensation">

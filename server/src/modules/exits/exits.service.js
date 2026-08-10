@@ -1,6 +1,7 @@
 const createHttpError = require('http-errors');
 const Exit = require('./exits.model');
 const Employee = require('../employees/employees.model');
+const Asset = require('../assets/assets.model');
 const { createNotification } = require('../notifications/notifications.service');
 
 const HR_ROLES = ['hr', 'super_admin'];
@@ -19,6 +20,25 @@ const notify = (recipientId, companyId, title, message, id) => createNotificatio
 
 async function hrUsers(companyId) {
   return Employee.find({ companyId, role: { $in: HR_ROLES }, status: 'active' }).select('_id');
+}
+
+async function assignedAssets(employeeId, companyId) {
+  return Asset.find({ companyId, assignedEmployeeId: employeeId })
+    .select('assetCode name category status condition').sort('name').lean();
+}
+
+async function syncAssetClearance(record, actorId) {
+  const pendingAssets = await assignedAssets(record.employeeId?._id || record.employeeId, record.companyId);
+  const item = record.checklist.find(entry => entry.key === 'assets');
+  if (item) {
+    item.completed = pendingAssets.length === 0;
+    item.notes = pendingAssets.length
+      ? `${pendingAssets.length} assigned asset(s) pending return.`
+      : 'No assigned assets pending return.';
+    item.completedBy = item.completed ? actorId : undefined;
+    item.completedAt = item.completed ? new Date() : undefined;
+  }
+  return pendingAssets;
 }
 
 async function submit(body, actor) {
@@ -57,8 +77,11 @@ async function list(query, actor) {
   const filter = visibility(actor);
   if (query.status) filter.status = query.status;
   const items = await Exit.find(filter).populate('employeeId', 'fullName employeeCode department designation role status')
-    .populate('approvals.approverId', 'fullName role').sort('-createdAt').limit(500);
-  return items;
+    .populate('approvals.approverId', 'fullName role').sort('-createdAt').limit(500).lean();
+  return Promise.all(items.map(async record => ({
+    ...record,
+    assetClearance: await assignedAssets(record.employeeId?._id || record.employeeId, record.companyId),
+  })));
 }
 
 async function getRecord(id, actor) {
@@ -116,6 +139,7 @@ async function updateClearance(id, body, actor) {
       netPayable: Number(s.salaryUntilLastDay || 0) + Number(s.bonuses || 0) - Number(s.unpaidLeaveDeduction || 0) - Number(s.loanDeduction || 0) - Number(s.otherDeductions || 0) };
   }
   if (body.exitInterviewNotes !== undefined) record.exitInterviewNotes = body.exitInterviewNotes;
+  await syncAssetClearance(record, actor.id);
   await record.save(); return record;
 }
 
@@ -123,6 +147,11 @@ async function complete(id, actor) {
   if (!HR_ROLES.includes(actor.role)) throw createHttpError(403, 'Only HR can complete an exit.');
   const record = await getRecord(id, actor);
   if (record.status !== 'clearance') throw createHttpError(400, 'Exit request is not in clearance.');
+  const pendingAssets = await syncAssetClearance(record, actor.id);
+  await record.save();
+  if (pendingAssets.length) {
+    throw createHttpError(409, `Return ${pendingAssets.length} assigned asset(s) before completing exit clearance.`);
+  }
   if (record.checklist.some((x) => !x.completed)) throw createHttpError(400, 'Complete every clearance item first.');
   const employee = await Employee.findById(record.employeeId);
   employee.status = 'resigned'; employee.exitDate = record.finalLastWorkingDay; employee.exitReason = record.reason;

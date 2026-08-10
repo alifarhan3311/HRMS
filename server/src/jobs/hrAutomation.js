@@ -8,6 +8,7 @@ const settingsService = require('../modules/companySettings/companySettings.serv
 const logger = require('../utils/logger');
 const { appliesToEmployee } = require('../modules/attendance/closurePolicy');
 const { isSaturdayShiftDate } = require('../modules/attendance/saturdayPolicy');
+const { processAssetExpiryNotifications } = require('../modules/assets/assets.service');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const AUTOMATION_INTERVAL_MS = Number(process.env.HR_AUTOMATION_INTERVAL_MS)
@@ -652,7 +653,8 @@ async function runHrAutomation(now = new Date()) {
   const leaveCyclesUpdated = await processCalendarYearLeaveCycles(now);
   const attendanceCreated = await reconcileAttendance(now);
   const remindersSent = await sendMissingLeaveApplicationReminders(now);
-  const result = { leaveCyclesUpdated, attendanceCreated, remindersSent };
+  const assetExpiryNotifications = await processAssetExpiryNotifications(now);
+  const result = { leaveCyclesUpdated, attendanceCreated, remindersSent, assetExpiryNotifications };
   logger.info('[hr-automation] Cycle completed', result);
   return result;
 }

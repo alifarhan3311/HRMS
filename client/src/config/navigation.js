@@ -97,7 +97,7 @@ export const NAV_GROUPS = [
       },
       {
         id: 'assets', label: 'Assets', path: '/assets',
-        icon: Package, roles: ['hr', 'super_admin'], comingSoon: true,
+        icon: Package, roles: ['employee', 'team_lead', 'floor_head', 'manager', 'admin', 'hr', 'super_admin'],
       },
       {
         id: 'sales', label: 'Sales', path: '/sales',

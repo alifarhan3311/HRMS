@@ -67,6 +67,7 @@ export const api = createApi({
     'Reports',
     'Exits',
     'ActionCenter',
+    'Assets',
   ],
   endpoints: () => ({}), // each feature injects its own endpoints
 });
