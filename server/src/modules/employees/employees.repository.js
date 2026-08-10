@@ -208,7 +208,7 @@ async function getStats(filter) {
 }
 
 async function getHierarchy(filter) {
-  return Employee.find({ ...filter, status: { $ne: 'resigned' } })
+  return Employee.find({ ...filter, status: 'active' })
     .select('fullName employeeCode email department managedDepartments designation role status profilePicture managerId floorHeadId teamLeadId')
     .populate('managerId', 'fullName employeeCode designation role profilePicture')
     .populate('floorHeadId', 'fullName employeeCode designation role profilePicture')

@@ -411,7 +411,9 @@ export default function EmployeesListPage() {
   const total = data?.total || 0;
   const totalPages = data?.totalPages || 1;
   const stats = statsData?.data;
-  const hierarchyEmployees = hierarchyData?.data || [];
+  const hierarchyEmployees = (hierarchyData?.data || []).filter(
+    (employee) => employee.status === 'active',
+  );
   const managers = hierarchyEmployees.filter((employee) => employee.role === 'manager' && employee._id !== editEmployee?._id);
   const floorHeads = hierarchyEmployees.filter((employee) => employee.role === 'floor_head' && employee._id !== editEmployee?._id);
   const teamLeads = hierarchyEmployees.filter((employee) => employee.role === 'team_lead' && employee._id !== editEmployee?._id);
