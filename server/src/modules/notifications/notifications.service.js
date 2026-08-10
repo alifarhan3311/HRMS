@@ -1,11 +1,70 @@
 const createHttpError = require('http-errors');
 const repository = require('./notifications.repository');
 const { emitToUser } = require('../../config/socket');
+const { sendCompanyMail } = require('../../config/mailer');
+const Employee = require('../employees/employees.model');
+const logger = require('../../utils/logger');
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function applicationUrl(path = '/') {
+  const configured = process.env.APP_URL || process.env.CLIENT_URL
+    || String(process.env.CORS_ALLOWED_ORIGINS || '').split(',')[0]
+    || 'https://mhcirclesolutions.com';
+  return `${configured.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+function defaultEmailHtml(notification) {
+  const link = applicationUrl(notification.link || '/notifications');
+  return `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#292524">
+    <h2>${escapeHtml(notification.title)}</h2>
+    <p>${escapeHtml(notification.message)}</p>
+    <p><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 16px;background:#d99b18;color:#fff;text-decoration:none;border-radius:8px">Open HRMS</a></p>
+  </div>`;
+}
 
 async function createNotification(data) {
   const { notification, created } = await repository.create(data);
   if (created) {
     emitToUser(data.recipientId, 'notification:new', notification.toJSON());
+  }
+  return notification;
+}
+
+async function createNotificationWithEmail(data, email = {}) {
+  const notification = await createNotification(data);
+  const claimed = await claimEmailDelivery(notification._id);
+  if (!claimed) return notification;
+
+  try {
+    const recipient = email.recipient || await Employee.findOne({
+      _id: data.recipientId,
+      companyId: data.companyId,
+    }).select('email').lean();
+    if (!recipient?.email) {
+      await finishEmailDelivery(notification._id, 'failed', 'Recipient email is not configured.');
+      return notification;
+    }
+    await sendCompanyMail(data.companyId, {
+      to: recipient.email,
+      subject: email.subject || data.title,
+      html: email.html || defaultEmailHtml(data),
+    });
+    await finishEmailDelivery(notification._id, 'sent');
+  } catch (error) {
+    await finishEmailDelivery(notification._id, 'failed', error.message);
+    logger.error('[notifications] Workflow email delivery failed', {
+      notificationId: String(notification._id),
+      recipientId: String(data.recipientId),
+      error: error.message,
+    });
   }
   return notification;
 }
@@ -60,6 +119,7 @@ async function clearNotifications(actor) {
 
 module.exports = {
   createNotification,
+  createNotificationWithEmail,
   claimEmailDelivery,
   finishEmailDelivery,
   listNotifications,

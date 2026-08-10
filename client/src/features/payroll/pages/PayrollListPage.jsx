@@ -12,7 +12,7 @@ import {
   Wallet, Plus, CheckCircle2, Lock, CreditCard,
   RefreshCw, ChevronLeft, ChevronRight, Eye,
   TrendingUp, TrendingDown, Banknote, FileText,
-  Download, Printer,
+  Download, Printer, Search,
 } from 'lucide-react';
 import {
   useListPayrollQuery, useGetLivePayrollQuery, useGeneratePayrollMutation,
@@ -191,6 +191,100 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canGenerate, c
   );
 }
 
+function LivePayrollDetailModal({ employee, isOpen, onClose }) {
+  if (!employee) return null;
+  const attendance = [
+    ['Present', employee.present, 'text-emerald-600'],
+    ['Absent', employee.absent, 'text-red-500'],
+    ['Half Days', employee.halfDay, 'text-orange-500'],
+    ['Paid Leave', employee.paidLeave, 'text-blue-500'],
+    ['Unpaid Leave', employee.unpaidLeave, 'text-red-500'],
+    ['Sandwich Leave', employee.sandwichLeave, 'text-red-600'],
+    ['Late', employee.late, 'text-amber-500'],
+    ['Holidays', employee.holiday, 'text-violet-500'],
+    ['Working Days', employee.workingDays, ''],
+  ];
+  const deductions = [
+    ['Absence deduction', employee.absenceDeduction],
+    ['Half-day deduction', employee.halfDayDeduction],
+    ['Unpaid leave deduction', employee.unpaidLeaveDeduction],
+    ['Late deduction', employee.lateDeduction],
+  ];
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Live Payroll Details" size="lg">
+      <div className="space-y-5 px-4 py-5 sm:px-6">
+        <div className="flex items-center gap-4 rounded-2xl border border-primary/15 bg-primary/5 p-4">
+          <Avatar name={employee.employeeName} size="lg" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-bold">{employee.employeeName}</p>
+            <p className="truncate text-sm text-muted-foreground">{employee.designation || 'Employee'} · {employee.department || 'No department'}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">{employee.employeeCode}</p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-xs text-muted-foreground">Payroll period</p>
+            <p className="font-semibold">{MONTHS[Number(employee.month) - 1]} {employee.year}</p>
+          </div>
+        </div>
+
+        <section>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Salary summary</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              ['Monthly Salary', employee.monthlySalary, ''],
+              ['Daily Salary', employee.dailySalary, ''],
+              ['Earned So Far', employee.earnedSalary, 'text-emerald-600'],
+              ['Attendance Deduction', employee.deductions, 'text-red-500'],
+              ['Projected Net Payable', employee.netPayable, 'text-primary'],
+            ].map(([label, value, color]) => (
+              <div key={label} className="rounded-xl border border-border bg-muted/20 p-4">
+                <p className="text-xs text-muted-foreground">{label}</p>
+                <p className={`mt-1 text-lg font-bold ${color}`}>{fmtPKR(value)}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm">
+            <p className="font-semibold text-amber-600">3 Lates = 1 Full-Day Salary Deduction</p>
+            <p className="mt-1 text-muted-foreground">
+              {employee.late ?? 0} total late(s) · {employee.waivedLate ?? 0} covered by approved paid leave · {employee.lateDeductionDays ?? 0} deduction day(s) · {employee.unusedLates ?? 0} unused late(s)
+            </p>
+          </div>
+        </section>
+
+        <section>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Attendance calculation</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {attendance.map(([label, value, color]) => (
+              <div key={label} className="rounded-xl border border-border bg-background p-3 text-center">
+                <p className={`text-xl font-bold ${color}`}>{value ?? 0}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-xl border border-border">
+          <div className="border-b border-border bg-muted/30 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Deduction breakdown</p>
+          </div>
+          <div className="divide-y divide-border">
+            {deductions.map(([label, value]) => (
+              <div key={label} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                <span>{label}</span>
+                <span className="font-semibold text-red-500">− {fmtPKR(value || 0)}</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between gap-4 bg-primary/5 px-4 py-4">
+              <span className="font-bold">Projected payable salary</span>
+              <span className="text-xl font-bold text-primary">{fmtPKR(employee.netPayable)}</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Generate Payslip Form ────────────────────────────────────────────────────
 function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
   const now = new Date();
@@ -295,6 +389,8 @@ export default function PayrollListPage() {
 
   const [generateOpen, setGenerateOpen] = useState(false);
   const [detailPayslip, setDetailPayslip] = useState(null);
+  const [livePayrollEmployee, setLivePayrollEmployee] = useState(null);
+  const [liveSearch, setLiveSearch] = useState('');
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ month: '', year: String(now.getFullYear()), status: '' });
 
@@ -320,6 +416,15 @@ export default function PayrollListPage() {
   const totalPages = data?.totalPages || 1;
   const employees = employeesData?.items || [];
   const liveRows = liveData?.items || [];
+  const normalizedLiveSearch = liveSearch.trim().toLowerCase();
+  const visibleLiveRows = normalizedLiveSearch
+    ? liveRows.filter(row => [
+      row.employeeName,
+      row.employeeCode,
+      row.designation,
+      row.department,
+    ].some(value => String(value || '').toLowerCase().includes(normalizedLiveSearch)))
+    : liveRows;
 
   function exportLiveCsv() {
     if (!liveRows.length) return toast.error('No live payroll data to export');
@@ -390,12 +495,64 @@ export default function PayrollListPage() {
       </motion.div>
 
       <div className="glass-card overflow-hidden">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="font-semibold">Live Salary Dashboard</h2>
-          <p className="text-xs text-muted-foreground">Attendance aur leave change hote hi earned salary aur deductions automatically update hotay hain.</p>
+        <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold">Live Salary Dashboard</h2>
+            <p className="text-xs text-muted-foreground">Attendance aur leave change hote hi earned salary aur deductions automatically update hotay hain.</p>
+          </div>
+          {user?.role === 'hr' && liveRows.length > 0 && (
+            <label className="relative block w-full sm:w-72">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={liveSearch}
+                onChange={(event) => setLiveSearch(event.target.value)}
+                placeholder="Search employee..."
+                aria-label="Search payroll employees"
+                className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+              />
+            </label>
+          )}
         </div>
         {liveLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Calculating live payroll...</div> : liveRows.length === 0 ? (
           <div className="p-10 text-center"><p className="font-medium">No payroll employees available</p><p className="mt-1 text-sm text-muted-foreground">Aapki profile ya reporting team active honi chahiye. Monthly salary missing ho to Employees module se configure karein.</p></div>
+        ) : user?.role === 'hr' ? (
+          visibleLiveRows.length === 0 ? (
+            <div className="p-10 text-center">
+              <Search className="mx-auto mb-3 h-9 w-9 text-muted-foreground" />
+              <p className="font-medium">No matching employee found</p>
+              <p className="mt-1 text-sm text-muted-foreground">Try a different name, code, designation or department.</p>
+            </div>
+          ) : (
+          <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {visibleLiveRows.map((row, index) => (
+              <motion.button
+                key={row.employeeId}
+                type="button"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.02 }}
+                onClick={() => setLivePayrollEmployee(row)}
+                className="group rounded-2xl border border-border bg-background p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <div className="flex items-center gap-3">
+                  <Avatar name={row.employeeName} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold">{row.employeeName}</p>
+                    <p className="truncate text-xs text-muted-foreground">{row.employeeCode} · {row.designation}</p>
+                  </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
+                  <div><p className="font-bold text-emerald-600">{row.present ?? 0}</p><p className="text-[11px] text-muted-foreground">Present</p></div>
+                  <div><p className="font-bold text-red-500">{row.absent ?? 0}</p><p className="text-[11px] text-muted-foreground">Absent</p></div>
+                  <div><p className="font-bold text-amber-500">{row.late ?? 0}</p><p className="text-[11px] text-muted-foreground">Late</p></div>
+                </div>
+                <p className="mt-3 text-center text-xs font-medium text-primary">Click to view complete payroll</p>
+              </motion.button>
+            ))}
+          </div>
+          )
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1150px] text-sm">
@@ -567,6 +724,12 @@ export default function PayrollListPage() {
         canGenerate={canGenerate}
         canApprove={canApprove}
         isActioning={isActioning}
+      />
+
+      <LivePayrollDetailModal
+        employee={livePayrollEmployee}
+        isOpen={Boolean(livePayrollEmployee)}
+        onClose={() => setLivePayrollEmployee(null)}
       />
     </div>
   );

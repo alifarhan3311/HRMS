@@ -839,7 +839,7 @@ async function requestRegularization(id, payload, actor) {
     }
   }
 
-  const employee = await Employee.findById(actor.id).select('managerId floorHeadId teamLeadId companyId fullName');
+  const employee = await Employee.findById(actor.id).select('managerId floorHeadId teamLeadId companyId fullName employeeCode department');
   const approvalAssignment = await resolveRegularizationApprover(employee, actor.companyId);
   if (!approvalAssignment) {
     throw createHttpError(422, 'No manager, team lead, HR, or super administrator is available to review this request.');
@@ -859,16 +859,35 @@ async function requestRegularization(id, payload, actor) {
     },
   });
 
-  await notificationService.createNotification({
+  await notificationService.createNotificationWithEmail({
     recipientId: approvalAssignment.approverId,
     companyId: actor.companyId,
     type: 'attendance_regularization_requested',
     title: requestType === 'late_waiver' ? 'Late waiver approval required' : 'Attendance correction approval required',
-    message: `${employee.fullName} submitted a request for ${record.date.toLocaleDateString()}.`,
+    message: `${employee.fullName} (${employee.employeeCode || 'N/A'}), ${employee.department || 'N/A'}, submitted ${requestType.replace('_', ' ')} for ${record.shiftDate || record.date.toISOString().slice(0, 10)}. Reason: ${reason}.`,
     link: '/attendance/approvals',
     metadata: { attendanceId: record._id, requestType },
     dedupeKey: `attendance-regularization-requested:${record._id}`,
   });
+
+  if (approvalAssignment.approvalStage === 'reporting') {
+    const hrUsers = await Employee.find({
+      companyId: actor.companyId,
+      role: 'hr',
+      status: 'active',
+      _id: { $ne: actor.id },
+    }).select('_id email').lean();
+    await Promise.allSettled(hrUsers.map(hr => notificationService.createNotificationWithEmail({
+      recipientId: hr._id,
+      companyId: actor.companyId,
+      type: 'attendance_request_submitted_hr_notice',
+      title: 'New attendance request submitted',
+      message: `${employee.fullName} (${employee.employeeCode || 'N/A'}), ${employee.department || 'N/A'}, submitted ${requestType.replace('_', ' ')} for ${record.shiftDate || record.date.toISOString().slice(0, 10)}. Reason: ${reason}. Reporting approval is pending.`,
+      link: '/attendance/approvals',
+      metadata: { attendanceId: record._id, requestType, approvalStage: 'reporting' },
+      dedupeKey: `attendance-submitted-hr:${record._id}:recipient:${hr._id}`,
+    }, { recipient: hr })));
+  }
 
   return repository.findById(id);
 }
@@ -903,7 +922,7 @@ async function reviewRegularization(id, { action, remarks }, actor) {
       'regularization.reportingRemarks': remarks || '',
       'regularization.assignedApprover': hrApprover,
     });
-    await notificationService.createNotification({
+    await notificationService.createNotificationWithEmail({
       recipientId: hrApprover,
       companyId: record.companyId,
       type: 'attendance_regularization_hr_approval_required',
@@ -913,7 +932,7 @@ async function reviewRegularization(id, { action, remarks }, actor) {
       metadata: { attendanceId: record._id, requestType: record.regularization.requestType },
       dedupeKey: `attendance-regularization-hr-stage:${record._id}`,
     });
-    await notificationService.createNotification({
+    await notificationService.createNotificationWithEmail({
       recipientId: record.employeeId._id || record.employeeId,
       companyId: record.companyId,
       type: 'attendance_regularization_forwarded_to_hr',
@@ -990,7 +1009,7 @@ async function reviewRegularization(id, { action, remarks }, actor) {
     await clearRecoveredMissedPunchPenalty(record, recoveredPunches);
   }
 
-  await notificationService.createNotification({
+  await notificationService.createNotificationWithEmail({
     recipientId: record.employeeId._id || record.employeeId,
     companyId: record.companyId,
     type: `attendance_regularization_${action === 'approve' ? 'approved' : 'rejected'}`,

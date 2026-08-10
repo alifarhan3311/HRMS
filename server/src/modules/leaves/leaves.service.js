@@ -160,7 +160,7 @@ async function assertCanViewLeave(actor, employeeId) {
 
 async function notifyEmployee(leave, notification) {
   try {
-    await notificationService.createNotification({
+    await notificationService.createNotificationWithEmail({
       recipientId: leave.employeeId?._id || leave.employeeId,
       companyId: leave.companyId,
       link: '/leaves',
@@ -177,12 +177,16 @@ async function notifyEmployee(leave, notification) {
 function approvalNotificationPayload(leave, stage, recipientId, employee) {
   const employeeId = leave.employeeId?._id || leave.employeeId;
   const employeeName = employee?.fullName || leave.employeeId?.fullName || 'An employee';
+  const employeeCode = employee?.employeeCode || leave.employeeId?.employeeCode || 'N/A';
+  const department = employee?.department || leave.employeeId?.department || 'N/A';
+  const startDate = new Date(leave.startDate).toISOString().slice(0, 10);
+  const endDate = new Date(leave.endDate).toISOString().slice(0, 10);
   return {
     recipientId,
     companyId: leave.companyId,
     type: 'leave_approval_required',
     title: 'Leave approval required',
-    message: `${employeeName} submitted a ${leave.leaveType} leave request awaiting your approval.`,
+    message: `${employeeName} (${employeeCode}), ${department}, submitted ${leave.leaveType} leave for ${startDate}${endDate !== startDate ? ` to ${endDate}` : ''}. Reason: ${leave.reason || 'Not provided'}. Approval stage: ${stage}.`,
     link: '/leaves',
     metadata: { leaveId: leave._id, employeeId, stage },
     dedupeKey: `leave-approval:${leave._id}:stage:${stage}:recipient:${recipientId}`,
@@ -192,7 +196,7 @@ function approvalNotificationPayload(leave, stage, recipientId, employee) {
 async function stageApproverIds(leave, stage) {
   const employeeId = leave.employeeId?._id || leave.employeeId;
   const employee = await Employee.findById(employeeId)
-    .select('fullName role managerId floorHeadId teamLeadId companyId status')
+    .select('fullName employeeCode department role managerId floorHeadId teamLeadId companyId status')
     .lean();
   if (!employee) return { employee: null, recipientIds: [] };
 
@@ -235,7 +239,7 @@ async function notifyStageApprovers(leave, stage, onlyRecipientId = null) {
       ? resolvedIds.filter(id => String(id) === String(onlyRecipientId))
       : resolvedIds;
     const results = await Promise.allSettled(recipientIds.map(recipientId =>
-      notificationService.createNotification(
+      notificationService.createNotificationWithEmail(
         approvalNotificationPayload(leave, stage, recipientId, employee)
       )
     ));
@@ -268,6 +272,34 @@ async function reservedLateAttendanceIds(employeeId, excludeLeaveId = null) {
   };
   if (excludeLeaveId) filter._id = { $ne: excludeLeaveId };
   return LeaveRequest.find(filter).distinct('selectedLateAttendanceIds');
+}
+
+async function notifyHrAboutSubmission(leave, employee) {
+  try {
+    const hrUsers = await Employee.find({
+      companyId: leave.companyId,
+      role: 'hr',
+      status: 'active',
+      _id: { $ne: leave.employeeId?._id || leave.employeeId },
+    }).select('_id email').lean();
+    const startDate = new Date(leave.startDate).toISOString().slice(0, 10);
+    const endDate = new Date(leave.endDate).toISOString().slice(0, 10);
+    await Promise.allSettled(hrUsers.map(hr => notificationService.createNotificationWithEmail({
+      recipientId: hr._id,
+      companyId: leave.companyId,
+      type: 'leave_submitted_hr_notice',
+      title: 'New leave request submitted',
+      message: `${employee.fullName} (${employee.employeeCode || 'N/A'}), ${employee.department || 'N/A'}, submitted ${leave.leaveType} leave for ${startDate}${endDate !== startDate ? ` to ${endDate}` : ''}. Reason: ${leave.reason || 'Not provided'}. Reporting approval is pending.`,
+      link: '/leaves',
+      metadata: { leaveId: leave._id, employeeId: employee._id, stage: leave.currentStage },
+      dedupeKey: `leave-submitted-hr:${leave._id}:recipient:${hr._id}`,
+    }, { recipient: hr })));
+  } catch (error) {
+    logger.error('[leaves] HR submission email could not be prepared', {
+      leaveId: String(leave._id),
+      error: error.message,
+    });
+  }
 }
 
 async function assertCanDecideLeaveStage(leave, actor, actorStage) {
@@ -490,6 +522,7 @@ async function applyLeave(payload, actor) {
       await leave.save();
       await notifyStageApprovers(leave, 2);
     }
+    if (leave.currentStage === 1) await notifyHrAboutSubmission(leave, employee);
   }
 
   emitLeaveUpdate(actor.companyId, 'applied', leave);

@@ -5,7 +5,7 @@ process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
 
 const { calculateAttendancePayroll, calculateSandwichDates } = require('../src/modules/payroll/payroll.service');
 
-test('payroll reports late groups without automatically deducting salary', () => {
+test('payroll deducts one full daily salary for every three chargeable lates', () => {
   const result = calculateAttendancePayroll({
     basicSalary: 30000,
     workingDays: 26,
@@ -20,10 +20,23 @@ test('payroll reports late groups without automatically deducting salary', () =>
   assert.equal(Math.round(result.perHourSalary), 167);
   assert.equal(result.absenceDeduction, 1000);
   assert.equal(result.halfDayDeduction, 500);
+  assert.equal(result.lateDeductionDays, 1);
+  assert.equal(result.lateDeduction, 1000);
+  assert.equal(result.lateConversionGroupsAvailable, 1);
+  assert.equal(result.unusedLates, 2);
+  assert.equal(result.unpaidLeaveDeduction, 2000);
+});
+
+test('approved leave-against-lates removes those lates from payroll deduction', () => {
+  const result = calculateAttendancePayroll({
+    basicSalary: 50000,
+    late: 4,
+    deductibleLate: 1,
+  });
+
   assert.equal(result.lateDeductionDays, 0);
   assert.equal(result.lateDeduction, 0);
-  assert.equal(result.lateConversionGroupsAvailable, 1);
-  assert.equal(result.unpaidLeaveDeduction, 2000);
+  assert.equal(result.unusedLates, 1);
 });
 
 test('weekly offs and consecutive holidays between absence days become sandwich leave', () => {

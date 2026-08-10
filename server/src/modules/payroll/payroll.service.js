@@ -31,17 +31,16 @@ async function notifyEmployee(record, type, title, message, suffix) {
 // ─── Calculation Engine ───────────────────────────────────────────────────────
 
 function calculateAttendancePayroll({
-  basicSalary, workingDays, absent, halfDay, late, unpaidLeave,
+  basicSalary, workingDays, absent, halfDay, late, deductibleLate = late, unpaidLeave,
   requiredMinutes = 480, lateMinutes = 0, payrollPolicy = {},
 }) {
   const perDaySalary = Number(basicSalary) / 30;
   const requiredHours = Number(requiredMinutes || 480) / 60;
   const perHourSalary = requiredHours ? perDaySalary / requiredHours : 0;
-  // Lates are informational in payroll. Employees may voluntarily convert
-  // exactly three eligible lates into one paid leave through HR approval.
-  const lateGroups = Math.floor(Number(late || 0) / 3);
-  const lateDeductionDays = 0;
-  const lateDeduction = 0;
+  const chargeableLates = Number(deductibleLate || 0);
+  const lateGroups = Math.floor(chargeableLates / 3);
+  const lateDeductionDays = lateGroups;
+  const lateDeduction = Math.round(perDaySalary * lateDeductionDays);
   return {
     perDaySalary,
     perHourSalary,
@@ -50,6 +49,7 @@ function calculateAttendancePayroll({
     lateDeductionDays,
     lateDeduction,
     lateConversionGroupsAvailable: lateGroups,
+    unusedLates: chargeableLates % 3,
     unpaidLeaveDeduction: Math.round(perDaySalary * Number(unpaidLeave || 0)),
   };
 }
@@ -133,13 +133,19 @@ async function getAttendanceData(employee, month, year) {
       status: 'approved',
       startDate: { $lte: end },
       endDate: { $gte: start },
-    }).select('leaveType startDate endDate dutyDates'),
+    }).select('leaveType startDate endDate dutyDates requestKind selectedLateAttendanceIds'),
   ]);
   const present = records.filter(r => r.status === 'present' || r.status === 'late').length;
   // Incomplete attendance has no verified sign-out/work duration. Treat it as
   // absent for payroll until HR approves the employee's time correction.
   const absent = records.filter(r => ['absent', 'incomplete'].includes(r.status)).length;
-  const late = records.filter(r => r.status === 'late').length;
+  const lateRecords = records.filter(r => r.status === 'late');
+  const late = lateRecords.length;
+  const waivedLateIds = new Set(approvedLeaves
+    .filter(leave => leave.requestKind === 'late_conversion')
+    .flatMap(leave => leave.selectedLateAttendanceIds || [])
+    .map(String));
+  const deductibleLate = lateRecords.filter(record => !waivedLateIds.has(String(record._id))).length;
   const lateMinutes = records.reduce((sum, record) => sum + Number(record.lateMinutes || 0), 0);
   const halfDay = records.filter(r => r.status === 'half_day').length;
   const holiday = records.filter(r => r.status === 'holiday').length;
@@ -148,6 +154,7 @@ async function getAttendanceData(employee, month, year) {
   const paidLeaveDates = new Set();
   const unpaidLeaveDates = new Set();
   for (const leave of approvedLeaves) {
+    if (leave.requestKind === 'late_conversion') continue;
     for (const dutyDate of leaveDutyDates(leave)) {
       if (dutyDate < dateKey(start) || dutyDate > dateKey(end)) continue;
       (leave.leaveType === 'unpaid' ? unpaidLeaveDates : paidLeaveDates).add(dutyDate);
@@ -168,7 +175,8 @@ async function getAttendanceData(employee, month, year) {
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return {
-    present, absent, late, lateMinutes, halfDay, holiday, weekend, workingDays,
+    present, absent, late, deductibleLate, waivedLate: late - deductibleLate,
+    lateMinutes, halfDay, holiday, weekend, workingDays,
     paidLeave: paidLeaveDates.size,
     unpaidLeave: unpaidLeaveDates.size,
     sandwichLeave: sandwichDates.size,
@@ -192,7 +200,7 @@ async function generatePayslip(payload, actor) {
   if (basicSalary <= 0) throw createHttpError(422, 'Employee salary must be configured before generating payroll.');
   const attendance = await getAttendanceData(employee, month, year);
   const {
-    present, absent, late, lateMinutes, halfDay, paidLeave, unpaidLeave, sandwichLeave, holiday, weekend,
+    present, absent, late, deductibleLate, lateMinutes, halfDay, paidLeave, unpaidLeave, sandwichLeave, holiday, weekend,
     workingDays, workedMinutes,
   } = attendance;
 
@@ -207,6 +215,7 @@ async function generatePayslip(payload, actor) {
     absent,
     halfDay,
     late,
+    deductibleLate,
     unpaidLeave: unpaidLeave + sandwichLeave,
     requiredMinutes: employee.shiftId?.requiredMinutes,
     lateMinutes,
@@ -372,6 +381,7 @@ async function getLivePayroll(query, actor) {
       absent: attendance.absent,
       halfDay: attendance.halfDay,
       late: attendance.late,
+      deductibleLate: attendance.deductibleLate,
       lateMinutes: attendance.lateMinutes,
       unpaidLeave: attendance.unpaidLeave + attendance.sandwichLeave,
       requiredMinutes: employee.shiftId?.requiredMinutes,
