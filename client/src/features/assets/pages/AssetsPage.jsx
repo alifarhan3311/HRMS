@@ -52,7 +52,6 @@ function AssetForm({ initial, employees, onSubmit, onClose, loading }) {
   return <form onSubmit={save}>
     <div className="max-h-[70vh] space-y-5 overflow-y-auto px-5 py-5">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Input required label="Asset ID" value={initial?.assetCode || 'Generated automatically on save'} disabled />
         <Select required label="Asset Type" value={form.category} onChange={e=>set('category',e.target.value)}>{CATEGORIES.map(x=><option key={x}>{x}</option>)}</Select>
         <Select label="Employee Name" value={form.employeeId} disabled={Boolean(initial)} onChange={e=>set('employeeId',e.target.value)}><option value="">Keep in stock (not assigned)</option>{employees.map(x=><option key={x._id} value={x._id}>{x.fullName} · {x.employeeCode}</option>)}</Select>
         <Input label="Serial Number" value={form.serialNumber} onChange={e=>set('serialNumber',e.target.value)} />
