@@ -2,6 +2,8 @@ const service = require('./assets.service');
 const asyncHandler = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 module.exports = {
+  types: asyncHandler(async (req, res) => res.json({ success: true, data: await service.listAssetTypes(req.user) })),
+  createType: asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await service.createAssetType(req.body, req.user) })),
   dashboard: asyncHandler(async (req, res) => res.json({ success: true, data: await service.getDashboard(req.user) })),
   list: asyncHandler(async (req, res) => res.json({ success: true, ...await service.listAssets(req.query, req.user) })),
   detail: asyncHandler(async (req, res) => res.json({ success: true, data: await service.getAssetDetails(req.params.id, req.user) })),

@@ -14,13 +14,13 @@ import { Skeleton } from '../../../components/ui/Skeleton';
 import { toast } from '../../../utils/toast';
 import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import {
-  useGetAssetsDashboardQuery, useListAssetsQuery, useGetAssetQuery,
+  useGetAssetsDashboardQuery, useListAssetsQuery, useGetAssetQuery, useGetAssetTypesQuery, useCreateAssetTypeMutation,
   useCreateAssetMutation, useUpdateAssetMutation, useAssignAssetMutation,
   useReturnAssetMutation, useChangeAssetStatusMutation, useAddAssetMaintenanceMutation,
   useUpdateAssetMaintenanceMutation,
 } from '../api/assets.api';
 
-const CATEGORIES = ['Laptop', 'Desktop', 'Monitor', 'Mobile Phone', 'SIM', 'Headset', 'Printer', 'Attendance Machine', 'Access Card', 'Office Keys', 'Other'];
+const DEFAULT_CATEGORIES = ['Laptop', 'Desktop', 'Monitor', 'Mobile Phone', 'SIM', 'Headset', 'Printer', 'Attendance Machine', 'Access Card', 'Office Keys'];
 const STATUSES = ['in_stock', 'assigned', 'under_repair', 'returned', 'lost', 'stolen', 'retired', 'disposed'];
 const STATUS_LABELS = Object.fromEntries(STATUSES.map(value => [value, value.replaceAll('_', ' ')]));
 const STATUS_VARIANTS = { in_stock: 'green', assigned: 'blue', under_repair: 'yellow', returned: 'gray', lost: 'red', stolen: 'red', retired: 'purple', disposed: 'gray' };
@@ -30,7 +30,7 @@ const formatDate = value => value ? new Date(value).toLocaleDateString('en-PK', 
 const formatMoney = value => `PKR ${Number(value || 0).toLocaleString()}`;
 const canManageRole = role => ['hr', 'admin', 'super_admin'].includes(role);
 
-function AssetForm({ initial, employees, onSubmit, onClose, loading }) {
+function AssetForm({ initial, employees, categories, onAddType, onSubmit, onClose, loading }) {
   const [form, setForm] = useState({
     employeeId: initial?.assignedEmployeeId?._id || '', category: initial?.category || 'Laptop',
     brand: initial?.brand || '', model: initial?.model || '', serialNumber: initial?.serialNumber || '',
@@ -52,7 +52,7 @@ function AssetForm({ initial, employees, onSubmit, onClose, loading }) {
   return <form onSubmit={save}>
     <div className="max-h-[70vh] space-y-5 overflow-y-auto px-5 py-5">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Select required label="Asset Type" value={form.category} onChange={e=>set('category',e.target.value)}>{CATEGORIES.map(x=><option key={x}>{x}</option>)}</Select>
+        <div><div className="mb-1 flex items-center justify-between"><span className="text-sm font-medium">Asset Type <span className="text-red-500">*</span></span><button type="button" title="Add asset type" aria-label="Add asset type" onClick={onAddType} className="rounded-lg p-1.5 text-primary transition hover:bg-primary/10"><Plus className="h-4 w-4"/></button></div><select required className={inputClass} value={form.category} onChange={e=>set('category',e.target.value)}>{categories.map(x=><option key={x}>{x}</option>)}</select></div>
         <Select label="Employee Name" value={form.employeeId} disabled={Boolean(initial)} onChange={e=>set('employeeId',e.target.value)}><option value="">Keep in stock (not assigned)</option>{employees.map(x=><option key={x._id} value={x._id}>{x.fullName} · {x.employeeCode}</option>)}</Select>
         <Input label="Serial Number" value={form.serialNumber} onChange={e=>set('serialNumber',e.target.value)} />
         <Input label="Brand" value={form.brand} onChange={e=>set('brand',e.target.value)} />
@@ -102,26 +102,32 @@ export default function AssetsPage() {
   const user=useSelector(s=>s.auth.user); const canManage=canManageRole(user?.role);
   const [filters,setFilters]=useState({search:'',status:'',category:'',employeeId:'',warranty:''});
   const [selected,setSelected]=useState(null); const [assetForm,setAssetForm]=useState(null); const [action,setAction]=useState(null);
+  const [typeModal,setTypeModal]=useState(false); const [newType,setNewType]=useState('');
+  const {data:typeData}=useGetAssetTypesQuery();
   const {data:dashboard,isLoading:dashLoading}=useGetAssetsDashboardQuery();
   const {data:list,isLoading}=useListAssetsQuery({...filters,limit:100});
   const {data:details,refetch:refetchDetail}=useGetAssetQuery(selected,{skip:!selected});
   const {data:employeeData}=useListEmployeesQuery({page:1,limit:100,status:'active'},{skip:!canManage});
   const employees=employeeData?.items||[]; const assets=list?.items||[];
   const [createAsset,{isLoading:creating}]=useCreateAssetMutation(); const [updateAsset,{isLoading:updating}]=useUpdateAssetMutation();
+  const [createAssetType,{isLoading:creatingType}]=useCreateAssetTypeMutation();
   const [assignAsset,{isLoading:assigning}]=useAssignAssetMutation(); const [returnAsset,{isLoading:returning}]=useReturnAssetMutation();
   const [changeStatus,{isLoading:changing}]=useChangeAssetStatusMutation(); const [addMaintenance,{isLoading:maintaining}]=useAddAssetMaintenanceMutation(); const [updateMaintenance]=useUpdateAssetMaintenanceMutation();
   const mutate=async(promise,message,close=true)=>{try{await promise.unwrap();toast.success(message);if(close){setAssetForm(null);setAction(null);}if(selected)refetchDetail();}catch(error){toast.error(error?.data?.error?.message||'Action failed.');}};
   const stats=dashboard?.data||{};
+  const categories=typeData?.data||DEFAULT_CATEGORIES;
   const statItems=useMemo(()=>[["Total Assets",stats.total,Package],["Assigned",stats.assigned,UserRound],["In Stock",stats.inStock,Box],["Under Repair",stats.underRepair,Wrench],["Warranty Expiring",stats.warrantyExpiring,CalendarClock],["Lost / Stolen",stats.lostStolen,ShieldAlert],["Pending Returns",stats.pendingReturns,RotateCcw]], [stats]);
   const saveAsset=body=>assetForm?mutate(updateAsset({id:assetForm._id,...body}),'Asset updated.'):mutate(createAsset(body),'Asset created.');
+  const saveType=async event=>{event.preventDefault();try{await createAssetType({name:newType}).unwrap();toast.success('Asset type added.');setNewType('');setTypeModal(false);}catch(error){toast.error(error?.data?.error?.message||'Unable to add asset type.');}};
   const submitAction=body=>{const calls={assign:assignAsset,return:returnAsset,maintenance:addMaintenance,status:changeStatus};return mutate(calls[action]({id:selected,...body}),`${action.replaceAll('_',' ')} updated.`);};
   return <div className="space-y-6 p-4 sm:p-6">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="flex items-center gap-2 text-2xl font-bold"><Package className="text-primary"/> Assets</h1><p className="text-sm text-muted-foreground">Inventory, assignments, returns, maintenance and asset clearance.</p></div>{canManage&&<Button onClick={()=>setAssetForm(false)}><Plus className="h-4 w-4"/> Add Asset</Button>}</div>
     {dashLoading?<Skeleton className="h-28 w-full"/>:<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{statItems.map(([title,value,Icon])=><StatCard key={title} title={title} value={value||0} icon={Icon}/>)}</div>}
-    <div className="rounded-2xl border border-border bg-card p-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><label className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground"/><input className={`${inputClass} pl-9`} placeholder="Search assets..." value={filters.search} onChange={e=>setFilters({...filters,search:e.target.value})}/></label><select className={inputClass} value={filters.status} onChange={e=>setFilters({...filters,status:e.target.value})}><option value="">All Statuses</option>{STATUSES.map(x=><option key={x} value={x}>{STATUS_LABELS[x]}</option>)}</select><select className={inputClass} value={filters.category} onChange={e=>setFilters({...filters,category:e.target.value})}><option value="">All Types</option>{CATEGORIES.map(x=><option key={x}>{x}</option>)}</select>{canManage&&<select className={inputClass} value={filters.employeeId} onChange={e=>setFilters({...filters,employeeId:e.target.value})}><option value="">All Employees</option>{employees.map(x=><option key={x._id} value={x._id}>{x.fullName}</option>)}</select>}<select className={inputClass} value={filters.warranty} onChange={e=>setFilters({...filters,warranty:e.target.value})}><option value="">All Warranties</option><option value="expiring">Expiring in 30 days</option><option value="expired">Expired</option></select></div></div>
+    <div className="rounded-2xl border border-border bg-card p-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><label className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground"/><input className={`${inputClass} pl-9`} placeholder="Search assets..." value={filters.search} onChange={e=>setFilters({...filters,search:e.target.value})}/></label><select className={inputClass} value={filters.status} onChange={e=>setFilters({...filters,status:e.target.value})}><option value="">All Statuses</option>{STATUSES.map(x=><option key={x} value={x}>{STATUS_LABELS[x]}</option>)}</select><select className={inputClass} value={filters.category} onChange={e=>setFilters({...filters,category:e.target.value})}><option value="">All Types</option>{categories.map(x=><option key={x}>{x}</option>)}</select>{canManage&&<select className={inputClass} value={filters.employeeId} onChange={e=>setFilters({...filters,employeeId:e.target.value})}><option value="">All Employees</option>{employees.map(x=><option key={x._id} value={x._id}>{x.fullName}</option>)}</select>}<select className={inputClass} value={filters.warranty} onChange={e=>setFilters({...filters,warranty:e.target.value})}><option value="">All Warranties</option><option value="expiring">Expiring in 30 days</option><option value="expired">Expired</option></select></div></div>
     {isLoading?<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[1,2,3,4,5,6].map(x=><Skeleton key={x} className="h-44"/>)}</div>:assets.length?<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{assets.map(asset=><button key={asset._id} type="button" onClick={()=>setSelected(asset._id)} className="rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 gap-3"><div className="rounded-xl bg-primary/10 p-2.5"><Laptop className="h-5 w-5 text-primary"/></div><div className="min-w-0"><p className="truncate font-semibold">{asset.name}</p><p className="text-xs text-muted-foreground">{asset.assetCode} · {asset.category}</p></div></div><Badge variant={STATUS_VARIANTS[asset.status]}>{STATUS_LABELS[asset.status]}</Badge></div><div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-3 text-sm"><p><span className="text-xs text-muted-foreground">Brand / Model</span><br/><b>{[asset.brand,asset.model].filter(Boolean).join(' ')||'—'}</b></p><p><span className="text-xs text-muted-foreground">Assigned To</span><br/><b>{asset.assignedEmployeeId?.fullName||'Available'}</b></p><p><span className="text-xs text-muted-foreground">Serial</span><br/><b>{asset.serialNumber||'—'}</b></p><p><span className="text-xs text-muted-foreground">Warranty</span><br/><b>{formatDate(asset.warrantyExpiryDate)}</b></p></div></button>)}</div>:<div className="rounded-2xl border border-border bg-card p-16 text-center"><Package className="mx-auto mb-3 h-10 w-10 text-muted-foreground"/><p className="font-medium">No assets found</p><p className="text-sm text-muted-foreground">{canManage?'Add your first company asset.':'No assets are currently assigned to you.'}</p></div>}
     <Modal isOpen={Boolean(selected)} onClose={()=>setSelected(null)} title="Asset Details" size="xl"><AssetDetails asset={details?.data} canManage={canManage} onEdit={()=>setAssetForm(details.data)} onAction={setAction} onCompleteRepair={item=>mutate(updateMaintenance({id:selected,maintenanceId:item._id,status:'completed',completionDate:today()}),'Repair completed.',false)}/></Modal>
-    <Modal isOpen={assetForm!==null} onClose={()=>setAssetForm(null)} title={assetForm?'Edit Asset':'Add Asset'} size="xl"><AssetForm key={assetForm?._id||'new'} initial={assetForm||null} employees={employees} onSubmit={saveAsset} onClose={()=>setAssetForm(null)} loading={creating||updating}/></Modal>
+    <Modal isOpen={assetForm!==null} onClose={()=>setAssetForm(null)} title={assetForm?'Edit Asset':'Add Asset'} size="xl"><AssetForm key={assetForm?._id||'new'} initial={assetForm||null} employees={employees} categories={categories} onAddType={()=>setTypeModal(true)} onSubmit={saveAsset} onClose={()=>setAssetForm(null)} loading={creating||updating}/></Modal>
+    <Modal isOpen={typeModal} onClose={()=>setTypeModal(false)} title="Add Asset Type" size="sm"><form onSubmit={saveType}><div className="p-5"><Input required autoFocus label="Asset Type Name" value={newType} onChange={e=>setNewType(e.target.value)} placeholder="e.g. Tablet"/></div><ModalFooter><Button type="button" variant="ghost" onClick={()=>setTypeModal(false)}>Cancel</Button><Button type="submit" disabled={creatingType}>{creatingType?'Adding...':'Add Type'}</Button></ModalFooter></form></Modal>
     <Modal isOpen={Boolean(action)} onClose={()=>setAction(null)} title={{assign:'Assign Asset',return:'Return Asset',maintenance:'Add Maintenance',status:'Change Asset Status'}[action]||'Asset Action'} size="md">{action&&<ActionForm key={action} type={action} employees={employees} onSubmit={submitAction} onClose={()=>setAction(null)} loading={assigning||returning||changing||maintaining}/>}</Modal>
   </div>;
 }

@@ -4,11 +4,13 @@ const Asset = require('./assets.model');
 const AssetAssignment = require('./assetAssignment.model');
 const AssetMaintenance = require('./assetMaintenance.model');
 const AssetHistory = require('./assetHistory.model');
+const AssetType = require('./assetType.model');
 const Employee = require('../employees/employees.model');
 const EmployeeExit = require('../exits/exits.model');
 const notificationService = require('../notifications/notifications.service');
 
 const MANAGE_ROLES = ['super_admin', 'admin', 'hr'];
+const DEFAULT_ASSET_TYPES = ['Laptop', 'Desktop', 'Monitor', 'Mobile Phone', 'SIM', 'Headset', 'Printer', 'Attendance Machine', 'Access Card', 'Office Keys'];
 const isManager = actor => MANAGE_ROLES.includes(actor.role);
 const clean = value => (value === '' || value === null ? undefined : value);
 
@@ -326,6 +328,26 @@ async function getEmployeeAssets(employeeId, actor) {
   return { employee, items, pending: items.filter(item => !['lost', 'stolen'].includes(item.status)).length };
 }
 
+async function listAssetTypes(actor) {
+  const customTypes = await AssetType.find({ companyId: actor.companyId }).select('name').sort('name').lean();
+  return [...new Set([...DEFAULT_ASSET_TYPES, ...customTypes.map(item => item.name)])]
+    .sort((a, b) => a.localeCompare(b));
+}
+
+async function createAssetType(payload, actor) {
+  const name = payload.name.trim().replace(/\s+/g, ' ');
+  const defaultType = DEFAULT_ASSET_TYPES.find(type => type.toLowerCase() === name.toLowerCase());
+  if (defaultType) return { name: defaultType, existing: true };
+  try {
+    const type = await AssetType.create({ companyId: actor.companyId, name, createdBy: actor.id });
+    return { name: type.name, existing: false };
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    const existing = await AssetType.findOne({ companyId: actor.companyId, name }).collation({ locale: 'en', strength: 2 });
+    return { name: existing?.name || name, existing: true };
+  }
+}
+
 async function processAssetExpiryNotifications(now = new Date()) {
   const deadline = new Date(now.getTime() + 30 * 86400000);
   const companies = await Asset.distinct('companyId', { warrantyExpiryDate: { $lte: deadline } });
@@ -365,5 +387,6 @@ module.exports = {
   createAsset, updateAsset, listAssets, getDashboard, getAssetDetails,
   assignAsset, returnAsset, changeStatus, addMaintenance, updateMaintenance,
   getEmployeeAssets,
+  listAssetTypes, createAssetType,
   processAssetExpiryNotifications,
 };

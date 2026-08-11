@@ -9,6 +9,8 @@ const VIEW_ROLES = ['employee', 'team_lead', 'floor_head', 'manager', 'admin', '
 const MANAGE_ROLES = ['admin', 'hr', 'super_admin'];
 
 router.use(authenticate);
+router.get('/types', authorize(...VIEW_ROLES), controller.types);
+router.post('/types', authorize(...MANAGE_ROLES), validate(validation.typeSchema), controller.createType);
 router.get('/dashboard', authorize(...VIEW_ROLES), controller.dashboard);
 router.get('/employee/:employeeId', authorize(...VIEW_ROLES), controller.employeeAssets);
 router.get('/', authorize(...VIEW_ROLES), controller.list);

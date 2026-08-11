@@ -2,6 +2,11 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const validation = require('../src/modules/assets/assets.validation');
 
+test('custom asset type requires a meaningful name', () => {
+  assert.equal(validation.typeSchema.validate({ name: 'Tablet' }).error, undefined);
+  assert.equal(validation.typeSchema.validate({ name: ' ' }).error !== undefined, true);
+});
+
 test('asset inventory auto-generates identity and requires category', () => {
   const valid = validation.createSchema.validate({
     category: 'Laptop', brand: 'Dell', model: 'Latitude',

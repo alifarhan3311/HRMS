@@ -2,6 +2,8 @@ import { api } from '../../../services/apiSlice';
 
 export const assetsApi = api.injectEndpoints({
   endpoints: builder => ({
+    getAssetTypes: builder.query({ query: () => '/assets/types', providesTags: ['Assets'] }),
+    createAssetType: builder.mutation({ query: body => ({ url: '/assets/types', method: 'POST', body }), invalidatesTags: ['Assets'] }),
     getAssetsDashboard: builder.query({ query: () => '/assets/dashboard', providesTags: ['Assets'] }),
     listAssets: builder.query({ query: params => ({ url: '/assets', params }), providesTags: ['Assets'] }),
     getAsset: builder.query({ query: id => `/assets/${id}`, providesTags: (r,e,id) => [{ type: 'Assets', id }] }),
@@ -17,6 +19,7 @@ export const assetsApi = api.injectEndpoints({
 });
 
 export const {
+  useGetAssetTypesQuery, useCreateAssetTypeMutation,
   useGetAssetsDashboardQuery, useListAssetsQuery, useGetAssetQuery, useGetEmployeeAssetsQuery,
   useCreateAssetMutation, useUpdateAssetMutation, useAssignAssetMutation, useReturnAssetMutation,
   useChangeAssetStatusMutation, useAddAssetMaintenanceMutation, useUpdateAssetMaintenanceMutation,

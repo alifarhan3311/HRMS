@@ -2,6 +2,7 @@ const Joi = require('joi');
 
 const objectId = Joi.string().hex().length(24);
 const optionalText = max => Joi.string().trim().max(max).allow('', null);
+const typeSchema = Joi.object({ name: Joi.string().trim().min(2).max(100).required() });
 const network = Joi.object({
   ipAddress: optionalText(64),
   macAddress: optionalText(64),
@@ -73,6 +74,7 @@ const maintenanceSchema = Joi.object({
 const maintenanceUpdateSchema = maintenanceSchema.fork(['issue', 'reportedDate'], schema => schema.optional()).min(1);
 
 module.exports = {
+  typeSchema,
   createSchema, updateSchema, assignSchema, returnSchema, statusSchema,
   maintenanceSchema, maintenanceUpdateSchema,
 };
