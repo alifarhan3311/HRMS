@@ -29,10 +29,16 @@ const assetFields = {
 };
 
 const createSchema = Joi.object({
-  ...assetFields,
-  assetCode: assetFields.assetCode.required(),
-  name: assetFields.name.required(),
   category: assetFields.category.required(),
+  employeeId: objectId.allow('', null),
+  brand: assetFields.brand,
+  model: assetFields.model,
+  serialNumber: assetFields.serialNumber,
+  purchaseDate: assetFields.purchaseDate,
+  purchaseCost: assetFields.purchaseCost,
+  warrantyExpiryDate: assetFields.warrantyExpiryDate,
+  department: assetFields.department,
+  notes: assetFields.notes,
 });
 const updateSchema = Joi.object(assetFields).min(1);
 const assignSchema = Joi.object({

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import {
   Package, Plus, Search, Laptop, UserRound, Wrench, ShieldAlert,
-  Box, RotateCcw, AlertTriangle, CalendarClock, History, Network,
+  Box, RotateCcw, AlertTriangle, CalendarClock, History,
 } from 'lucide-react';
 import Button from '../../../components/ui/Button';
 import StatCard from '../../../components/ui/StatCard';
@@ -30,21 +30,20 @@ const formatDate = value => value ? new Date(value).toLocaleDateString('en-PK', 
 const formatMoney = value => `PKR ${Number(value || 0).toLocaleString()}`;
 const canManageRole = role => ['hr', 'admin', 'super_admin'].includes(role);
 
-function AssetForm({ initial, onSubmit, onClose, loading }) {
+function AssetForm({ initial, employees, onSubmit, onClose, loading }) {
   const [form, setForm] = useState({
-    assetCode: initial?.assetCode || '', name: initial?.name || '', category: initial?.category || 'Laptop',
+    employeeId: initial?.assignedEmployeeId?._id || '', category: initial?.category || 'Laptop',
     brand: initial?.brand || '', model: initial?.model || '', serialNumber: initial?.serialNumber || '',
     purchaseDate: initial?.purchaseDate?.slice?.(0, 10) || '', purchaseCost: initial?.purchaseCost || '',
-    vendor: initial?.vendor || '', warrantyExpiryDate: initial?.warrantyExpiryDate?.slice?.(0, 10) || '',
-    department: initial?.department || '', location: initial?.location || 'Main Office', condition: initial?.condition || 'Good',
-    notes: initial?.notes || '', network: initial?.network || { presenceStatus: 'unknown' },
+    warrantyExpiryDate: initial?.warrantyExpiryDate?.slice?.(0, 10) || '',
+    department: initial?.department || '', notes: initial?.notes || '',
   });
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }));
-  const setNetwork = (key, value) => setForm(current => ({ ...current, network: { ...current.network, [key]: value } }));
   const save = event => {
     event.preventDefault();
     onSubmit({
       ...form,
+      ...(initial ? { employeeId: undefined } : {}),
       purchaseCost: Number(form.purchaseCost || 0),
       purchaseDate: form.purchaseDate || null,
       warrantyExpiryDate: form.warrantyExpiryDate || null,
@@ -53,26 +52,17 @@ function AssetForm({ initial, onSubmit, onClose, loading }) {
   return <form onSubmit={save}>
     <div className="max-h-[70vh] space-y-5 overflow-y-auto px-5 py-5">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Input required label="Asset ID" value={form.assetCode} onChange={e=>set('assetCode',e.target.value)} disabled={Boolean(initial)} />
-        <Input required label="Asset Name" value={form.name} onChange={e=>set('name',e.target.value)} />
-        <Select label="Asset Type" value={form.category} onChange={e=>set('category',e.target.value)}>{CATEGORIES.map(x=><option key={x}>{x}</option>)}</Select>
+        <Input required label="Asset ID" value={initial?.assetCode || 'Generated automatically on save'} disabled />
+        <Select required label="Asset Type" value={form.category} onChange={e=>set('category',e.target.value)}>{CATEGORIES.map(x=><option key={x}>{x}</option>)}</Select>
+        <Select label="Employee Name" value={form.employeeId} disabled={Boolean(initial)} onChange={e=>set('employeeId',e.target.value)}><option value="">Keep in stock (not assigned)</option>{employees.map(x=><option key={x._id} value={x._id}>{x.fullName} · {x.employeeCode}</option>)}</Select>
         <Input label="Serial Number" value={form.serialNumber} onChange={e=>set('serialNumber',e.target.value)} />
         <Input label="Brand" value={form.brand} onChange={e=>set('brand',e.target.value)} />
         <Input label="Model" value={form.model} onChange={e=>set('model',e.target.value)} />
         <Input label="Purchase Date" type="date" value={form.purchaseDate} onChange={e=>set('purchaseDate',e.target.value)} />
         <Input label="Purchase Cost" type="number" min="0" value={form.purchaseCost} onChange={e=>set('purchaseCost',e.target.value)} />
-        <Input label="Vendor" value={form.vendor} onChange={e=>set('vendor',e.target.value)} />
         <Input label="Warranty Expiry" type="date" value={form.warrantyExpiryDate} onChange={e=>set('warrantyExpiryDate',e.target.value)} />
         <Input label="Department" value={form.department} onChange={e=>set('department',e.target.value)} />
-        <Input label="Location" value={form.location} onChange={e=>set('location',e.target.value)} />
-        <Input label="Current Condition" value={form.condition} onChange={e=>set('condition',e.target.value)} />
       </div>
-      <div className="rounded-2xl border border-border p-4"><p className="mb-3 flex items-center gap-2 text-sm font-semibold"><Network className="h-4 w-4"/> Basic Network Information (Manual)</p><div className="grid gap-3 sm:grid-cols-2">
-        <Input label="IP Address" value={form.network.ipAddress||''} onChange={e=>setNetwork('ipAddress',e.target.value)}/>
-        <Input label="MAC Address" value={form.network.macAddress||''} onChange={e=>setNetwork('macAddress',e.target.value)}/>
-        <Input label="Hostname" value={form.network.hostname||''} onChange={e=>setNetwork('hostname',e.target.value)}/>
-        <Select label="Presence" value={form.network.presenceStatus||'unknown'} onChange={e=>setNetwork('presenceStatus',e.target.value)}><option value="unknown">Unknown</option><option value="online">Online</option><option value="offline">Offline</option></Select>
-      </div></div>
       <label className="block text-sm">Notes<textarea className={`${inputClass} mt-1 min-h-24`} value={form.notes} onChange={e=>set('notes',e.target.value)}/></label>
     </div><ModalFooter><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" disabled={loading}>{loading?'Saving...':'Save Asset'}</Button></ModalFooter>
   </form>;
@@ -132,7 +122,7 @@ export default function AssetsPage() {
     <div className="rounded-2xl border border-border bg-card p-4"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><label className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground"/><input className={`${inputClass} pl-9`} placeholder="Search assets..." value={filters.search} onChange={e=>setFilters({...filters,search:e.target.value})}/></label><select className={inputClass} value={filters.status} onChange={e=>setFilters({...filters,status:e.target.value})}><option value="">All Statuses</option>{STATUSES.map(x=><option key={x} value={x}>{STATUS_LABELS[x]}</option>)}</select><select className={inputClass} value={filters.category} onChange={e=>setFilters({...filters,category:e.target.value})}><option value="">All Types</option>{CATEGORIES.map(x=><option key={x}>{x}</option>)}</select>{canManage&&<select className={inputClass} value={filters.employeeId} onChange={e=>setFilters({...filters,employeeId:e.target.value})}><option value="">All Employees</option>{employees.map(x=><option key={x._id} value={x._id}>{x.fullName}</option>)}</select>}<select className={inputClass} value={filters.warranty} onChange={e=>setFilters({...filters,warranty:e.target.value})}><option value="">All Warranties</option><option value="expiring">Expiring in 30 days</option><option value="expired">Expired</option></select></div></div>
     {isLoading?<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[1,2,3,4,5,6].map(x=><Skeleton key={x} className="h-44"/>)}</div>:assets.length?<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{assets.map(asset=><button key={asset._id} type="button" onClick={()=>setSelected(asset._id)} className="rounded-2xl border border-border bg-card p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 gap-3"><div className="rounded-xl bg-primary/10 p-2.5"><Laptop className="h-5 w-5 text-primary"/></div><div className="min-w-0"><p className="truncate font-semibold">{asset.name}</p><p className="text-xs text-muted-foreground">{asset.assetCode} · {asset.category}</p></div></div><Badge variant={STATUS_VARIANTS[asset.status]}>{STATUS_LABELS[asset.status]}</Badge></div><div className="mt-4 grid grid-cols-2 gap-2 border-t border-border pt-3 text-sm"><p><span className="text-xs text-muted-foreground">Brand / Model</span><br/><b>{[asset.brand,asset.model].filter(Boolean).join(' ')||'—'}</b></p><p><span className="text-xs text-muted-foreground">Assigned To</span><br/><b>{asset.assignedEmployeeId?.fullName||'Available'}</b></p><p><span className="text-xs text-muted-foreground">Serial</span><br/><b>{asset.serialNumber||'—'}</b></p><p><span className="text-xs text-muted-foreground">Warranty</span><br/><b>{formatDate(asset.warrantyExpiryDate)}</b></p></div></button>)}</div>:<div className="rounded-2xl border border-border bg-card p-16 text-center"><Package className="mx-auto mb-3 h-10 w-10 text-muted-foreground"/><p className="font-medium">No assets found</p><p className="text-sm text-muted-foreground">{canManage?'Add your first company asset.':'No assets are currently assigned to you.'}</p></div>}
     <Modal isOpen={Boolean(selected)} onClose={()=>setSelected(null)} title="Asset Details" size="xl"><AssetDetails asset={details?.data} canManage={canManage} onEdit={()=>setAssetForm(details.data)} onAction={setAction} onCompleteRepair={item=>mutate(updateMaintenance({id:selected,maintenanceId:item._id,status:'completed',completionDate:today()}),'Repair completed.',false)}/></Modal>
-    <Modal isOpen={assetForm!==null} onClose={()=>setAssetForm(null)} title={assetForm?'Edit Asset':'Add Asset'} size="xl"><AssetForm key={assetForm?._id||'new'} initial={assetForm||null} onSubmit={saveAsset} onClose={()=>setAssetForm(null)} loading={creating||updating}/></Modal>
+    <Modal isOpen={assetForm!==null} onClose={()=>setAssetForm(null)} title={assetForm?'Edit Asset':'Add Asset'} size="xl"><AssetForm key={assetForm?._id||'new'} initial={assetForm||null} employees={employees} onSubmit={saveAsset} onClose={()=>setAssetForm(null)} loading={creating||updating}/></Modal>
     <Modal isOpen={Boolean(action)} onClose={()=>setAction(null)} title={{assign:'Assign Asset',return:'Return Asset',maintenance:'Add Maintenance',status:'Change Asset Status'}[action]||'Asset Action'} size="md">{action&&<ActionForm key={action} type={action} employees={employees} onSubmit={submitAction} onClose={()=>setAction(null)} loading={assigning||returning||changing||maintaining}/>}</Modal>
   </div>;
 }

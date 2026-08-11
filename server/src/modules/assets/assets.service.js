@@ -1,4 +1,5 @@
 const createHttpError = require('http-errors');
+const crypto = require('crypto');
 const Asset = require('./assets.model');
 const AssetAssignment = require('./assetAssignment.model');
 const AssetMaintenance = require('./assetMaintenance.model');
@@ -43,13 +44,40 @@ async function getAssetForActor(id, actor) {
 }
 
 async function createAsset(payload, actor) {
-  const asset = await Asset.create({
-    ...normalizePayload(payload),
-    companyId: actor.companyId,
-    createdBy: actor.id,
-    updatedBy: actor.id,
-  });
+  const { employeeId, ...input } = normalizePayload(payload);
+  let employee;
+  if (employeeId) {
+    employee = await Employee.findOne({
+      _id: employeeId, companyId: actor.companyId, status: { $in: ['active', 'on_leave'] },
+    }).select('_id department');
+    if (!employee) throw createHttpError(422, 'Select an active employee.');
+  }
+  input.name = [input.brand, input.model].filter(Boolean).join(' ') || input.category;
+  input.department = input.department || employee?.department;
+  let asset;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      asset = await Asset.create({
+        ...input,
+        assetCode: `AST-${new Date().toISOString().slice(0, 10).replaceAll('-', '')}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`,
+        companyId: actor.companyId,
+        createdBy: actor.id,
+        updatedBy: actor.id,
+      });
+      break;
+    } catch (error) {
+      if (error?.code !== 11000 || !error?.keyPattern?.assetCode || attempt === 4) throw error;
+    }
+  }
   await history(asset, actor, 'asset_created', { newStatus: asset.status, notes: asset.notes });
+  if (employee) {
+    return assignAsset(asset._id, {
+      employeeId: employee._id,
+      assignmentDate: new Date(),
+      conditionAtAssignment: 'Good',
+      notes: 'Assigned while creating asset.',
+    }, actor);
+  }
   return getAssetDetails(asset._id, actor);
 }
 
