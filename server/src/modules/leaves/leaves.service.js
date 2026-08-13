@@ -58,6 +58,50 @@ function zonedDateTimeParts(value, timeZone = 'Asia/Karachi') {
   }, {});
 }
 
+function leaveAttendanceFilter(leave) {
+  const dutyDates = (leave.dutyDates || []).filter(Boolean);
+  const dateRanges = dutyDates.map((key) => ({
+    date: {
+      $gte: new Date(`${key}T00:00:00.000Z`),
+      $lte: new Date(`${key}T23:59:59.999Z`),
+    },
+  }));
+  return {
+    employeeId: leave.employeeId?._id || leave.employeeId,
+    companyId: leave.companyId,
+    $or: [
+      ...(dutyDates.length ? [{ shiftDate: { $in: dutyDates } }] : []),
+      ...(dutyDates.length ? [{
+        $and: [
+          { $or: [{ shiftDate: { $exists: false } }, { shiftDate: null }] },
+          { $or: dateRanges },
+        ],
+      }] : []),
+      ...(!dutyDates.length ? [{ date: { $gte: leave.startDate, $lte: leave.endDate } }] : []),
+    ],
+  };
+}
+
+async function syncApprovedLeaveAttendance(leave, session) {
+  if (leave.requestKind === 'late_conversion') return 0;
+  const filter = leaveAttendanceFilter(leave);
+  const penalized = await Attendance.countDocuments({ ...filter, lateCountAppliedAt: { $exists: true } }).session(session || null);
+  await Attendance.updateMany(filter, {
+    $set: { status: 'on_leave', lateMinutes: 0, notes: 'Approved leave synchronized with attendance.' },
+    $unset: {
+      missedPunchType: '', lateCountAppliedAt: '', autoClosedAt: '',
+    },
+  }, { session });
+  if (penalized) {
+    await Employee.updateOne(
+      { _id: leave.employeeId?._id || leave.employeeId },
+      [{ $set: { lateCount: { $max: [0, { $subtract: [{ $ifNull: ['$lateCount', 0] }, penalized] }] } } }],
+      { session },
+    );
+  }
+  return penalized;
+}
+
 function clockMinutes(parts) {
   return (Number(parts.hour) * 60) + Number(parts.minute);
 }
@@ -587,6 +631,7 @@ async function approveLeave(id, { remarks }, actor) {
         employee.leaveBalance[key].used = Number(balance.used || 0) + Number(leave.totalDays);
         await employee.save({ session });
       }
+      if (isLastStage) await syncApprovedLeaveAttendance(leave, session);
     });
   } finally {
     await session.endSession();
@@ -751,7 +796,7 @@ module.exports = {
   getEligibleLates,
   applyLeaveAgainstLates,
   applyLeave,
-  approveLeave,
+  approveLeave, syncApprovedLeaveAttendance, leaveAttendanceFilter,
   rejectLeave,
   cancelLeave,
   listLeaves,

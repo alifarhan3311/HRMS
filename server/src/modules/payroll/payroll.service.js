@@ -124,6 +124,15 @@ function calculateSandwichDates({ start, end, workingDayNumbers, records, unpaid
   return sandwich;
 }
 
+function isPayrollAbsentRecord(record) {
+  return record.status === 'absent';
+}
+
+function isPayrollLateRecord(record) {
+  return record.status === 'late'
+    || (record.status === 'incomplete' && Boolean(record.lateCountAppliedAt));
+}
+
 async function getAttendanceData(employee, month, year) {
   const { start, end } = monthBounds(month, year);
   const [records, approvedLeaves] = await Promise.all([
@@ -136,10 +145,10 @@ async function getAttendanceData(employee, month, year) {
     }).select('leaveType startDate endDate dutyDates requestKind selectedLateAttendanceIds'),
   ]);
   const present = records.filter(r => r.status === 'present' || r.status === 'late').length;
-  // Incomplete attendance has no verified sign-out/work duration. Treat it as
-  // absent for payroll until HR approves the employee's time correction.
-  const absent = records.filter(r => ['absent', 'incomplete'].includes(r.status)).length;
-  const lateRecords = records.filter(r => r.status === 'late');
+  // A missing sign-out is one late violation, not an absence. The attendance
+  // automation marks that violation with lateCountAppliedAt after the shift.
+  const absent = records.filter(isPayrollAbsentRecord).length;
+  const lateRecords = records.filter(isPayrollLateRecord);
   const late = lateRecords.length;
   const waivedLateIds = new Set(approvedLeaves
     .filter(leave => leave.requestKind === 'late_conversion')
@@ -415,5 +424,6 @@ async function getLivePayroll(query, actor) {
 module.exports = {
   generatePayslip, updatePayslip, listPayslips, getPayslipById,
   submitForApproval, approvePayslip, markPaid, lockPayslip,
-  calculateAttendancePayroll, calculateSandwichDates, getLivePayroll,
+  calculateAttendancePayroll, calculateSandwichDates,
+  isPayrollAbsentRecord, isPayrollLateRecord, getLivePayroll,
 };

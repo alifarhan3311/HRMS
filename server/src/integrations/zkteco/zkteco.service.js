@@ -424,6 +424,55 @@ async function backfillEmployeeAttendance(employeeId) {
   return summary;
 }
 
+async function replayStoredPunchesForAttendance(attendanceId) {
+  const record = await Attendance.findById(attendanceId);
+  if (!record) return { restored: false, reason: 'attendance_not_found' };
+
+  const [employee, punches] = await Promise.all([
+    Employee.findOne({ _id: record.employeeId, companyId: record.companyId, status: 'active' }),
+    BiometricPunch.find({ attendanceId: record._id, employeeId: record.employeeId })
+      .sort({ punchTime: 1, _id: 1 }),
+  ]);
+  if (!employee) return { restored: false, reason: 'employee_not_found' };
+  if (!punches.length) return { restored: false, reason: 'punches_not_found' };
+
+  await Attendance.updateOne({ _id: record._id }, {
+    $set: {
+      status: 'absent',
+      totalHours: 0,
+      workedMinutes: 0,
+      overtimeMinutes: 0,
+      lateMinutes: 0,
+      earlyLeaveMinutes: 0,
+      notes: 'Attendance restored from the biometric punch audit trail.',
+    },
+    $unset: {
+      signInTime: '',
+      signOutTime: '',
+      autoClosedAt: '',
+      missedPunchType: '',
+      lateCountAppliedAt: '',
+    },
+  });
+
+  let processed = 0;
+  for (const punch of punches) {
+    const result = await processPunch(inputFromStoredPunch(punch), punch);
+    if (result.status === 'error') {
+      return { restored: false, reason: result.error || 'punch_replay_failed', processed };
+    }
+    processed += 1;
+  }
+
+  const restoredRecord = await Attendance.findById(record._id);
+  return {
+    restored: Boolean(restoredRecord?.signInTime),
+    processed,
+    attendanceId: record._id,
+    status: restoredRecord?.status,
+  };
+}
+
 async function syncNewLogs() {
   if (!state.connected || !state.device) return { fetched: 0, processed: 0 };
   const cfg = config();
@@ -707,6 +756,7 @@ module.exports = {
   getServiceStatus,
   processPunch,
   backfillEmployeeAttendance,
+  replayStoredPunchesForAttendance,
   normalizePunch,
   applyBiometricTimeOffset,
   punchFingerprint,

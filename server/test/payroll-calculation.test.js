@@ -3,7 +3,12 @@ const assert = require('node:assert/strict');
 
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
 
-const { calculateAttendancePayroll, calculateSandwichDates } = require('../src/modules/payroll/payroll.service');
+const {
+  calculateAttendancePayroll,
+  calculateSandwichDates,
+  isPayrollAbsentRecord,
+  isPayrollLateRecord,
+} = require('../src/modules/payroll/payroll.service');
 
 test('payroll deducts one full daily salary for every three chargeable lates', () => {
   const result = calculateAttendancePayroll({
@@ -37,6 +42,17 @@ test('approved leave-against-lates removes those lates from payroll deduction', 
   assert.equal(result.lateDeductionDays, 0);
   assert.equal(result.lateDeduction, 0);
   assert.equal(result.unusedLates, 1);
+});
+
+test('missing sign-out counts as one late violation and not as an absence', () => {
+  const incomplete = {
+    status: 'incomplete',
+    missedPunchType: 'sign_out',
+    lateCountAppliedAt: new Date('2026-08-07T00:00:00Z'),
+  };
+  assert.equal(isPayrollAbsentRecord(incomplete), false);
+  assert.equal(isPayrollLateRecord(incomplete), true);
+  assert.equal(isPayrollAbsentRecord({ status: 'absent' }), true);
 });
 
 test('weekly offs and consecutive holidays between absence days become sandwich leave', () => {

@@ -9,6 +9,8 @@ const logger = require('../utils/logger');
 const { appliesToEmployee } = require('../modules/attendance/closurePolicy');
 const { isSaturdayShiftDate } = require('../modules/attendance/saturdayPolicy');
 const { processAssetExpiryNotifications } = require('../modules/assets/assets.service');
+const { syncApprovedLeaveAttendance } = require('../modules/leaves/leaves.service');
+const { replayStoredPunchesForAttendance } = require('../integrations/zkteco/zkteco.service');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const AUTOMATION_INTERVAL_MS = Number(process.env.HR_AUTOMATION_INTERVAL_MS)
@@ -434,8 +436,11 @@ async function reconcileAttendance(now = new Date()) {
             ],
           },
         ],
-      }).select('employeeId'),
+      }).select('employeeId companyId dutyDates startDate endDate requestKind'),
     ]);
+    for (const approvedLeave of approvedLeaves) {
+      await syncApprovedLeaveAttendance(approvedLeave);
+    }
     const employeesOnLeave = new Set(approvedLeaves.map((item) => String(item.employeeId)));
 
     const operations = employees
@@ -598,6 +603,46 @@ async function reconcileAttendance(now = new Date()) {
   return created;
 }
 
+async function repairBiometricAttendanceOverwrittenByLeave() {
+  const candidates = await Attendance.find({
+    status: 'on_leave',
+    'biometricPunchKeys.0': { $exists: true },
+    shiftDate: { $type: 'string' },
+  }).select('_id employeeId companyId shiftDate').limit(1000);
+
+  let repaired = 0;
+  for (const record of candidates) {
+    const [year, month, day] = record.shiftDate.split('-').map(Number);
+    const dayStart = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+    const dayEnd = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+    const approvedLeave = await LeaveRequest.exists({
+      employeeId: record.employeeId,
+      companyId: record.companyId,
+      status: 'approved',
+      requestKind: { $ne: 'late_conversion' },
+      $or: [
+        { dutyDates: record.shiftDate },
+        {
+          $and: [
+            { $or: [{ dutyDates: { $exists: false } }, { dutyDates: { $size: 0 } }] },
+            { startDate: { $lte: dayEnd } },
+            { endDate: { $gte: dayStart } },
+          ],
+        },
+      ],
+    });
+    if (approvedLeave) continue;
+
+    const result = await replayStoredPunchesForAttendance(record._id);
+    if (result.restored) repaired += 1;
+    else logger.warn('[hr-automation] Biometric leave repair skipped', {
+      attendanceId: String(record._id),
+      reason: result.reason,
+    });
+  }
+  return repaired;
+}
+
 async function sendMissingLeaveApplicationReminders(now = new Date()) {
   const scanStart = startOfDay(new Date(now.getTime() - 120 * DAY_MS));
   const employeeIds = await Employee.find({ role: { $ne: 'super_admin' } }).distinct('_id');
@@ -651,10 +696,17 @@ async function sendMissingLeaveApplicationReminders(now = new Date()) {
 
 async function runHrAutomation(now = new Date()) {
   const leaveCyclesUpdated = await processCalendarYearLeaveCycles(now);
+  const biometricLeaveRowsRepaired = await repairBiometricAttendanceOverwrittenByLeave();
   const attendanceCreated = await reconcileAttendance(now);
   const remindersSent = await sendMissingLeaveApplicationReminders(now);
   const assetExpiryNotifications = await processAssetExpiryNotifications(now);
-  const result = { leaveCyclesUpdated, attendanceCreated, remindersSent, assetExpiryNotifications };
+  const result = {
+    leaveCyclesUpdated,
+    biometricLeaveRowsRepaired,
+    attendanceCreated,
+    remindersSent,
+    assetExpiryNotifications,
+  };
   logger.info('[hr-automation] Cycle completed', result);
   return result;
 }
@@ -705,6 +757,7 @@ module.exports = {
   processCalendarYearLeaveCycles,
   processLeaveAnniversaries,
   reconcileAttendance,
+  repairBiometricAttendanceOverwrittenByLeave,
   sendMissingLeaveApplicationReminders,
   birthdayDateContext,
   isAttendanceDateAfterReset,

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
-const { leaveEligibilityDate } = require('../src/modules/leaves/leaves.service');
+const { leaveEligibilityDate, leaveAttendanceFilter } = require('../src/modules/leaves/leaves.service');
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
 const {
   createSchema,
@@ -107,4 +107,17 @@ test('normal date-only leave remains inclusive across genuine multiple days', ()
 test('leave eligibility starts after three complete calendar months', () => {
   assert.equal(leaveEligibilityDate('2026-01-15').toISOString().slice(0, 10), '2026-04-15');
   assert.equal(leaveEligibilityDate('2026-01-31').toISOString().slice(0, 10), '2026-04-30');
+});
+
+test('approved leave attendance matching uses normalized duty dates', () => {
+  const filter = leaveAttendanceFilter({
+    employeeId: '64b7a8df44789a0012345678',
+    companyId: '64b7a8df44789a0012345679',
+    dutyDates: ['2026-08-12'],
+    startDate: new Date('2026-08-12T00:00:00.000Z'),
+    endDate: new Date('2026-08-12T23:59:59.999Z'),
+  });
+  assert.deepEqual(filter.$or[0], { shiftDate: { $in: ['2026-08-12'] } });
+  assert.equal(filter.$or[1].$and[1].$or[0].date.$gte.toISOString(), '2026-08-12T00:00:00.000Z');
+  assert.deepEqual(filter.$or[1].$and[0], { $or: [{ shiftDate: { $exists: false } }, { shiftDate: null }] });
 });
