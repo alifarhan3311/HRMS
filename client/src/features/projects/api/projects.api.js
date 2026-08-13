@@ -73,6 +73,10 @@ export const projectsApi = api.injectEndpoints({
       query: (body) => ({ url: '/projects/accounting-tasks', method: 'POST', body }),
       invalidatesTags: ['AccountingTasks', 'Notifications'],
     }),
+    resubmitAccountingTask: builder.mutation({
+      query: ({ id, ...body }) => ({ url: `/projects/accounting-tasks/${id}/resubmit`, method: 'PATCH', body }),
+      invalidatesTags: ['AccountingTasks', 'Notifications'],
+    }),
     decideAccountingTask: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/projects/accounting-tasks/${id}/decision`, method: 'PATCH', body }),
       invalidatesTags: ['AccountingTasks', 'Notifications'],
@@ -99,5 +103,6 @@ export const {
   useGetAccountingTaskContextQuery,
   useListAccountingTasksQuery,
   useCreateAccountingTasksMutation,
+  useResubmitAccountingTaskMutation,
   useDecideAccountingTaskMutation,
 } = projectsApi;

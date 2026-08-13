@@ -13,5 +13,8 @@ const list = asyncHandler(async (req, res) => {
 const decide = asyncHandler(async (req, res) => {
   res.json({ success: true, data: await service.decide(req.params.id, req.body, req.user) });
 });
+const resubmit = asyncHandler(async (req, res) => {
+  res.json({ success: true, data: await service.resubmit(req.params.id, req.body, req.user) });
+});
 
-module.exports = { context, create, list, decide };
+module.exports = { context, create, list, decide, resubmit };

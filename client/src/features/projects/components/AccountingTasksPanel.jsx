@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Check, Download, FileSpreadsheet, Plus, Printer, RotateCcw, Trash2, X } from 'lucide-react';
+import { Check, Download, FileSpreadsheet, Pencil, Plus, Printer, RotateCcw, Trash2, X } from 'lucide-react';
 import {
   useCreateAccountingTasksMutation,
   useDecideAccountingTaskMutation,
   useGetAccountingTaskContextQuery,
   useListAccountingTasksQuery,
+  useResubmitAccountingTaskMutation,
 } from '../api/projects.api';
 import Button from '../../../components/ui/Button';
 import { Badge } from '../../../components/ui/Badge';
@@ -81,6 +82,29 @@ function TaskForm({ onClose }) {
   );
 }
 
+function EditTaskForm({ task, onClose }) {
+  const [form, setForm] = useState({
+    taskDate: String(task.taskDate).slice(0, 10), title: task.title, description: task.description,
+  });
+  const [resubmit, { isLoading }] = useResubmitAccountingTaskMutation();
+  async function submit(event) {
+    event.preventDefault();
+    try {
+      await resubmit({ id: task._id, ...form }).unwrap();
+      toast.success('Task updated and resubmitted for review.');
+      onClose();
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Unable to resubmit task.');
+    }
+  }
+  return <form onSubmit={submit}><div className="space-y-4 p-5">
+    {task.decisionReason && <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-sm"><p className="font-semibold text-red-600">Rejection reason</p><p className="mt-1 text-muted-foreground">{task.decisionReason}</p></div>}
+    <Input required label="Date" type="date" value={form.taskDate} onChange={(e) => setForm({ ...form, taskDate: e.target.value })} />
+    <Input required label="Title" maxLength={200} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+    <Textarea required label="Description" maxLength={3000} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+  </div><ModalFooter><Button type="button" variant="ghost" onClick={onClose}>Cancel</Button><Button type="submit" disabled={isLoading}>{isLoading ? 'Resubmitting...' : 'Save & Resubmit'}</Button></ModalFooter></form>;
+}
+
 function csvCell(value) {
   return `"${String(value ?? '').replaceAll('"', '""')}"`;
 }
@@ -95,6 +119,7 @@ export default function AccountingTasksPanel({ user }) {
   const now = new Date();
   const viewer = ['team_lead', 'manager'].includes(user?.role);
   const [modalOpen, setModalOpen] = useState(false);
+  const [editTask, setEditTask] = useState(null);
   const [status, setStatus] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [period, setPeriod] = useState('monthly');
@@ -217,7 +242,7 @@ export default function AccountingTasksPanel({ user }) {
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-border text-left text-xs uppercase text-muted-foreground"><th className="p-4">Employee / Date</th><th className="p-4">Task</th><th className="p-4">Status</th><th className="p-4">Decision</th>{context?.canDecide && <th className="p-4">Actions</th>}</tr></thead>
+          <thead><tr className="border-b border-border text-left text-xs uppercase text-muted-foreground"><th className="p-4">Employee / Date</th><th className="p-4">Task</th><th className="p-4">Status</th><th className="p-4">Decision</th>{(context?.canDecide || context?.canCreate) && <th className="p-4">Actions</th>}</tr></thead>
           <tbody>
             {records.map((record) => (
               <tr key={record._id} className="border-b border-border/70 align-top">
@@ -226,6 +251,7 @@ export default function AccountingTasksPanel({ user }) {
                 <td className="p-4"><Badge variant={statusVariant[record.status]}>{record.status}</Badge></td>
                 <td className="p-4 text-xs"><p>{record.decidedBy?.fullName || '—'}</p>{record.decisionReason && <p className="mt-1 text-muted-foreground">{record.decisionReason}</p>}</td>
                 {context?.canDecide && <td className="p-4">{record.status === 'pending' ? <div className="flex gap-1"><Button size="sm" disabled={deciding} onClick={() => makeDecision(record, 'approved')}><Check className="h-4 w-4" /></Button><Button size="sm" variant="danger" disabled={deciding} onClick={() => makeDecision(record, 'rejected')}><X className="h-4 w-4" /></Button></div> : '—'}</td>}
+                {context?.canCreate && <td className="p-4">{record.status === 'rejected' ? <Button size="sm" variant="secondary" className="gap-1.5" onClick={() => setEditTask(record)}><Pencil className="h-4 w-4" /> Edit</Button> : <span className="text-xs text-muted-foreground">Locked</span>}</td>}
               </tr>
             ))}
             {!records.length && <tr><td colSpan={context?.canDecide ? 5 : 4} className="p-12 text-center text-muted-foreground">No Accounting tasks found for the selected filters.</td></tr>}
@@ -235,6 +261,9 @@ export default function AccountingTasksPanel({ user }) {
 
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Add New Tasks" size="full">
         <TaskForm onClose={() => setModalOpen(false)} />
+      </Modal>
+      <Modal isOpen={Boolean(editTask)} onClose={() => setEditTask(null)} title="Edit Rejected Task" size="md">
+        {editTask && <EditTaskForm task={editTask} onClose={() => setEditTask(null)} />}
       </Modal>
     </section>
   );

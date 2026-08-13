@@ -35,6 +35,17 @@ router.post(
   accountingTaskController.create
 );
 router.patch(
+  '/accounting-tasks/:id/resubmit',
+  authorize('employee'),
+  validate(idParamsSchema, 'params'),
+  validate(Joi.object({
+    taskDate: Joi.string().isoDate().required(),
+    title: Joi.string().trim().min(2).max(200).required(),
+    description: Joi.string().trim().min(2).max(3000).required(),
+  })),
+  accountingTaskController.resubmit
+);
+router.patch(
   '/accounting-tasks/:id/decision',
   authorize('team_lead'),
   validate(idParamsSchema, 'params'),

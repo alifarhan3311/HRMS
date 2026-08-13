@@ -16,6 +16,16 @@ const accountingTaskSchema = new mongoose.Schema({
   decisionReason: { type: String, trim: true, maxlength: 500 },
   decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
   decidedAt: Date,
+  resubmissionCount: { type: Number, min: 0, default: 0 },
+  revisions: [{
+    taskDate: Date,
+    title: { type: String, trim: true, maxlength: 200 },
+    description: { type: String, trim: true, maxlength: 3000 },
+    rejectionReason: { type: String, trim: true, maxlength: 500 },
+    rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
+    rejectedAt: Date,
+    resubmittedAt: { type: Date, required: true },
+  }],
 }, { timestamps: true });
 
 accountingTaskSchema.index({ companyId: 1, teamLeadId: 1, status: 1, taskDate: -1 });

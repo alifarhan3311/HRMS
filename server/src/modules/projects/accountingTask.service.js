@@ -23,7 +23,7 @@ async function actorProfile(actor) {
     _id: actor.id,
     companyId: actor.companyId,
     status: 'active',
-  }).select('fullName department managedDepartments role teamLeadId');
+  }).select('fullName department managedDepartments role teamLeadId managerId');
   if (!employee) throw createHttpError(404, 'Employee profile not found.');
   if (!hasAccountingAccess(employee)) {
     throw createHttpError(403, 'Accounting tasks are only available to Accounting employees.');
@@ -146,10 +146,67 @@ async function decide(id, payload, actor) {
       : `Your task "${record.title}" was rejected${record.decisionReason ? `: ${record.decisionReason}` : '.'}`,
     link: '/projects',
     metadata: { taskId: record._id },
-    dedupeKey: `accounting-task-decision:${record._id}`,
+    dedupeKey: `accounting-task-decision:${record._id}:${record.resubmissionCount}:${record.status}`,
   });
   emitToUser(record.submittedBy, 'accounting-task:changed', { id: record._id, status: record.status });
   return populate(AccountingTask.findById(record._id));
 }
 
-module.exports = { context, create, list, decide, hasAccountingAccess };
+async function resubmit(id, payload, actor) {
+  const employee = await actorProfile(actor);
+  if (actor.role !== 'employee') {
+    throw createHttpError(403, 'Only the employee who submitted the task can edit it.');
+  }
+  const record = await AccountingTask.findOne({
+    _id: id, companyId: actor.companyId, submittedBy: actor.id,
+  });
+  if (!record) throw createHttpError(404, 'Accounting task not found.');
+  if (record.status !== 'rejected') {
+    throw createHttpError(409, 'Only a rejected task can be edited and resubmitted.');
+  }
+
+  record.revisions.push({
+    taskDate: record.taskDate,
+    title: record.title,
+    description: record.description,
+    rejectionReason: record.decisionReason,
+    rejectedBy: record.decidedBy,
+    rejectedAt: record.decidedAt,
+    resubmittedAt: new Date(),
+  });
+  record.taskDate = parseTaskDate(payload.taskDate);
+  record.title = String(payload.title || '').trim();
+  record.description = String(payload.description || '').trim();
+  record.status = 'pending';
+  record.resubmissionCount += 1;
+  record.decisionReason = undefined;
+  record.decidedBy = undefined;
+  record.decidedAt = undefined;
+  await record.save();
+
+  let managerId = employee.managerId;
+  if (!managerId) {
+    const manager = await Employee.findOne({
+      companyId: actor.companyId, role: 'manager', status: 'active',
+      $or: [{ department: ACCOUNTING }, { managedDepartments: ACCOUNTING }],
+    }).select('_id');
+    managerId = manager?._id;
+  }
+  const recipients = [...new Set([record.teamLeadId, managerId].filter(Boolean).map(String))];
+  for (const recipientId of recipients) {
+    await notifications.createNotification({
+      recipientId,
+      companyId: actor.companyId,
+      type: 'accounting_task_resubmitted',
+      title: 'Accounting task resubmitted',
+      message: `${employee.fullName} edited and resubmitted the task "${record.title}".`,
+      link: '/projects',
+      metadata: { taskId: record._id, resubmissionCount: record.resubmissionCount },
+      dedupeKey: `accounting-task-resubmitted:${record._id}:${record.resubmissionCount}:${recipientId}`,
+    });
+    emitToUser(recipientId, 'accounting-task:changed', { id: record._id, status: 'pending' });
+  }
+  return populate(AccountingTask.findById(record._id));
+}
+
+module.exports = { context, create, list, decide, resubmit, hasAccountingAccess };
