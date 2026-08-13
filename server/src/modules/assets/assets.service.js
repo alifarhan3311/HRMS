@@ -1,5 +1,6 @@
 const createHttpError = require('http-errors');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Asset = require('./assets.model');
 const AssetAssignment = require('./assetAssignment.model');
 const AssetMaintenance = require('./assetMaintenance.model');
@@ -10,7 +11,7 @@ const EmployeeExit = require('../exits/exits.model');
 const notificationService = require('../notifications/notifications.service');
 
 const MANAGE_ROLES = ['super_admin', 'admin', 'hr'];
-const DEFAULT_ASSET_TYPES = ['Laptop', 'Desktop', 'Monitor', 'Mobile Phone', 'SIM', 'Headset', 'Printer', 'Attendance Machine', 'Access Card', 'Office Keys'];
+const DEFAULT_ASSET_TYPES = ['Laptop', 'Desktop', 'Monitor', 'Mouse', 'Charger', 'Mobile Phone', 'SIM', 'Headset', 'Printer', 'Attendance Machine', 'Access Card', 'Office Keys'];
 const isManager = actor => MANAGE_ROLES.includes(actor.role);
 const clean = value => (value === '' || value === null ? undefined : value);
 
@@ -46,7 +47,14 @@ async function getAssetForActor(id, actor) {
 }
 
 async function createAsset(payload, actor) {
-  const { employeeId, ...input } = normalizePayload(payload);
+  const { employeeId, quantity = 1, ...input } = normalizePayload(payload);
+  if (Number(quantity) > 1) {
+    const items = [];
+    for (let index = 0; index < Number(quantity); index += 1) {
+      items.push(await createAsset({ ...input, employeeId, quantity: 1 }, actor));
+    }
+    return { items, quantity: items.length };
+  }
   let employee;
   if (employeeId) {
     employee = await Employee.findOne({
@@ -55,6 +63,7 @@ async function createAsset(payload, actor) {
     if (!employee) throw createHttpError(422, 'Select an active employee.');
   }
   input.name = [input.brand, input.model].filter(Boolean).join(' ') || input.category;
+  input.serialNumber = input.serialNumber || `AUTO-${String(input.category).replace(/[^A-Za-z0-9]/g, '').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
   input.department = input.department || employee?.department;
   let asset;
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -130,7 +139,7 @@ async function getDashboard(actor) {
   const filter = visibility(actor);
   const now = new Date();
   const in30Days = new Date(now.getTime() + 30 * 86400000);
-  const [total, assigned, inStock, underRepair, warrantyExpiring, lostStolen, categories, pendingExitEmployeeIds] = await Promise.all([
+  const [total, assigned, inStock, underRepair, warrantyExpiring, lostStolen, categories, categoryBreakdown, pendingExitEmployeeIds] = await Promise.all([
     Asset.countDocuments(filter),
     Asset.countDocuments({ ...filter, status: 'assigned' }),
     Asset.countDocuments({ ...filter, status: { $in: ['in_stock', 'returned'] } }),
@@ -138,6 +147,21 @@ async function getDashboard(actor) {
     Asset.countDocuments({ ...filter, warrantyExpiryDate: { $gte: now, $lte: in30Days } }),
     Asset.countDocuments({ ...filter, status: { $in: ['lost', 'stolen'] } }),
     Asset.distinct('category', filter),
+    Asset.aggregate([
+      { $match: { ...filter, companyId: new mongoose.Types.ObjectId(actor.companyId) } },
+      {
+        $group: {
+          _id: '$category',
+          total: { $sum: 1 },
+          inUse: { $sum: { $cond: [{ $eq: ['$status', 'assigned'] }, 1, 0] } },
+          available: { $sum: { $cond: [{ $in: ['$status', ['in_stock', 'returned']] }, 1, 0] } },
+          underRepair: { $sum: { $cond: [{ $eq: ['$status', 'under_repair'] }, 1, 0] } },
+          lostStolen: { $sum: { $cond: [{ $in: ['$status', ['lost', 'stolen']] }, 1, 0] } },
+          retiredDisposed: { $sum: { $cond: [{ $in: ['$status', ['retired', 'disposed']] }, 1, 0] } },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]),
     isManager(actor)
       ? EmployeeExit.find({ companyId: actor.companyId, status: 'clearance' }).distinct('employeeId')
       : Promise.resolve([]),
@@ -145,7 +169,19 @@ async function getDashboard(actor) {
   const pendingReturns = pendingExitEmployeeIds.length
     ? await Asset.countDocuments({ companyId: actor.companyId, assignedEmployeeId: { $in: pendingExitEmployeeIds } })
     : 0;
-  return { total, assigned, inStock, underRepair, warrantyExpiring, lostStolen, pendingReturns, categories: categories.sort() };
+  return {
+    total, assigned, inStock, underRepair, warrantyExpiring, lostStolen, pendingReturns,
+    categories: categories.sort(),
+    categoryBreakdown: categoryBreakdown.filter(item => String(item._id).toLowerCase() !== 'keyboard').map(item => ({
+      category: item._id,
+      total: item.total,
+      inUse: item.inUse,
+      available: item.available,
+      underRepair: item.underRepair,
+      lostStolen: item.lostStolen,
+      retiredDisposed: item.retiredDisposed,
+    })),
+  };
 }
 
 async function getAssetDetails(id, actor) {
@@ -328,9 +364,111 @@ async function getEmployeeAssets(employeeId, actor) {
   return { employee, items, pending: items.filter(item => !['lost', 'stolen'].includes(item.status)).length };
 }
 
+async function getEmployeeAllocationSummary(actor) {
+  const companyId = new mongoose.Types.ObjectId(actor.companyId);
+  const rows = await Asset.aggregate([
+    {
+      $match: {
+        companyId,
+        assignedEmployeeId: { $ne: null },
+        status: { $in: ['assigned', 'under_repair'] },
+      },
+    },
+    {
+      $group: {
+        _id: '$assignedEmployeeId',
+        count: { $sum: 1 },
+        categories: { $addToSet: '$category' },
+      },
+    },
+  ]);
+  return rows.map(row => ({ employeeId: row._id, count: row.count, categories: row.categories.sort() }));
+}
+
+async function getEmployeeAllocationOptions(employeeId, actor) {
+  const employee = await Employee.findOne({
+    _id: employeeId,
+    companyId: actor.companyId,
+    status: { $in: ['active', 'on_leave'] },
+  }).select('fullName employeeCode department designation');
+  if (!employee) throw createHttpError(404, 'Active employee not found.');
+
+  const assets = await Asset.find({
+    companyId: actor.companyId,
+    $or: [
+      { assignedEmployeeId: employee._id, status: { $in: ['assigned', 'under_repair'] } },
+      { assignedEmployeeId: null, status: { $in: ['in_stock', 'returned'] } },
+    ],
+  }).select('assetCode name category brand model serialNumber status assignedEmployeeId condition')
+    .sort({ category: 1, name: 1 }).lean();
+  return {
+    employee,
+    items: assets,
+    selectedAssetIds: assets
+      .filter(asset => String(asset.assignedEmployeeId || '') === String(employee._id))
+      .map(asset => asset._id),
+  };
+}
+
+async function syncEmployeeAssets(employeeId, payload, actor) {
+  const employee = await Employee.findOne({
+    _id: employeeId,
+    companyId: actor.companyId,
+    status: { $in: ['active', 'on_leave'] },
+  }).select('_id');
+  if (!employee) throw createHttpError(404, 'Active employee not found.');
+
+  const requestedIds = [...new Set(payload.assetIds.map(String))];
+  const [requestedAssets, currentAssets] = await Promise.all([
+    Asset.find({
+      _id: { $in: requestedIds },
+      companyId: actor.companyId,
+      $or: [
+        { assignedEmployeeId: employee._id, status: { $in: ['assigned', 'under_repair'] } },
+        { assignedEmployeeId: null, status: { $in: ['in_stock', 'returned'] } },
+      ],
+    }).select('_id status assignedEmployeeId'),
+    Asset.find({ companyId: actor.companyId, assignedEmployeeId: employee._id, status: 'assigned' })
+      .select('_id'),
+  ]);
+  if (requestedAssets.length !== requestedIds.length) {
+    throw createHttpError(409, 'One or more selected assets are no longer available. Refresh and try again.');
+  }
+
+  const requestedSet = new Set(requestedIds);
+  const currentSet = new Set(currentAssets.map(asset => String(asset._id)));
+  const assignIds = requestedAssets
+    .filter(asset => !asset.assignedEmployeeId && !currentSet.has(String(asset._id)))
+    .map(asset => String(asset._id));
+  const returnIds = [...currentSet].filter(id => !requestedSet.has(id));
+
+  for (const assetId of returnIds) {
+    await returnAsset(assetId, {
+      returnDate: payload.assignmentDate,
+      conditionAtReturn: 'Good',
+      notes: payload.notes || 'Returned through employee asset allocation.',
+    }, actor);
+  }
+  for (const assetId of assignIds) {
+    await assignAsset(assetId, {
+      employeeId: employee._id,
+      assignmentDate: payload.assignmentDate,
+      conditionAtAssignment: 'Good',
+      notes: payload.notes || 'Assigned through employee asset allocation.',
+    }, actor);
+  }
+
+  return {
+    ...(await getEmployeeAllocationOptions(employee._id, actor)),
+    assigned: assignIds.length,
+    returned: returnIds.length,
+  };
+}
+
 async function listAssetTypes(actor) {
   const customTypes = await AssetType.find({ companyId: actor.companyId }).select('name').sort('name').lean();
   return [...new Set([...DEFAULT_ASSET_TYPES, ...customTypes.map(item => item.name)])]
+    .filter(name => String(name).toLowerCase() !== 'keyboard')
     .sort((a, b) => a.localeCompare(b));
 }
 
@@ -387,6 +525,7 @@ module.exports = {
   createAsset, updateAsset, listAssets, getDashboard, getAssetDetails,
   assignAsset, returnAsset, changeStatus, addMaintenance, updateMaintenance,
   getEmployeeAssets,
+  getEmployeeAllocationSummary, getEmployeeAllocationOptions, syncEmployeeAssets,
   listAssetTypes, createAssetType,
   processAssetExpiryNotifications,
 };

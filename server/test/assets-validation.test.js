@@ -15,12 +15,30 @@ test('asset inventory auto-generates identity and requires category', () => {
   assert.equal(validation.createSchema.validate({ brand: 'Dell' }).error !== undefined, true);
 });
 
+test('mouse and headset inventory accepts a bounded quantity', () => {
+  assert.equal(validation.createSchema.validate({ category: 'Mouse', brand: 'Logitech', quantity: 25 }).error, undefined);
+  assert.equal(validation.createSchema.validate({ category: 'Headset', brand: 'Jabra', quantity: 0 }).error !== undefined, true);
+  assert.equal(validation.createSchema.validate({ category: 'Mouse', brand: 'Logitech', quantity: 501 }).error !== undefined, true);
+});
+
 test('asset assignment requires an employee and assignment date', () => {
   const result = validation.assignSchema.validate({
     employeeId: '64b7a8df44789a0012345678', assignmentDate: '2026-08-11',
   });
   assert.equal(result.error, undefined);
   assert.equal(validation.assignSchema.validate({ assignmentDate: '2026-08-11' }).error !== undefined, true);
+});
+
+test('employee asset allocation accepts multiple unique assets', () => {
+  const result = validation.syncEmployeeAssetsSchema.validate({
+    assetIds: ['64b7a8df44789a0012345678', '64b7a8df44789a0012345679'],
+    assignmentDate: '2026-08-14',
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(validation.syncEmployeeAssetsSchema.validate({
+    assetIds: ['64b7a8df44789a0012345678', '64b7a8df44789a0012345678'],
+    assignmentDate: '2026-08-14',
+  }).error !== undefined, true);
 });
 
 test('asset lifecycle accepts supported states and rejects unknown states', () => {

@@ -15,4 +15,7 @@ module.exports = {
   addMaintenance: asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await service.addMaintenance(req.params.id, req.body, req.user) })),
   updateMaintenance: asyncHandler(async (req, res) => res.json({ success: true, data: await service.updateMaintenance(req.params.id, req.params.maintenanceId, req.body, req.user) })),
   employeeAssets: asyncHandler(async (req, res) => res.json({ success: true, data: await service.getEmployeeAssets(req.params.employeeId, req.user) })),
+  allocationSummary: asyncHandler(async (req, res) => res.json({ success: true, data: await service.getEmployeeAllocationSummary(req.user) })),
+  allocationOptions: asyncHandler(async (req, res) => res.json({ success: true, data: await service.getEmployeeAllocationOptions(req.params.employeeId, req.user) })),
+  syncAllocation: asyncHandler(async (req, res) => res.json({ success: true, data: await service.syncEmployeeAssets(req.params.employeeId, req.body, req.user) })),
 };

@@ -69,17 +69,23 @@ app.use(
 // CORS — explicit allow-list from env, credentials required for
 // cookie-based auth to function cross-origin between client/server hosts.
 // -------------------------------------------------------------------------
-const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || 'https://mhcirclesolutions.com,https://www.mhcirclesolutions.com')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS || '').split(',');
+const allowedOrigins = [...new Set([
+  'https://mhcirclesolutions.com',
+  'https://www.mhcirclesolutions.com',
+  ...configuredOrigins,
+  ...(process.env.NODE_ENV !== 'production'
+    ? ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175']
+    : []),
+].map((origin) => origin.trim().replace(/\/$/, '')).filter(Boolean))];
 
 app.use(
   cors({
     origin(origin, callback) {
       // Allow non-browser tools (no Origin header, e.g. server-to-server
       // health checks) while still enforcing the allow-list for browsers.
-      if (!origin || allowedOrigins.includes(origin)) {
+      const normalizedOrigin = origin?.replace(/\/$/, '');
+      if (!normalizedOrigin || allowedOrigins.includes(normalizedOrigin)) {
         return callback(null, true);
       }
       logger.warn('[cors] Blocked request from disallowed origin', { origin });

@@ -11,10 +11,15 @@ const logger = require('../utils/logger');
 let socketServer = null;
 
 function initSocket(httpServer) {
-  const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || 'https://mhcirclesolutions.com,https://www.mhcirclesolutions.com')
-    .split(',')
-    .map(origin => origin.trim().replace(/\/$/, ''))
-    .filter(Boolean);
+  const configuredOrigins = (process.env.CORS_ALLOWED_ORIGINS || '').split(',');
+  const allowedOrigins = [...new Set([
+    'https://mhcirclesolutions.com',
+    'https://www.mhcirclesolutions.com',
+    ...configuredOrigins,
+    ...(process.env.NODE_ENV !== 'production'
+      ? ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175']
+      : []),
+  ].map(origin => origin.trim().replace(/\/$/, '')).filter(Boolean))];
   const socketPath = `/${(process.env.SOCKET_PATH || 'socket.io').replace(/^\/+|\/+$/g, '')}`;
 
   const io = new Server(httpServer, {

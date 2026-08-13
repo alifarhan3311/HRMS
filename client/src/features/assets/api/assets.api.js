@@ -8,6 +8,9 @@ export const assetsApi = api.injectEndpoints({
     listAssets: builder.query({ query: params => ({ url: '/assets', params }), providesTags: ['Assets'] }),
     getAsset: builder.query({ query: id => `/assets/${id}`, providesTags: (r,e,id) => [{ type: 'Assets', id }] }),
     getEmployeeAssets: builder.query({ query: id => `/assets/employee/${id}`, providesTags: ['Assets'] }),
+    getEmployeeAssetAllocations: builder.query({ query: () => '/assets/employee-allocations', providesTags: ['Assets'] }),
+    getEmployeeAllocationOptions: builder.query({ query: id => `/assets/employee-allocations/${id}`, providesTags: ['Assets'] }),
+    syncEmployeeAssets: builder.mutation({ query: ({ employeeId, ...body }) => ({ url: `/assets/employee-allocations/${employeeId}`, method: 'PUT', body }), invalidatesTags: ['Assets', 'Exits', 'Notifications'] }),
     createAsset: builder.mutation({ query: body => ({ url: '/assets', method: 'POST', body }), invalidatesTags: ['Assets', 'Exits'] }),
     updateAsset: builder.mutation({ query: ({ id, ...body }) => ({ url: `/assets/${id}`, method: 'PATCH', body }), invalidatesTags: ['Assets'] }),
     assignAsset: builder.mutation({ query: ({ id, ...body }) => ({ url: `/assets/${id}/assign`, method: 'POST', body }), invalidatesTags: ['Assets', 'Exits', 'Notifications'] }),
@@ -21,6 +24,7 @@ export const assetsApi = api.injectEndpoints({
 export const {
   useGetAssetTypesQuery, useCreateAssetTypeMutation,
   useGetAssetsDashboardQuery, useListAssetsQuery, useGetAssetQuery, useGetEmployeeAssetsQuery,
+  useGetEmployeeAssetAllocationsQuery, useGetEmployeeAllocationOptionsQuery, useSyncEmployeeAssetsMutation,
   useCreateAssetMutation, useUpdateAssetMutation, useAssignAssetMutation, useReturnAssetMutation,
   useChangeAssetStatusMutation, useAddAssetMaintenanceMutation, useUpdateAssetMaintenanceMutation,
 } = assetsApi;

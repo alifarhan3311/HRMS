@@ -31,6 +31,7 @@ const assetFields = {
 
 const createSchema = Joi.object({
   category: assetFields.category.required(),
+  quantity: Joi.number().integer().min(1).max(500).default(1),
   employeeId: objectId.allow('', null),
   brand: assetFields.brand,
   model: assetFields.model,
@@ -46,6 +47,11 @@ const assignSchema = Joi.object({
   employeeId: objectId.required(),
   assignmentDate: Joi.date().iso().required(),
   conditionAtAssignment: optionalText(100),
+  notes: optionalText(1000),
+});
+const syncEmployeeAssetsSchema = Joi.object({
+  assetIds: Joi.array().items(objectId.required()).unique().max(250).required(),
+  assignmentDate: Joi.date().iso().required(),
   notes: optionalText(1000),
 });
 const returnSchema = Joi.object({
@@ -76,5 +82,6 @@ const maintenanceUpdateSchema = maintenanceSchema.fork(['issue', 'reportedDate']
 module.exports = {
   typeSchema,
   createSchema, updateSchema, assignSchema, returnSchema, statusSchema,
+  syncEmployeeAssetsSchema,
   maintenanceSchema, maintenanceUpdateSchema,
 };
