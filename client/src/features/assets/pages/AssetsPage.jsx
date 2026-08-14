@@ -59,11 +59,13 @@ function AssetForm({ initial, employees, categories, onAddType, onSubmit, onClos
     department: initial?.department || '', notes: initial?.notes || '', quantity: 1,
   });
   const set = (key, value) => setForm(current => ({ ...current, [key]: value }));
-  const isSimplePeripheral = !initial && ['Mouse', 'Headset'].includes(form.category);
+  const isSimplePeripheral = ['Mouse', 'Headset'].includes(form.category);
   const save = event => {
     event.preventDefault();
     if (isSimplePeripheral) {
-      onSubmit({ category: form.category, brand: form.brand.trim(), quantity: Number(form.quantity) });
+      onSubmit(initial
+        ? { category: form.category, brand: form.brand.trim() }
+        : { category: form.category, brand: form.brand.trim(), quantity: Number(form.quantity) });
       return;
     }
     const standardForm = { ...form };
@@ -82,7 +84,7 @@ function AssetForm({ initial, employees, categories, onAddType, onSubmit, onClos
         <div><div className="mb-1 flex items-center justify-between"><span className="text-sm font-medium">Asset Type <span className="text-red-500">*</span></span><button type="button" title="Add asset type" aria-label="Add asset type" onClick={onAddType} className="rounded-lg p-1.5 text-primary transition hover:bg-primary/10"><Plus className="h-4 w-4"/></button></div><select required className={inputClass} value={form.category} onChange={e=>set('category',e.target.value)}>{categories.map(x=><option key={x}>{x}</option>)}</select></div>
         {isSimplePeripheral ? <>
           <Input required label="Company / Brand" value={form.brand} onChange={e=>set('brand',e.target.value)} placeholder={`e.g. ${form.category==='Mouse'?'Logitech':'Jabra'}`} />
-          <Input required label="Quantity" type="number" min="1" max="500" value={form.quantity} onChange={e=>set('quantity',e.target.value)} />
+          <Input required label="Quantity" type="number" min="1" max="500" disabled={Boolean(initial)} value={form.quantity} onChange={e=>set('quantity',e.target.value)} />
         </> : <>
           <Select label="Employee Name" value={form.employeeId} disabled={Boolean(initial)} onChange={e=>set('employeeId',e.target.value)}><option value="">Keep in stock (not assigned)</option>{employees.map(x=><option key={x._id} value={x._id}>{x.fullName} · {x.employeeCode}</option>)}</Select>
           <Input label="Serial Number" value={form.serialNumber} onChange={e=>set('serialNumber',e.target.value)} />
