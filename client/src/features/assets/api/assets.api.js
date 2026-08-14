@@ -13,6 +13,7 @@ export const assetsApi = api.injectEndpoints({
     syncEmployeeAssets: builder.mutation({ query: ({ employeeId, ...body }) => ({ url: `/assets/employee-allocations/${employeeId}`, method: 'PUT', body }), invalidatesTags: ['Assets', 'Exits', 'Notifications'] }),
     createAsset: builder.mutation({ query: body => ({ url: '/assets', method: 'POST', body }), invalidatesTags: ['Assets', 'Exits'] }),
     updateAsset: builder.mutation({ query: ({ id, ...body }) => ({ url: `/assets/${id}`, method: 'PATCH', body }), invalidatesTags: ['Assets'] }),
+    deleteAsset: builder.mutation({ query: id => ({ url: `/assets/${id}`, method: 'DELETE' }), invalidatesTags: ['Assets', 'Exits'] }),
     assignAsset: builder.mutation({ query: ({ id, ...body }) => ({ url: `/assets/${id}/assign`, method: 'POST', body }), invalidatesTags: ['Assets', 'Exits', 'Notifications'] }),
     returnAsset: builder.mutation({ query: ({ id, ...body }) => ({ url: `/assets/${id}/return`, method: 'POST', body }), invalidatesTags: ['Assets', 'Exits'] }),
     changeAssetStatus: builder.mutation({ query: ({ id, ...body }) => ({ url: `/assets/${id}/status`, method: 'POST', body }), invalidatesTags: ['Assets', 'Exits'] }),
@@ -25,6 +26,6 @@ export const {
   useGetAssetTypesQuery, useCreateAssetTypeMutation,
   useGetAssetsDashboardQuery, useListAssetsQuery, useGetAssetQuery, useGetEmployeeAssetsQuery,
   useGetEmployeeAssetAllocationsQuery, useGetEmployeeAllocationOptionsQuery, useSyncEmployeeAssetsMutation,
-  useCreateAssetMutation, useUpdateAssetMutation, useAssignAssetMutation, useReturnAssetMutation,
+  useCreateAssetMutation, useUpdateAssetMutation, useDeleteAssetMutation, useAssignAssetMutation, useReturnAssetMutation,
   useChangeAssetStatusMutation, useAddAssetMaintenanceMutation, useUpdateAssetMaintenanceMutation,
 } = assetsApi;

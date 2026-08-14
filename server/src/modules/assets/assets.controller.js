@@ -9,6 +9,7 @@ module.exports = {
   detail: asyncHandler(async (req, res) => res.json({ success: true, data: await service.getAssetDetails(req.params.id, req.user) })),
   create: asyncHandler(async (req, res) => res.status(201).json({ success: true, data: await service.createAsset(req.body, req.user) })),
   update: asyncHandler(async (req, res) => res.json({ success: true, data: await service.updateAsset(req.params.id, req.body, req.user) })),
+  remove: asyncHandler(async (req, res) => res.json({ success: true, data: await service.deleteAsset(req.params.id, req.user) })),
   assign: asyncHandler(async (req, res) => res.json({ success: true, data: await service.assignAsset(req.params.id, req.body, req.user) })),
   returnAsset: asyncHandler(async (req, res) => res.json({ success: true, data: await service.returnAsset(req.params.id, req.body, req.user) })),
   status: asyncHandler(async (req, res) => res.json({ success: true, data: await service.changeStatus(req.params.id, req.body, req.user) })),

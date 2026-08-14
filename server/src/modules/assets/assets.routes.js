@@ -20,6 +20,7 @@ router.get('/', authorize(...VIEW_ROLES), controller.list);
 router.post('/', authorize(...MANAGE_ROLES), validate(validation.createSchema), controller.create);
 router.get('/:id', authorize(...VIEW_ROLES), controller.detail);
 router.patch('/:id', authorize(...MANAGE_ROLES), validate(validation.updateSchema), controller.update);
+router.delete('/:id', authorize(...MANAGE_ROLES), controller.remove);
 router.post('/:id/assign', authorize(...MANAGE_ROLES), validate(validation.assignSchema), controller.assign);
 router.post('/:id/return', authorize(...MANAGE_ROLES), validate(validation.returnSchema), controller.returnAsset);
 router.post('/:id/status', authorize(...MANAGE_ROLES), validate(validation.statusSchema), controller.status);

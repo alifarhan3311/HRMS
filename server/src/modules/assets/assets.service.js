@@ -105,6 +105,20 @@ async function updateAsset(id, payload, actor) {
   return getAssetDetails(id, actor);
 }
 
+async function deleteAsset(id, actor) {
+  const asset = await getAssetForActor(id, actor);
+  if (asset.assignedEmployeeId || ['assigned', 'under_repair'].includes(asset.status)) {
+    throw createHttpError(409, 'Assigned or under-repair assets cannot be deleted. Return or complete repair first.');
+  }
+  await Asset.deleteOne({ _id: asset._id, companyId: actor.companyId });
+  await Promise.all([
+    AssetAssignment.deleteMany({ companyId: actor.companyId, assetId: asset._id }),
+    AssetMaintenance.deleteMany({ companyId: actor.companyId, assetId: asset._id }),
+    AssetHistory.deleteMany({ companyId: actor.companyId, assetId: asset._id }),
+  ]);
+  return { id: asset._id, name: asset.name };
+}
+
 async function listAssets(query, actor) {
   const page = Math.max(Number(query.page) || 1, 1);
   const limit = Math.min(Math.max(Number(query.limit) || 24, 1), 100);
@@ -522,7 +536,7 @@ async function processAssetExpiryNotifications(now = new Date()) {
 }
 
 module.exports = {
-  createAsset, updateAsset, listAssets, getDashboard, getAssetDetails,
+  createAsset, updateAsset, deleteAsset, listAssets, getDashboard, getAssetDetails,
   assignAsset, returnAsset, changeStatus, addMaintenance, updateMaintenance,
   getEmployeeAssets,
   getEmployeeAllocationSummary, getEmployeeAllocationOptions, syncEmployeeAssets,
