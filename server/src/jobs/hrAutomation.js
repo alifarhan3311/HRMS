@@ -18,6 +18,7 @@ const AUTOMATION_INTERVAL_MS = Number(process.env.HR_AUTOMATION_INTERVAL_MS)
 const LOOKBACK_DAYS = Math.min(Number(process.env.ATTENDANCE_RECONCILIATION_DAYS) || 7, 31);
 const BIRTHDAY_CHECK_INTERVAL_MS = 60 * 1000;
 const MISSED_SIGN_OUT_GRACE_MS = 30 * 60 * 1000;
+const MISSED_PUNCH_HALF_DAY_MINUTES = 150;
 
 const BALANCE_TYPES = ['paid', 'sick', 'annual'];
 
@@ -58,15 +59,29 @@ function isAttendanceDateAfterReset(attendanceDate, resetAt, timeZone = 'Asia/Ka
   return zonedDateKey(attendanceDate, timeZone) > zonedDateKey(resetAt, timeZone);
 }
 
-function missedSignOutClosure(now = new Date()) {
+function missingPunchStatus(record, missedPunchType, thresholdMinutes = MISSED_PUNCH_HALF_DAY_MINUTES) {
+  if (missedPunchType === 'sign_out' && record?.signInTime) {
+    if (!record.scheduledStart) return 'late';
+    const arrivalDelay = Math.max(0, Math.round((new Date(record.signInTime) - new Date(record.scheduledStart)) / 60000));
+    return arrivalDelay > thresholdMinutes ? 'half_day' : 'late';
+  }
+  if (missedPunchType === 'sign_in' && record?.signOutTime) {
+    if (!record.scheduledEnd) return 'late';
+    const earlyDeparture = Math.max(0, Math.round((new Date(record.scheduledEnd) - new Date(record.signOutTime)) / 60000));
+    return earlyDeparture > thresholdMinutes ? 'half_day' : 'late';
+  }
+  return 'absent';
+}
+
+function missedSignOutClosure(now = new Date(), record = {}) {
   return {
     autoClosedAt: now,
     totalHours: 0,
     workedMinutes: 0,
     overtimeMinutes: 0,
-    status: 'incomplete',
+    status: missingPunchStatus(record, 'sign_out'),
     missedPunchType: 'sign_out',
-    notes: 'Missing sign-out: attendance is incomplete and no worked hours were assumed. Submit a time correction request.',
+    notes: 'Missing sign-out: no worked hours were assumed. The 150-minute missed-punch rule was applied.',
   };
 }
 
@@ -490,10 +505,9 @@ async function reconcileAttendance(now = new Date()) {
               shiftDate,
               status: onLeave ? 'on_leave' : 'absent',
               method: 'manual',
-              ...(!onLeave && { missedPunchType: 'sign_in' }),
               notes: onLeave
                 ? 'Approved leave recorded by HR automation.'
-                : 'Missed sign-in: automatically counted as a late violation.',
+                : 'No attendance punches were received; marked absent.',
             },
           },
           upsert: true,
@@ -533,9 +547,9 @@ async function reconcileAttendance(now = new Date()) {
           );
         }
       } else {
-        record.status = 'incomplete';
+        record.status = missingPunchStatus(record, 'sign_out');
       }
-      record.notes = `${record.notes || ''} [Invalid sign-out ignored; missed sign-out counted as one late.]`.trim();
+      record.notes = `${record.notes || ''} [Invalid sign-out ignored; 150-minute missed-punch rule applied.]`.trim();
       await record.save();
     }
 
@@ -569,14 +583,62 @@ async function reconcileAttendance(now = new Date()) {
       // A scheduled shift end is not evidence that the employee remained at
       // work until that time. Close the open punch without inventing worked
       // hours; actual status is calculated after regularization/HR correction.
-      Object.assign(record, missedSignOutClosure(now));
+      Object.assign(record, missedSignOutClosure(now, record));
       await record.save();
+    }
+
+    const missingSignInRecords = await Attendance.find({
+      employeeId: { $in: employeeIds },
+      date: { $gte: date, $lte: dayEnd },
+      signInTime: { $exists: false },
+      signOutTime: { $exists: true },
+      status: { $nin: ['on_leave', 'holiday', 'weekend'] },
+    });
+    for (const record of missingSignInRecords) {
+      if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) continue;
+      record.status = missingPunchStatus(record, 'sign_in');
+      record.missedPunchType = 'sign_in';
+      record.totalHours = 0;
+      record.workedMinutes = 0;
+      record.overtimeMinutes = 0;
+      record.notes = 'Missing sign-in: no worked hours were assumed. The 150-minute missed-punch rule was applied.';
+      await record.save();
+    }
+
+    // Records closed by an older release can already carry a missed-punch
+    // marker. Re-evaluate them so the same 150-minute rule applies to every
+    // employee, including attendance created before this deployment.
+    const existingMissingPunchRecords = await Attendance.find({
+      employeeId: { $in: employeeIds },
+      date: { $gte: date, $lte: dayEnd },
+      missedPunchType: { $in: ['sign_in', 'sign_out'] },
+      status: { $nin: ['on_leave', 'holiday', 'weekend'] },
+    });
+    for (const record of existingMissingPunchRecords) {
+      if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) continue;
+      const nextStatus = missingPunchStatus(record, record.missedPunchType);
+      if (record.status !== nextStatus) {
+        const removeOldLatePenalty = nextStatus !== 'late' && Boolean(record.lateCountAppliedAt);
+        record.status = nextStatus;
+        record.totalHours = 0;
+        record.workedMinutes = 0;
+        record.overtimeMinutes = 0;
+        if (removeOldLatePenalty) record.lateCountAppliedAt = undefined;
+        await record.save();
+        if (removeOldLatePenalty) {
+          await Employee.updateOne(
+            { _id: record.employeeId, lateCount: { $gt: 0 } },
+            { $inc: { lateCount: -1 } },
+          );
+        }
+      }
     }
 
     const violations = await Attendance.find({
       employeeId: { $in: employeeIds },
       date: { $gte: date, $lte: dayEnd },
       missedPunchType: { $in: ['sign_in', 'sign_out'] },
+      status: 'late',
       lateCountAppliedAt: { $exists: false },
     }).select('_id employeeId companyId missedPunchType date');
     for (const violation of violations) {
@@ -761,6 +823,7 @@ module.exports = {
   sendMissingLeaveApplicationReminders,
   birthdayDateContext,
   isAttendanceDateAfterReset,
+  missingPunchStatus,
   missedSignOutClosure,
   saturdayMissedSignOutClosure,
   processBirthdayNotifications,

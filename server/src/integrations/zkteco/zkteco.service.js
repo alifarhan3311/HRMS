@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const ZKLib = require('node-zklib');
 const Employee = require('../../modules/employees/employees.model');
+const Attendance = require('../../modules/attendance/attendance.model');
 const notificationService = require('../../modules/notifications/notifications.service');
 const attendanceService = require('../../modules/attendance/attendance.service');
 const { emitToCompany } = require('../../config/socket');
@@ -40,6 +41,7 @@ function config() {
     companyId: process.env.ZKTECO_COMPANY_ID,
     pollInterval: Math.max(1000, Number(process.env.ZKTECO_POLL_INTERVAL || 5000)),
     reconcileInterval: Math.max(10000, Number(process.env.ZKTECO_RECONCILE_INTERVAL || 300000)),
+    reconcileLookbackDays: Math.min(Math.max(1, Number(process.env.ZKTECO_RECONCILE_LOOKBACK_DAYS || 7)), 31),
     reconnectDelay: Math.max(1000, Number(process.env.ZKTECO_RECONNECT_DELAY || 2000)),
     timeout: Math.max(1000, Number(process.env.ZKTECO_TIMEOUT || 10000)),
     timezone: process.env.ZKTECO_TIMEZONE || 'Asia/Karachi',
@@ -182,10 +184,12 @@ function pollingIntervalForMode(nativeRealtime, cfg = config()) {
   return nativeRealtime ? cfg.reconcileInterval : cfg.pollInterval;
 }
 
-function reconciliationCandidates(normalizedLogs, lastLogTime) {
+function reconciliationCandidates(normalizedLogs, lastLogTime, lookbackMs = 0, minimumTime = null) {
   const cursor = new Date(lastLogTime || 0);
   const cursorTime = Number.isNaN(cursor.getTime()) ? 0 : cursor.getTime();
-  return normalizedLogs.filter((item) => item.punchTime.getTime() > cursorTime);
+  const minimum = minimumTime ? new Date(minimumTime).getTime() : 0;
+  const cutoff = Math.max(Number.isNaN(minimum) ? 0 : minimum, cursorTime - Math.max(0, Number(lookbackMs) || 0));
+  return normalizedLogs.filter((item) => item.punchTime.getTime() >= cutoff);
 }
 
 function removeRealtimeListener() {
@@ -508,7 +512,15 @@ async function syncNewLogs() {
   // slicing permanently missed new punches whenever an older prefix arrived.
   // The durable timestamp cursor plus fingerprint uniqueness is safe for full,
   // partial, restarted and repeated fetches.
-  const candidateRecords = reconciliationCandidates(normalizedLogs, durableCursor);
+  // Always overlap recent device history. Fingerprint uniqueness makes this
+  // idempotent and recovers an older punch that arrives after a newer partial
+  // SDK batch or after the service has been offline for several days.
+  const candidateRecords = reconciliationCandidates(
+    normalizedLogs,
+    durableCursor,
+    cfg.reconcileLookbackDays * 24 * 60 * 60 * 1000,
+    syncState.initializedAt,
+  );
   const records = [...new Map(
     candidateRecords.map(item => [punchFingerprint(item, deviceId(cfg)), item]),
   ).values()]
@@ -517,16 +529,27 @@ async function syncNewLogs() {
   let processed = 0;
   const strandedPunches = await BiometricPunch.find({
     deviceId: deviceId(cfg),
-    processingStatus: { $in: ['received', 'error', 'unmapped'] },
-    punchTime: { $gte: syncState.initializedAt },
+    processingStatus: { $in: ['received', 'error'] },
+    punchTime: {
+      $gte: new Date(Math.max(
+        new Date(syncState.initializedAt).getTime(),
+        durableCursor.getTime() - (cfg.reconcileLookbackDays * 24 * 60 * 60 * 1000),
+      )),
+    },
     createdAt: { $lte: new Date(Date.now() - 10_000) },
   }).sort({ punchTime: 1 }).limit(100);
   for (const rawPunch of strandedPunches) {
     const result = await processPunch(inputFromStoredPunch(rawPunch), rawPunch);
+    if (result.action === 'stale_punch_ignored' && result.record?._id) {
+      await replayStoredPunchesForAttendance(result.record._id);
+    }
     if (!result.duplicate) processed += 1;
   }
   for (const punch of records) {
     const result = await processPunch(punch);
+    if (result.action === 'stale_punch_ignored' && result.record?._id) {
+      await replayStoredPunchesForAttendance(result.record._id);
+    }
     if (!result.duplicate) processed += 1;
   }
   await BiometricSyncState.updateOne(
@@ -662,6 +685,13 @@ async function connect() {
     // Native realtime delivery is not durable: the device can retain a punch
     // while dropping its live event. Polling always remains active as a
     // reconciliation channel and fingerprint uniqueness keeps it idempotent.
+    try {
+      await syncNewLogs();
+    } catch (error) {
+      // Keep realtime/reconnect alive even if the first bulk download is
+      // temporarily partial. The scheduled reconciliation will retry it.
+      recordError('startup-reconciliation', error);
+    }
     startPolling();
   } finally {
     state.connecting = false;
@@ -754,6 +784,7 @@ module.exports = {
   stopBiometricService,
   testDeviceConnection,
   getServiceStatus,
+  syncNewLogs,
   processPunch,
   backfillEmployeeAttendance,
   replayStoredPunchesForAttendance,

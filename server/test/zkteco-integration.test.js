@@ -41,6 +41,26 @@ test('partial attendance downloads use the durable timestamp cursor instead of l
   );
 });
 
+test('reconciliation overlap recovers an older punch after a newer cursor without importing pre-initialization history', () => {
+  const logs = [
+    { punchTime: new Date('2026-08-12T13:16:23.000Z') },
+    { punchTime: new Date('2026-08-12T21:03:41.000Z') },
+  ];
+  assert.deepEqual(
+    reconciliationCandidates(
+      logs,
+      new Date('2026-08-12T21:03:41.000Z'),
+      7 * 86400000,
+      new Date('2026-08-12T00:00:00.000Z'),
+    ),
+    logs,
+  );
+  assert.deepEqual(
+    reconciliationCandidates(logs, new Date('2026-08-12T21:03:41.000Z'), 0),
+    logs.slice(1),
+  );
+});
+
 test('stored received punches can be reconstructed after a process restart', () => {
   const stored = {
     deviceUserId: '23',
