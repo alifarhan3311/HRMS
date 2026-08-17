@@ -117,7 +117,7 @@ async function getLateCountForMonth(employeeId, year, month) {
   return Attendance.countDocuments({
     employeeId,
     date: { $gte: start, $lte: end },
-    lateMinutes: { $gt: 0 },
+    status: 'late',
   });
 }
 

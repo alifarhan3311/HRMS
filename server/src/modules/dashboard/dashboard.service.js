@@ -100,7 +100,7 @@ async function getEmployeeDashboard(user) {
       Attendance.countDocuments({
         employeeId: user.id,
         date: { $gte: monthStart, $lte: monthEnd },
-        lateMinutes: { $gt: 0 },
+        status: 'late',
       }),
       Project.find({
         companyId: user.companyId,

@@ -44,14 +44,14 @@ test('approved leave-against-lates removes those lates from payroll deduction', 
   assert.equal(result.unusedLates, 1);
 });
 
-test('missing sign-out counts as one late violation and not as an absence', () => {
+test('missing sign-out half day is not counted as a payroll late', () => {
   const incomplete = {
     status: 'incomplete',
     missedPunchType: 'sign_out',
     lateCountAppliedAt: new Date('2026-08-07T00:00:00Z'),
   };
   assert.equal(isPayrollAbsentRecord(incomplete), false);
-  assert.equal(isPayrollLateRecord(incomplete), true);
+  assert.equal(isPayrollLateRecord(incomplete), false);
   assert.equal(isPayrollAbsentRecord({ status: 'absent' }), true);
 });
 

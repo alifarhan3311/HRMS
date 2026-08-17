@@ -61,9 +61,7 @@ function isAttendanceDateAfterReset(attendanceDate, resetAt, timeZone = 'Asia/Ka
 
 function missingPunchStatus(record, missedPunchType, thresholdMinutes = MISSED_PUNCH_HALF_DAY_MINUTES) {
   if (missedPunchType === 'sign_out' && record?.signInTime) {
-    if (!record.scheduledStart) return 'late';
-    const arrivalDelay = Math.max(0, Math.round((new Date(record.signInTime) - new Date(record.scheduledStart)) / 60000));
-    return arrivalDelay > thresholdMinutes ? 'half_day' : 'late';
+    return 'half_day';
   }
   if (missedPunchType === 'sign_in' && record?.signOutTime) {
     if (!record.scheduledEnd) return 'late';
@@ -81,7 +79,7 @@ function missedSignOutClosure(now = new Date(), record = {}) {
     overtimeMinutes: 0,
     status: missingPunchStatus(record, 'sign_out'),
     missedPunchType: 'sign_out',
-    notes: 'Missing sign-out: no worked hours were assumed. The 150-minute missed-punch rule was applied.',
+    notes: 'Missing sign-out: no worked hours were assumed and the attendance was marked half day.',
   };
 }
 
@@ -432,6 +430,40 @@ async function reconcileAttendance(now = new Date()) {
     }
   }
 
+  // Normalize historical missed sign-outs as well as new ones. This is
+  // intentionally idempotent so records outside the rolling reconciliation
+  // window cannot remain counted as lates after this policy change.
+  const historicalMissingSignOuts = await Attendance.find({
+    employeeId: { $in: employeeIds },
+    missedPunchType: 'sign_out',
+    status: { $nin: ['on_leave', 'holiday', 'weekend'] },
+    $or: [
+      { status: { $ne: 'half_day' } },
+      { lateCountAppliedAt: { $exists: true } },
+    ],
+  }).limit(5000);
+  for (const record of historicalMissingSignOuts) {
+    const hadAppliedLate = Boolean(record.lateCountAppliedAt);
+    if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) {
+      Object.assign(record, saturdayMissedSignOutClosure(now));
+      record.missedPunchType = undefined;
+    } else {
+      record.status = 'half_day';
+      record.totalHours = 0;
+      record.workedMinutes = 0;
+      record.overtimeMinutes = 0;
+      record.notes = 'Missing sign-out: no worked hours were assumed and the attendance was marked half day.';
+    }
+    record.lateCountAppliedAt = undefined;
+    await record.save();
+    if (hadAppliedLate) {
+      await Employee.updateOne(
+        { _id: record.employeeId, lateCount: { $gt: 0 } },
+        { $inc: { lateCount: -1 } },
+      );
+    }
+  }
+
   let created = 0;
   for (let daysAgo = LOOKBACK_DAYS; daysAgo >= 1; daysAgo -= 1) {
     const date = startOfDay(new Date(now.getTime() - daysAgo * DAY_MS));
@@ -549,7 +581,7 @@ async function reconcileAttendance(now = new Date()) {
       } else {
         record.status = missingPunchStatus(record, 'sign_out');
       }
-      record.notes = `${record.notes || ''} [Invalid sign-out ignored; 150-minute missed-punch rule applied.]`.trim();
+      record.notes = `${record.notes || ''} [Invalid sign-out ignored; attendance marked half day.]`.trim();
       await record.save();
     }
 

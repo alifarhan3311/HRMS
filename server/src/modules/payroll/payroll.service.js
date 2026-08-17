@@ -129,8 +129,7 @@ function isPayrollAbsentRecord(record) {
 }
 
 function isPayrollLateRecord(record) {
-  return record.status === 'late'
-    || (record.status === 'incomplete' && Boolean(record.lateCountAppliedAt));
+  return record.status === 'late';
 }
 
 async function getAttendanceData(employee, month, year) {
@@ -145,8 +144,8 @@ async function getAttendanceData(employee, month, year) {
     }).select('leaveType startDate endDate dutyDates requestKind selectedLateAttendanceIds'),
   ]);
   const present = records.filter(r => r.status === 'present' || r.status === 'late').length;
-  // A missing sign-out is one late violation, not an absence. The attendance
-  // automation marks that violation with lateCountAppliedAt after the shift.
+  // Missing sign-out is a half day. Only final late-status records participate
+  // in the three-lates payroll deduction rule.
   const absent = records.filter(isPayrollAbsentRecord).length;
   const lateRecords = records.filter(isPayrollLateRecord);
   const late = lateRecords.length;
