@@ -355,6 +355,39 @@ function classifyBiometricPunch({ record, punchTime, schedule, shift }) {
   return punchAt < checkoutBoundary ? 'duplicate_sign_in_ignored' : 'sign_out';
 }
 
+function isBiometricSignInWithinWindow(punchTime, schedule, shift = {}) {
+  if (shift.shiftType === 'flexible') return true;
+  const punchAt = new Date(punchTime);
+  const scheduledStart = new Date(schedule.scheduledStart);
+  if (Number.isNaN(punchAt.getTime()) || Number.isNaN(scheduledStart.getTime())) return false;
+
+  // A biometric punch far from the beginning of a fixed shift cannot be a
+  // new sign-in. It is normally a delayed device log, a checkout from another
+  // duty day, or an extra scan. Accept early arrivals, but never allow such a
+  // punch to open a false 15+ hour attendance record.
+  const beforeStartMinutes = 4 * 60;
+  const maximumArrivalMinutes = Math.max(
+    Number(shift.halfDayMinutes || 0),
+    Number(shift.lateHalfDayAfterMinutes || 0),
+    150,
+  );
+  const earliest = new Date(scheduledStart.getTime() - (beforeStartMinutes * 60000));
+  const latest = new Date(scheduledStart.getTime() + (maximumArrivalMinutes * 60000));
+  return punchAt >= earliest && punchAt <= latest;
+}
+
+function isFlexibleCheckoutRecoveryCandidate(record, punchTime, recoveryWindowMinutes = 240) {
+  if (!record || record.shiftType !== 'flexible' || !record.signInTime) return false;
+  const punchAt = new Date(punchTime);
+  const signInAt = new Date(record.signInTime);
+  const scheduledEnd = record.scheduledEnd
+    ? new Date(record.scheduledEnd)
+    : new Date(signInAt.getTime() + Number(record.shiftRequiredMinutes || 480) * 60000);
+  if (Number.isNaN(punchAt.getTime()) || Number.isNaN(signInAt.getTime()) || Number.isNaN(scheduledEnd.getTime())) return false;
+  return punchAt > signInAt
+    && punchAt <= new Date(scheduledEnd.getTime() + (recoveryWindowMinutes * 60000));
+}
+
 async function ingestBiometricPunch({ employee, punchTime, punchKey, deviceId, deviceUserId }) {
   const actor = {
     id: employee._id,
@@ -363,26 +396,36 @@ async function ingestBiometricPunch({ employee, punchTime, punchKey, deviceId, d
     branchId: employee.branchId,
   };
   const pendingCheckout = await repository.findCheckoutCandidate(employee._id, punchTime);
-  const context = pendingCheckout
+  // A flexible shift starts at the actual first punch, so its sign-out can be
+  // after midnight. Prefer its still-open attendance record before creating a
+  // new calendar-day record; otherwise an overnight sign-out becomes a false
+  // next-day sign-in and produces a 15+ hour shift.
+  const openRecord = pendingCheckout || await repository.findOpenByEmployee(employee._id);
+  const checkoutRecord = pendingCheckout
+    || (isFlexibleCheckoutRecoveryCandidate(openRecord, punchTime) ? openRecord : null);
+  const context = checkoutRecord
     ? {
         shift: {
-          shiftType: pendingCheckout.shiftType,
-          requiredMinutes: pendingCheckout.shiftRequiredMinutes,
+          shiftType: checkoutRecord.shiftType,
+          requiredMinutes: checkoutRecord.shiftRequiredMinutes,
         },
         schedule: {
-          shiftDate: pendingCheckout.shiftDate,
-          scheduledStart: pendingCheckout.scheduledStart,
-          scheduledEnd: pendingCheckout.scheduledEnd,
+          shiftDate: checkoutRecord.shiftDate,
+          scheduledStart: checkoutRecord.scheduledStart,
+          scheduledEnd: checkoutRecord.scheduledEnd,
         },
       }
     : await resolveShiftContext(employee._id, employee.companyId, new Date(punchTime));
   const { shift, schedule } = context;
-  const existing = pendingCheckout
+  const existing = checkoutRecord
     || await repository.findByEmployeeAndShiftDate(employee._id, schedule.shiftDate);
   let record;
   const action = classifyBiometricPunch({ record: existing, punchTime, schedule, shift });
 
   if (action === 'sign_in') {
+    if (!isBiometricSignInWithinWindow(punchTime, schedule, shift)) {
+      return { record: existing || {}, action: 'outside_sign_in_window_ignored' };
+    }
     record = await signIn({
       employeeId: employee._id,
       method: 'biometric',
@@ -1234,6 +1277,8 @@ module.exports = {
   completionToleranceMinutes,
   completedFixedShiftStatus,
   classifyBiometricPunch,
+  isBiometricSignInWithinWindow,
+  isFlexibleCheckoutRecoveryCandidate,
   isRecoveredMissedPunchPenalty,
   ingestBiometricPunch,
 };

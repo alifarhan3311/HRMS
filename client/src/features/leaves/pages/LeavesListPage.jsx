@@ -133,7 +133,9 @@ function ApplyLeaveForm({ onSubmit, onClose, isLoading, leaveTypes, draftKey }) 
     const cur = new Date(form.startDate);
     const end = new Date(form.durationMode === 'multiple' ? form.endDate : form.startDate);
     if (Number.isNaN(end.getTime())) return 0;
-    while (cur <= end) { if (cur.getDay() !== 0 && cur.getDay() !== 6) count++; cur.setDate(cur.getDate() + 1); }
+    // Saturday is an attendance day under the company policy. It must remain
+    // selectable for leave; only Sunday is excluded from this UI preview.
+    while (cur <= end) { if (cur.getDay() !== 0) count++; cur.setDate(cur.getDate() + 1); }
     return count;
   }
 

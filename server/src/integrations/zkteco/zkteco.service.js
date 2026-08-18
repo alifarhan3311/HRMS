@@ -432,12 +432,23 @@ async function replayStoredPunchesForAttendance(attendanceId) {
   const record = await Attendance.findById(attendanceId);
   if (!record) return { restored: false, reason: 'attendance_not_found' };
 
-  const [employee, punches] = await Promise.all([
-    Employee.findOne({ _id: record.employeeId, companyId: record.companyId, status: 'active' }),
-    BiometricPunch.find({ attendanceId: record._id, employeeId: record.employeeId })
-      .sort({ punchTime: 1, _id: 1 }),
-  ]);
+  const employee = await Employee.findOne({ _id: record.employeeId, companyId: record.companyId, status: 'active' });
   if (!employee) return { restored: false, reason: 'employee_not_found' };
+  const hasScheduleWindow = record.scheduledStart && record.scheduledEnd;
+  const windowStart = hasScheduleWindow
+    ? new Date(new Date(record.scheduledStart).getTime() - (4 * 60 * 60 * 1000))
+    : null;
+  const windowEnd = hasScheduleWindow
+    ? new Date(new Date(record.scheduledEnd).getTime() + (4 * 60 * 60 * 1000))
+    : null;
+  const punches = await BiometricPunch.find({
+    companyId: record.companyId,
+    employeeId: record.employeeId,
+    $or: [
+      { attendanceId: record._id },
+      ...(hasScheduleWindow ? [{ punchTime: { $gte: windowStart, $lte: windowEnd } }] : []),
+    ],
+  }).sort({ punchTime: 1, _id: 1 });
   if (!punches.length) return { restored: false, reason: 'punches_not_found' };
 
   await Attendance.updateOne({ _id: record._id }, {
@@ -540,16 +551,10 @@ async function syncNewLogs() {
   }).sort({ punchTime: 1 }).limit(100);
   for (const rawPunch of strandedPunches) {
     const result = await processPunch(inputFromStoredPunch(rawPunch), rawPunch);
-    if (result.action === 'stale_punch_ignored' && result.record?._id) {
-      await replayStoredPunchesForAttendance(result.record._id);
-    }
     if (!result.duplicate) processed += 1;
   }
   for (const punch of records) {
     const result = await processPunch(punch);
-    if (result.action === 'stale_punch_ignored' && result.record?._id) {
-      await replayStoredPunchesForAttendance(result.record._id);
-    }
     if (!result.duplicate) processed += 1;
   }
   await BiometricSyncState.updateOne(

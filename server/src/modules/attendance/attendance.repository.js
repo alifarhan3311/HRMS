@@ -30,7 +30,9 @@ async function findOpenByEmployee(employeeId) {
   return Attendance.findOne({
     employeeId,
     signInTime: { $exists: true },
-    signOutTime: { $exists: false },
+    // Equality to null intentionally matches both legacy documents where the
+    // field is absent and newer documents where it was explicitly saved null.
+    signOutTime: null,
     autoClosedAt: { $exists: false },
   })
     .sort({ signInTime: -1 });
@@ -42,7 +44,7 @@ async function findCheckoutCandidate(employeeId, punchTime, recoveryWindowMinute
   return Attendance.findOne({
     employeeId,
     signInTime: { $exists: true, $lt: punch },
-    signOutTime: { $exists: false },
+    signOutTime: null,
     scheduledStart: { $lte: punch },
     scheduledEnd: { $gte: earliestEnd },
   }).sort({ signInTime: -1 });

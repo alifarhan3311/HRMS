@@ -9,6 +9,7 @@ const {
   completionToleranceMinutes,
   completedFixedShiftStatus,
   isRecoveredMissedPunchPenalty,
+  isBiometricSignInWithinWindow,
 } = require('../src/modules/attendance/attendance.service');
 const { isSaturdayShiftDate, saturdayStatus } = require('../src/modules/attendance/saturdayPolicy');
 const Attendance = require('../src/modules/attendance/attendance.model');
@@ -27,6 +28,16 @@ test('fixed shifts longer than seven hours receive 15 minute grace and 150 minut
   assert.equal(arrivalStatus(new Date(start.getTime() + 15 * 60000 + 59000), schedule, shift).status, 'present');
   assert.equal(arrivalStatus(new Date(start.getTime() + 16 * 60000), schedule, shift).status, 'late');
   assert.equal(arrivalStatus(new Date(start.getTime() + 151 * 60000), schedule, shift).status, 'half_day');
+});
+
+test('biometric fixed-shift sign-in rejects a far-off-hours punch instead of opening a false long shift', () => {
+  const schedule = {
+    scheduledStart: new Date('2026-08-13T14:00:00.000Z'),
+    scheduledEnd: new Date('2026-08-13T22:00:00.000Z'),
+  };
+  const shift = { shiftType: 'fixed', halfDayMinutes: 240, lateHalfDayAfterMinutes: 150 };
+  assert.equal(isBiometricSignInWithinWindow(new Date('2026-08-13T14:10:00.000Z'), schedule, shift), true);
+  assert.equal(isBiometricSignInWithinWindow(new Date('2026-08-13T23:30:00.000Z'), schedule, shift), false);
 });
 
 test('fixed shift completed through scheduled end stays present when arrival is within grace', () => {
@@ -184,6 +195,17 @@ test('flexible 6-hour shifts have no late status and reach worked half-day at th
   const record = { shiftType: 'flexible', shiftRequiredMinutes: 360, shiftHalfDayMinutes: 180 };
   assert.equal(correctedWorkMetrics(record, start, new Date(start.getTime() + 211 * 60000)).status, 'present');
   assert.equal(correctedWorkMetrics(record, start, new Date(start.getTime() + 210 * 60000)).status, 'half_day');
+});
+
+test('a flexible overnight punch completes the open shift instead of creating a next-day sign-in', () => {
+  const { isFlexibleCheckoutRecoveryCandidate } = require('../src/modules/attendance/attendance.service');
+  const record = {
+    shiftType: 'flexible',
+    signInTime: new Date('2026-08-13T14:45:07.000Z'),
+    scheduledEnd: new Date('2026-08-13T22:45:07.000Z'),
+  };
+  assert.equal(isFlexibleCheckoutRecoveryCandidate(record, new Date('2026-08-13T22:30:07.000Z')), true);
+  assert.equal(isFlexibleCheckoutRecoveryCandidate(record, new Date('2026-08-14T04:00:00.000Z')), false);
 });
 
 test('holiday scope matching supports all, department, and assigned shift targets', () => {
