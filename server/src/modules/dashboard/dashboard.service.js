@@ -189,6 +189,7 @@ async function getEmployeeDashboard(user) {
 
 async function getHRDashboard(user) {
   const today = startOfDay();
+  const now = new Date();
   const monthStart = startOfMonth();
   const monthEnd = endOfMonth();
   const employeeFilter = { companyId: user.companyId };
