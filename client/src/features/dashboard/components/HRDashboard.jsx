@@ -10,6 +10,7 @@ import {
   Users,
   CalendarDays,
   FileWarning,
+  Target,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
@@ -160,6 +161,72 @@ export default function HRDashboard({ data }) {
           )}
         </motion.div>
       </div>
+
+      {(data.monthlyHoursSummary || []).length > 0 && (
+        <motion.div className="glass-card p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold flex items-center gap-2">
+                <Target className="h-4 w-4 text-primary" />
+                Operations / Accounting Monthly Hours
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Employee-wise progress against the 184-hour monthly target.
+              </p>
+            </div>
+            <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+              {data.monthlyHoursSummary.length} employees
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead className="bg-muted/30 text-xs uppercase text-muted-foreground">
+                <tr>
+                  {['Employee', 'Department', 'Completed', 'Remaining', 'Extra', 'Progress', 'Status'].map((label) => (
+                    <th key={label} className="px-4 py-3 text-left">{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {data.monthlyHoursSummary.slice(0, 8).map((row) => (
+                  <tr key={row.employeeId} className="hover:bg-accent/20">
+                    <td className="px-4 py-3">
+                      <p className="font-medium">{row.employeeName}</p>
+                      <p className="text-xs text-muted-foreground">{row.employeeCode}</p>
+                    </td>
+                    <td className="px-4 py-3">{row.department}</td>
+                    <td className="px-4 py-3 font-semibold text-emerald-600">{row.completedHours}h</td>
+                    <td className="px-4 py-3 font-semibold text-primary">{row.remainingHours}h</td>
+                    <td className="px-4 py-3">{row.extraHours}h</td>
+                    <td className="px-4 py-3">
+                      <div className="h-2 w-40 rounded-full bg-muted">
+                        <div
+                          className="h-2 rounded-full bg-primary"
+                          style={{ width: `${Math.min(100, row.completionPercentage || 0)}%` }}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">{row.completionPercentage}%</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        row.status === 'target_completed'
+                          ? 'bg-emerald-500/10 text-emerald-600'
+                          : row.status === 'ahead'
+                            ? 'bg-blue-500/10 text-blue-600'
+                            : row.status === 'on_track'
+                              ? 'bg-amber-500/10 text-amber-600'
+                              : 'bg-red-500/10 text-red-600'
+                      }`}>
+                        {row.statusLabel}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </motion.div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <motion.div className="glass-card p-5">

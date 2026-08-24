@@ -13,6 +13,12 @@ const Attendance = require('../attendance/attendance.model');
 const LeaveRequest = require('../leaves/leaves.model');
 const settingsService = require('../companySettings/companySettings.service');
 const notificationService = require('../notifications/notifications.service');
+const {
+  isMonthlyHourDepartment,
+  buildMonthlyHoursSummary,
+  calculateMonthlyHoursDeduction,
+  MONTHLY_HOUR_TARGET,
+} = require('../attendance/monthlyHoursPolicy');
 
 async function notifyEmployee(record, type, title, message, suffix) {
   const employeeId = record.employeeId?._id || record.employeeId;
@@ -51,6 +57,55 @@ function calculateAttendancePayroll({
     lateConversionGroupsAvailable: lateGroups,
     unusedLates: chargeableLates % 3,
     unpaidLeaveDeduction: Math.round(perDaySalary * Number(unpaidLeave || 0)),
+  };
+}
+
+function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, year) {
+  const targetHours = MONTHLY_HOUR_TARGET;
+  const monthlyHours = buildMonthlyHoursSummary(records, { month, year, targetHours });
+  const monthlyDeduction = calculateMonthlyHoursDeduction({
+    monthlySalary: Number(employee.currentSalary) || 0,
+    completedHours: monthlyHours.completedHours,
+    targetHours,
+  });
+
+  const paidLeaveDates = new Set();
+  const unpaidLeaveDates = new Set();
+  for (const leave of approvedLeaves) {
+    if (leave.requestKind === 'late_conversion') continue;
+    for (const dutyDate of leaveDutyDates(leave)) {
+      (leave.leaveType === 'unpaid' ? unpaidLeaveDates : paidLeaveDates).add(dutyDate);
+    }
+  }
+  for (const date of unpaidLeaveDates) paidLeaveDates.delete(date);
+
+  const workingDayNumbers = employee.shiftId?.workingDays?.length
+    ? employee.shiftId.workingDays
+    : [1, 2, 3, 4, 5];
+  const sandwichDates = calculateSandwichDates({
+    start: monthBounds(month, year).start,
+    end: monthBounds(month, year).end,
+    workingDayNumbers,
+    records,
+    unpaidLeaveDates,
+  });
+
+  return {
+    present: monthlyHours.present,
+    absent: monthlyHours.absent,
+    late: monthlyHours.late,
+    deductibleLate: monthlyHours.late,
+    lateMinutes: records.reduce((sum, record) => sum + Number(record.lateMinutes || 0), 0),
+    halfDay: monthlyHours.half_day,
+    paidLeave: paidLeaveDates.size,
+    unpaidLeave: unpaidLeaveDates.size,
+    sandwichLeave: sandwichDates.size,
+    holiday: monthlyHours.holiday,
+    weekend: monthlyHours.weekend,
+    workingDays: records.length,
+    workedMinutes: monthlyHours.completedMinutes,
+    monthlyHours,
+    monthlyDeduction,
   };
 }
 
@@ -143,6 +198,11 @@ async function getAttendanceData(employee, month, year) {
       endDate: { $gte: start },
     }).select('leaveType startDate endDate dutyDates requestKind selectedLateAttendanceIds'),
   ]);
+  const monthlyMode = isMonthlyHourDepartment(employee.department);
+  if (monthlyMode) {
+    return buildAttendancePayrollRecord(employee, records, approvedLeaves, month, year);
+  }
+
   const present = records.filter(r => r.status === 'present' || r.status === 'late').length;
   // Missing sign-out is a half day. Only final late-status records participate
   // in the three-lates payroll deduction rule.
@@ -189,6 +249,8 @@ async function getAttendanceData(employee, month, year) {
     unpaidLeave: unpaidLeaveDates.size,
     sandwichLeave: sandwichDates.size,
     workedMinutes,
+    monthlyHours: null,
+    monthlyDeduction: null,
   };
 }
 
@@ -217,30 +279,51 @@ async function generatePayslip(payload, actor) {
 
   // Deductions
   const settings = await settingsService.getPolicy(actor.companyId);
-  const calculation = calculateAttendancePayroll({
-    basicSalary,
-    workingDays,
-    absent,
-    halfDay,
-    late,
-    deductibleLate,
-    unpaidLeave: unpaidLeave + sandwichLeave,
-    requiredMinutes: employee.shiftId?.requiredMinutes,
-    lateMinutes,
-    payrollPolicy: settings.payrollPolicy,
-  });
+  const monthlyMode = isMonthlyHourDepartment(employee.department);
+  const monthlyHours = monthlyMode
+    ? buildMonthlyHoursSummary(await Attendance.find({ employeeId, date: { $gte: monthBounds(month, year).start, $lte: monthBounds(month, year).end } }), {
+      month,
+      year,
+      targetHours: MONTHLY_HOUR_TARGET,
+    })
+    : null;
+  const calculation = monthlyMode
+    ? calculateMonthlyHoursDeduction({
+      monthlySalary: basicSalary,
+      completedHours: monthlyHours?.completedHours || 0,
+      targetHours: MONTHLY_HOUR_TARGET,
+    })
+    : calculateAttendancePayroll({
+      basicSalary,
+      workingDays,
+      absent,
+      halfDay,
+      late,
+      deductibleLate,
+      unpaidLeave: unpaidLeave + sandwichLeave,
+      requiredMinutes: employee.shiftId?.requiredMinutes,
+      lateMinutes,
+      payrollPolicy: settings.payrollPolicy,
+    });
   const {
     perDaySalary, perHourSalary, absenceDeduction, halfDayDeduction,
     lateDeductionDays, lateDeduction, unpaidLeaveDeduction,
+    attendanceDeduction = 0, shortHours = 0, shortDaysEquivalent = 0,
   } = calculation;
-  const deductionItems = [
-    { label: 'Absence Deduction', amount: absenceDeduction },
-    { label: 'Half Day Deduction', amount: halfDayDeduction },
-    { label: `Late Deduction (${lateDeductionDays} day)`, amount: lateDeduction },
-    { label: 'Unpaid Leave Deduction', amount: unpaidLeaveDeduction },
-    { label: 'Loan', amount: Number(loanDeduction) || 0 },
-    { label: 'Advance Salary', amount: Number(advanceSalary) || 0 },
-  ].filter(d => d.amount > 0);
+  const deductionItems = monthlyMode
+    ? [
+      { label: `Monthly Hours Shortfall (${shortHours}h)`, amount: attendanceDeduction },
+      { label: 'Loan', amount: Number(loanDeduction) || 0 },
+      { label: 'Advance Salary', amount: Number(advanceSalary) || 0 },
+    ].filter(d => d.amount > 0)
+    : [
+      { label: 'Absence Deduction', amount: absenceDeduction },
+      { label: 'Half Day Deduction', amount: halfDayDeduction },
+      { label: `Late Deduction (${lateDeductionDays} day)`, amount: lateDeduction },
+      { label: 'Unpaid Leave Deduction', amount: unpaidLeaveDeduction },
+      { label: 'Loan', amount: Number(loanDeduction) || 0 },
+      { label: 'Advance Salary', amount: Number(advanceSalary) || 0 },
+    ].filter(d => d.amount > 0);
 
   const deductionTotal = deductionItems.reduce((s, d) => s + d.amount, 0);
   const grossSalary = basicSalary + allowanceTotal + Number(bonus) + Number(incentives);
@@ -274,6 +357,14 @@ async function generatePayslip(payload, actor) {
     weekendDays: weekend,
     workingDays,
     workedMinutes,
+    monthlyTargetHours: monthlyMode ? MONTHLY_HOUR_TARGET : null,
+    monthlyCompletedHours: monthlyMode ? monthlyHours?.completedHours || 0 : null,
+    monthlyRemainingHours: monthlyMode ? monthlyHours?.remainingHours || 0 : null,
+    monthlyShortHours: monthlyMode ? shortHours : null,
+    monthlyExtraHours: monthlyMode ? monthlyHours?.extraHours || 0 : null,
+    monthlyCompletionPercentage: monthlyMode ? monthlyHours?.completionPercentage || 0 : null,
+    monthlyStatus: monthlyMode ? monthlyHours?.status || null : null,
+    monthlyAttendanceDeduction: monthlyMode ? attendanceDeduction : null,
     perDaySalary: Math.round(perDaySalary),
     perHourSalary: Math.round(perHourSalary),
     absenceDeduction,
@@ -383,23 +474,36 @@ async function getLivePayroll(query, actor) {
   const items = await Promise.all(employees.map(async (employee) => {
     const attendance = await getAttendanceData(employee, month, year);
     const basicSalary = Number(employee.currentSalary) || 0;
-    const calculation = calculateAttendancePayroll({
-      basicSalary,
-      workingDays: attendance.workingDays,
-      absent: attendance.absent,
-      halfDay: attendance.halfDay,
-      late: attendance.late,
-      deductibleLate: attendance.deductibleLate,
-      lateMinutes: attendance.lateMinutes,
-      unpaidLeave: attendance.unpaidLeave + attendance.sandwichLeave,
-      requiredMinutes: employee.shiftId?.requiredMinutes,
-      payrollPolicy: settings.payrollPolicy,
-    });
-    const deductions = calculation.absenceDeduction + calculation.halfDayDeduction
-      + calculation.lateDeduction + calculation.unpaidLeaveDeduction;
-    const creditedDays = attendance.present + (attendance.halfDay * 0.5)
-      + attendance.paidLeave + attendance.holiday;
-    const earnedSalary = Math.min(basicSalary, Math.round(calculation.perDaySalary * creditedDays));
+    const monthlyMode = isMonthlyHourDepartment(employee.department);
+    const calculation = monthlyMode
+      ? calculateMonthlyHoursDeduction({
+        monthlySalary: basicSalary,
+        completedHours: attendance.monthlyHours?.completedHours || 0,
+        targetHours: MONTHLY_HOUR_TARGET,
+      })
+      : calculateAttendancePayroll({
+        basicSalary,
+        workingDays: attendance.workingDays,
+        absent: attendance.absent,
+        halfDay: attendance.halfDay,
+        late: attendance.late,
+        deductibleLate: attendance.deductibleLate,
+        lateMinutes: attendance.lateMinutes,
+        unpaidLeave: attendance.unpaidLeave + attendance.sandwichLeave,
+        requiredMinutes: employee.shiftId?.requiredMinutes,
+        payrollPolicy: settings.payrollPolicy,
+      });
+    const deductions = monthlyMode
+      ? calculation.attendanceDeduction
+      : calculation.absenceDeduction + calculation.halfDayDeduction
+        + calculation.lateDeduction + calculation.unpaidLeaveDeduction;
+    const creditedDays = monthlyMode
+      ? Math.min(30, Math.max(0, attendance.monthlyHours?.completedHours || 0) / 8)
+      : attendance.present + (attendance.halfDay * 0.5)
+        + attendance.paidLeave + attendance.holiday;
+    const earnedSalary = monthlyMode
+      ? Math.max(0, basicSalary - deductions)
+      : Math.min(basicSalary, Math.round(calculation.perDaySalary * creditedDays));
     return {
       employeeId: employee._id,
       employeeName: employee.fullName,
@@ -415,6 +519,7 @@ async function getLivePayroll(query, actor) {
       year,
       ...attendance,
       ...calculation,
+      monthlyTargetHours: monthlyMode ? MONTHLY_HOUR_TARGET : null,
     };
   }));
   return { items, month, year, total: items.length };

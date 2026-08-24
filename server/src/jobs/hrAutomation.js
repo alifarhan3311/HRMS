@@ -59,14 +59,12 @@ function isAttendanceDateAfterReset(attendanceDate, resetAt, timeZone = 'Asia/Ka
   return zonedDateKey(attendanceDate, timeZone) > zonedDateKey(resetAt, timeZone);
 }
 
-function missingPunchStatus(record, missedPunchType, thresholdMinutes = MISSED_PUNCH_HALF_DAY_MINUTES) {
+function missingPunchStatus(record, missedPunchType) {
   if (missedPunchType === 'sign_out' && record?.signInTime) {
     return 'half_day';
   }
   if (missedPunchType === 'sign_in' && record?.signOutTime) {
-    if (!record.scheduledEnd) return 'late';
-    const earlyDeparture = Math.max(0, Math.round((new Date(record.scheduledEnd) - new Date(record.signOutTime)) / 60000));
-    return earlyDeparture > thresholdMinutes ? 'half_day' : 'late';
+    return 'half_day';
   }
   return 'absent';
 }

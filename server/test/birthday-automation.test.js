@@ -47,13 +47,11 @@ test('missed sign-out never fabricates a scheduled-end sign-out or worked hours'
   assert.equal(Object.hasOwn(result, 'signOutTime'), false);
 });
 
-test('missing sign-out is half day while missing sign-in uses the 150-minute boundary', () => {
+test('missing sign-out and missing sign-in are marked half day', () => {
   const start = new Date('2026-08-12T13:00:00.000Z');
   const end = new Date('2026-08-12T21:00:00.000Z');
   assert.equal(missingPunchStatus({ scheduledStart: start, signInTime: new Date('2026-08-12T15:30:00.000Z') }, 'sign_out'), 'half_day');
-  assert.equal(missingPunchStatus({ scheduledStart: start, signInTime: new Date('2026-08-12T15:31:00.000Z') }, 'sign_out'), 'half_day');
-  assert.equal(missingPunchStatus({ scheduledEnd: end, signOutTime: new Date('2026-08-12T18:30:00.000Z') }, 'sign_in'), 'late');
-  assert.equal(missingPunchStatus({ scheduledEnd: end, signOutTime: new Date('2026-08-12T18:29:00.000Z') }, 'sign_in'), 'half_day');
+  assert.equal(missingPunchStatus({ scheduledEnd: end, signOutTime: new Date('2026-08-12T18:30:00.000Z') }, 'sign_in'), 'half_day');
   assert.equal(missingPunchStatus({}, 'sign_in'), 'absent');
 });
 

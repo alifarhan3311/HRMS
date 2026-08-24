@@ -32,6 +32,10 @@ const {
   canUseSelfServiceSignIn,
   buildWorkModeFilter,
 } = require('./workModePolicy');
+const {
+  isMonthlyHourDepartment,
+  buildMonthlyHoursSummary,
+} = require('./monthlyHoursPolicy');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -361,6 +365,11 @@ function isBiometricSignInWithinWindow(punchTime, schedule, shift = {}) {
   const scheduledStart = new Date(schedule.scheduledStart);
   if (Number.isNaN(punchAt.getTime()) || Number.isNaN(scheduledStart.getTime())) return false;
 
+  // Office biometric days run from 4:00 p.m. to 3:59 p.m. the next day.
+  // A first morning scan therefore belongs to the previous duty date even if
+  // the normal late/half-day arrival window has already passed.
+  if (schedule.businessDayEnd && punchAt < new Date(schedule.businessDayEnd)) return true;
+
   // A biometric punch far from the beginning of a fixed shift cannot be a
   // new sign-in. It is normally a delayed device log, a checkout from another
   // duty day, or an extra scan. Accept early arrivals, but never allow such a
@@ -541,9 +550,11 @@ async function resolveShiftContext(employeeId, companyId, now = new Date()) {
     ...normalizeDurationPolicy({}, assignedShift),
   };
   const timeZone = settings.company?.timezone || 'Asia/Karachi';
+  const officeBusinessDay = normalizeWorkMode(employee.workMode) === 'office';
+  const scheduleOptions = officeBusinessDay ? { businessDayStartMinutes: 16 * 60 } : {};
   const schedule = shift.shiftType === 'flexible'
-    ? buildFlexibleSchedule(now, shift, timeZone)
-    : buildShiftSchedule(now, shift, timeZone);
+    ? buildFlexibleSchedule(now, shift, timeZone, scheduleOptions)
+    : buildShiftSchedule(now, shift, timeZone, scheduleOptions);
   return { employee, shift, schedule };
 }
 
@@ -638,10 +649,14 @@ async function getAttendanceById(id, actor) {
 async function getMonthlySummary(employeeId, year, month, actor) {
   await assertCanViewEmployeeAttendance(actor, employeeId);
 
+  const employee = await Employee.findById(employeeId).select('department workMode companyId');
   const records = await repository.getMonthlySummary(employeeId, year, month);
   const summary = { present: 0, absent: 0, late: 0, half_day: 0, incomplete: 0, on_leave: 0, holiday: 0 };
   records.forEach((r) => { if (summary[r.status] !== undefined) summary[r.status]++; });
-  return { records, summary };
+  const monthlyHours = employee && isMonthlyHourDepartment(employee.department)
+    ? buildMonthlyHoursSummary(records, { month, year })
+    : null;
+  return { records, summary, monthlyHours };
 }
 
 // -------------------------------------------------------------------------

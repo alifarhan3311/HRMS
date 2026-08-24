@@ -11,7 +11,7 @@ import { useSelector } from 'react-redux';
 import {
   Wallet, Plus, CheckCircle2, Lock, CreditCard,
   RefreshCw, ChevronLeft, ChevronRight, Eye,
-  TrendingUp, TrendingDown, Banknote, FileText,
+  TrendingUp, TrendingDown, Banknote, FileText, Target,
   Download, Printer, Search,
 } from 'lucide-react';
 import {
@@ -193,6 +193,7 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, canGenerate, c
 
 function LivePayrollDetailModal({ employee, isOpen, onClose }) {
   if (!employee) return null;
+  const monthlyMode = employee.monthlyTargetHours != null;
   const attendance = [
     ['Present', employee.present, 'text-emerald-600'],
     ['Absent', employee.absent, 'text-red-500'],
@@ -225,21 +226,63 @@ function LivePayrollDetailModal({ employee, isOpen, onClose }) {
             <p className="text-xs text-muted-foreground">Payroll period</p>
             <p className="font-semibold">{MONTHS[Number(employee.month) - 1]} {employee.year}</p>
           </div>
-        </div>
+          </div>
+
+        {monthlyMode && (
+          <section className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly target</p>
+                <p className="mt-1 text-2xl font-bold text-primary">{employee.monthlyCompletionPercentage ?? 0}%</p>
+              </div>
+              <Target className="h-5 w-5 text-primary" />
+            </div>
+            <div className="mt-3 h-2 rounded-full bg-background/70">
+              <div
+                className="h-2 rounded-full bg-primary"
+                style={{ width: `${Math.min(100, employee.monthlyCompletionPercentage || 0)}%` }}
+              />
+            </div>
+            <div className="mt-3 grid gap-2 text-sm sm:grid-cols-4">
+              <div className="rounded-xl bg-background/70 p-3">
+                <p className="text-xs text-muted-foreground">Target</p>
+                <p className="mt-1 font-semibold">{employee.monthlyTargetHours}h</p>
+              </div>
+              <div className="rounded-xl bg-background/70 p-3">
+                <p className="text-xs text-muted-foreground">Completed</p>
+                <p className="mt-1 font-semibold text-emerald-600">{employee.monthlyCompletedHours}h</p>
+              </div>
+              <div className="rounded-xl bg-background/70 p-3">
+                <p className="text-xs text-muted-foreground">Remaining</p>
+                <p className="mt-1 font-semibold text-primary">{employee.monthlyRemainingHours}h</p>
+              </div>
+              <div className="rounded-xl bg-background/70 p-3">
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="mt-1 font-semibold">{employee.monthlyStatus?.replaceAll('_', ' ') || '—'}</p>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section>
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Salary summary</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[
-              ['Monthly Salary', employee.monthlySalary, ''],
-              ['Daily Salary', employee.dailySalary, ''],
-              ['Earned So Far', employee.earnedSalary, 'text-emerald-600'],
-              ['Attendance Deduction', employee.deductions, 'text-red-500'],
-              ['Projected Net Payable', employee.netPayable, 'text-primary'],
-            ].map(([label, value, color]) => (
-              <div key={label} className="rounded-xl border border-border bg-muted/20 p-4">
-                <p className="text-xs text-muted-foreground">{label}</p>
-                <p className={`mt-1 text-lg font-bold ${color}`}>{fmtPKR(value)}</p>
+              { label: 'Monthly Salary', value: employee.monthlySalary, formatter: fmtPKR },
+              { label: 'Daily Salary', value: employee.dailySalary, formatter: fmtPKR },
+              { label: 'Earned So Far', value: employee.earnedSalary, formatter: fmtPKR, color: 'text-emerald-600' },
+              { label: 'Attendance Deduction', value: employee.deductions, formatter: (value) => `− ${fmtPKR(value)}`, color: 'text-red-500' },
+              { label: 'Projected Net Payable', value: employee.netPayable, formatter: fmtPKR, color: 'text-primary' },
+              ...(monthlyMode
+                ? [
+                  { label: 'Shortfall Hours', value: employee.monthlyShortHours ?? 0, formatter: (value) => `${Number(value || 0).toFixed(2)}h`, color: 'text-orange-500' },
+                  { label: 'Monthly Deduction', value: employee.monthlyAttendanceDeduction ?? 0, formatter: (value) => `− ${fmtPKR(value)}`, color: 'text-red-500' },
+                ]
+                : []),
+            ].map((item) => (
+              <div key={item.label} className="rounded-xl border border-border bg-muted/20 p-4">
+                <p className="text-xs text-muted-foreground">{item.label}</p>
+                <p className={`mt-1 text-lg font-bold ${item.color || ''}`}>{item.formatter(item.value)}</p>
               </div>
             ))}
           </div>
@@ -540,6 +583,12 @@ export default function PayrollListPage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold">{row.employeeName}</p>
                     <p className="truncate text-xs text-muted-foreground">{row.employeeCode} · {row.designation}</p>
+                    {row.monthlyTargetHours != null && (
+                      <p className="mt-1 text-[11px] text-primary">
+                        184-hour target: {row.monthlyCompletedHours ?? 0}h completed
+                        {row.monthlyRemainingHours != null ? ` · ${row.monthlyRemainingHours}h remaining` : ''}
+                      </p>
+                    )}
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
                 </div>

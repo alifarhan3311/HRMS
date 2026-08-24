@@ -189,6 +189,11 @@ export default function ReportsPage() {
       'Paid Leaves': Number(record.paidLeave || 0),
       'Unpaid Leaves': Number(record.unpaidLeave || 0),
       'Sandwich Leaves': Number(record.sandwichLeave || 0),
+      'Monthly Target Hours': record.monthlyTargetHours ?? '',
+      'Completed Hours': record.monthlyCompletedHours ?? '',
+      'Remaining Hours': record.monthlyRemainingHours ?? '',
+      'Shortfall Hours': record.monthlyShortHours ?? '',
+      'Monthly Status': record.monthlyStatus ? titleCase(record.monthlyStatus) : '',
     })),
     expense: expenseRecords.map(record => ({
       Date: dateValue(record.expenseDate || record.createdAt),

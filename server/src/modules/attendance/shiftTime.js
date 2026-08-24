@@ -31,14 +31,22 @@ function addCalendarDays(parts, amount) {
   return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() };
 }
 
-function buildShiftSchedule(now, shift, timeZone) {
+function businessWorkDate(local, businessDayStartMinutes) {
+  const localMinutes = (local.hour * 60) + local.minute;
+  return localMinutes < businessDayStartMinutes ? addCalendarDays(local, -1) : local;
+}
+
+function buildShiftSchedule(now, shift, timeZone, { businessDayStartMinutes } = {}) {
   const local = zonedParts(now, timeZone);
   const startMinutes = timeMinutes(shift.startTime);
   const endMinutes = timeMinutes(shift.endTime);
   const overnight = endMinutes <= startMinutes;
   const currentMinutes = (local.hour * 60) + local.minute;
+  const useBusinessDay = Number.isFinite(businessDayStartMinutes);
   const afterMidnightWindow = overnight && currentMinutes <= endMinutes + 240;
-  const workDate = afterMidnightWindow ? addCalendarDays(local, -1) : local;
+  const workDate = useBusinessDay
+    ? businessWorkDate(local, businessDayStartMinutes)
+    : afterMidnightWindow ? addCalendarDays(local, -1) : local;
   const nextDate = addCalendarDays(workDate, overnight ? 1 : 0);
   const [startHour, startMinute] = shift.startTime.split(':').map(Number);
   const [endHour, endMinute] = shift.endTime.split(':').map(Number);
@@ -46,19 +54,27 @@ function buildShiftSchedule(now, shift, timeZone) {
   const scheduledEnd = zonedDateTimeToUtc({ ...nextDate, hour: endHour, minute: endMinute }, timeZone);
   const shiftDate = `${workDate.year}-${String(workDate.month).padStart(2, '0')}-${String(workDate.day).padStart(2, '0')}`;
   const dayOfWeek = new Date(Date.UTC(workDate.year, workDate.month - 1, workDate.day, 12)).getUTCDay();
-  return { shiftDate, scheduledStart, scheduledEnd, overnight, dayOfWeek, timeZone };
+  const businessDayEnd = useBusinessDay
+    ? zonedDateTimeToUtc({ ...addCalendarDays(workDate, 1), hour: Math.floor(businessDayStartMinutes / 60), minute: businessDayStartMinutes % 60 }, timeZone)
+    : null;
+  return { shiftDate, scheduledStart, scheduledEnd, businessDayEnd, overnight, dayOfWeek, timeZone };
 }
 
-function buildFlexibleSchedule(now, shift, timeZone) {
+function buildFlexibleSchedule(now, shift, timeZone, { businessDayStartMinutes } = {}) {
   const local = zonedParts(now, timeZone);
-  const shiftDate = `${local.year}-${String(local.month).padStart(2, '0')}-${String(local.day).padStart(2, '0')}`;
+  const useBusinessDay = Number.isFinite(businessDayStartMinutes);
+  const workDate = useBusinessDay ? businessWorkDate(local, businessDayStartMinutes) : local;
+  const shiftDate = `${workDate.year}-${String(workDate.month).padStart(2, '0')}-${String(workDate.day).padStart(2, '0')}`;
   const requiredMinutes = Number(shift.requiredMinutes || 480);
   return {
     shiftDate,
     scheduledStart: new Date(now),
     scheduledEnd: new Date(now.getTime() + (requiredMinutes * 60000)),
     overnight: false,
-    dayOfWeek: new Date(Date.UTC(local.year, local.month - 1, local.day, 12)).getUTCDay(),
+    businessDayEnd: useBusinessDay
+      ? zonedDateTimeToUtc({ ...addCalendarDays(workDate, 1), hour: Math.floor(businessDayStartMinutes / 60), minute: businessDayStartMinutes % 60 }, timeZone)
+      : null,
+    dayOfWeek: new Date(Date.UTC(workDate.year, workDate.month - 1, workDate.day, 12)).getUTCDay(),
     timeZone,
   };
 }
@@ -100,4 +116,4 @@ function boundaryForShiftDate(shiftDate, time, shift, schedule) {
   return zonedDateTimeToUtc({ ...date, hour, minute }, schedule.timeZone);
 }
 
-module.exports = { buildShiftSchedule, buildFlexibleSchedule, lateMinutes, arrivalStatus, earlyLeaveMinutes, boundaryForShiftDate };
+module.exports = { buildShiftSchedule, buildFlexibleSchedule, businessWorkDate, lateMinutes, arrivalStatus, earlyLeaveMinutes, boundaryForShiftDate };

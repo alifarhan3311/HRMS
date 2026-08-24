@@ -2,8 +2,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
 const { normalizeDurationPolicy } = require('../src/modules/shifts/shifts.service');
-const { arrivalStatus } = require('../src/modules/attendance/shiftTime');
+const { arrivalStatus, buildShiftSchedule, buildFlexibleSchedule } = require('../src/modules/attendance/shiftTime');
 const { appliesToEmployee } = require('../src/modules/attendance/closurePolicy');
+const {
+  isMonthlyHourDepartment,
+  buildMonthlyHoursSummary,
+  calculateMonthlyHoursDeduction,
+} = require('../src/modules/attendance/monthlyHoursPolicy');
 const {
   correctedWorkMetrics,
   completionToleranceMinutes,
@@ -38,6 +43,17 @@ test('biometric fixed-shift sign-in rejects a far-off-hours punch instead of ope
   const shift = { shiftType: 'fixed', halfDayMinutes: 240, lateHalfDayAfterMinutes: 150 };
   assert.equal(isBiometricSignInWithinWindow(new Date('2026-08-13T14:10:00.000Z'), schedule, shift), true);
   assert.equal(isBiometricSignInWithinWindow(new Date('2026-08-13T23:30:00.000Z'), schedule, shift), false);
+});
+
+test('office biometric business day starts at 4 p.m. and keeps morning punches on the previous date', () => {
+  const fixed = { startTime: '18:00', endTime: '02:00' };
+  const afterFour = buildShiftSchedule(new Date('2026-08-14T11:00:00.000Z'), fixed, 'Asia/Karachi', { businessDayStartMinutes: 960 });
+  const morning = buildShiftSchedule(new Date('2026-08-15T03:00:00.000Z'), fixed, 'Asia/Karachi', { businessDayStartMinutes: 960 });
+  const flexibleMorning = buildFlexibleSchedule(new Date('2026-08-15T04:00:00.000Z'), { requiredMinutes: 480 }, 'Asia/Karachi', { businessDayStartMinutes: 960 });
+  assert.equal(afterFour.shiftDate, '2026-08-14');
+  assert.equal(morning.shiftDate, '2026-08-14');
+  assert.equal(flexibleMorning.shiftDate, '2026-08-14');
+  assert.equal(isBiometricSignInWithinWindow(new Date('2026-08-15T03:00:00.000Z'), morning, { shiftType: 'fixed' }), true);
 });
 
 test('fixed shift completed through scheduled end stays present when arrival is within grace', () => {
@@ -238,4 +254,33 @@ test('attendance records require one normalized shift date for duplicate prevent
   assert.ok(record.validateSync()?.errors?.shiftDate);
   record.shiftDate = '2026-07-27';
   assert.equal(record.validateSync(), undefined);
+});
+
+test('monthly-hours departments include operations and accounting and calculate the 184-hour target correctly', () => {
+  assert.equal(isMonthlyHourDepartment('Operations'), true);
+  assert.equal(isMonthlyHourDepartment('accounting'), true);
+  assert.equal(isMonthlyHourDepartment('Digital Media'), false);
+
+  const summary = buildMonthlyHoursSummary([
+    { status: 'present', workedMinutes: 480 },
+    { status: 'present', workedMinutes: 480 },
+    { status: 'late', workedMinutes: 420 },
+  ], { month: 8, year: 2026 });
+
+  assert.equal(summary.targetHours, 184);
+  assert.equal(summary.completedHours, 23);
+  assert.equal(summary.remainingHours, 161);
+  assert.equal(summary.shortHours, 161);
+  assert.equal(summary.completionPercentage, 12.5);
+  assert.equal(summary.present, 2);
+  assert.equal(summary.late, 1);
+
+  const deduction = calculateMonthlyHoursDeduction({
+    monthlySalary: 184000,
+    completedHours: summary.completedHours,
+  });
+  assert.equal(deduction.perDaySalary, 6133.333333333333);
+  assert.equal(deduction.shortHours, 161);
+  assert.equal(deduction.shortDaysEquivalent, 20.13);
+  assert.equal(deduction.attendanceDeduction > 0, true);
 });

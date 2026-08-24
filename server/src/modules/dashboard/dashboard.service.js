@@ -12,6 +12,10 @@ const Project = require('../projects/projects.model');
 const Holiday = require('../holidays/holidays.model');
 const settingsService = require('../companySettings/companySettings.service');
 const { buildManagerEmployeeScope } = require('../employees/managerScope');
+const {
+  isMonthlyHourDepartment,
+  buildMonthlyHoursSummary,
+} = require('../attendance/monthlyHoursPolicy');
 
 function startOfDay(date = new Date()) {
   const d = new Date(date);
@@ -79,7 +83,7 @@ async function getEmployeeDashboard(user) {
   ]);
   if (!employee) return null;
 
-  const [todayAttendance, monthPayslip, pendingLeaves, monthLateCount, projectIncentives, holidays] =
+  const [todayAttendance, monthPayslip, pendingLeaves, monthLateCount, projectIncentives, holidays, monthlyAttendanceRecords] =
     await Promise.all([
       Attendance.findOne({
         employeeId: user.id,
@@ -110,6 +114,10 @@ async function getEmployeeDashboard(user) {
         .limit(5)
         .lean(),
       getUpcomingHolidays(user.companyId, 5),
+      Attendance.find({
+        employeeId: user.id,
+        date: { $gte: monthStart, $lte: monthEnd },
+      }).sort({ date: 1 }).lean(),
     ]);
 
   const enabledTypes = settings.leavePolicy?.enabledTypes || ['paid', 'sick', 'annual'];
@@ -131,6 +139,14 @@ async function getEmployeeDashboard(user) {
   const tenure = employee.joiningDate
     ? daysBetween(new Date(employee.joiningDate), now)
     : { years: 0, months: 0, days: 0 };
+
+  const monthlyHours = isMonthlyHourDepartment(employee.department)
+    ? buildMonthlyHoursSummary(monthlyAttendanceRecords, {
+      month: now.getMonth() + 1,
+      year: now.getFullYear(),
+      now,
+    })
+    : null;
 
   return {
     role: 'employee',
@@ -166,6 +182,7 @@ async function getEmployeeDashboard(user) {
       status: p.status,
     })),
     salesIncentives: [],
+    monthlyHours,
     tenure,
   };
 }
@@ -191,6 +208,7 @@ async function getHRDashboard(user) {
     totalEmployees,
     activeEmployees,
     settings,
+    monthlyHourEmployees,
   ] = await Promise.all([
     LeaveRequest.find({ companyId: user.companyId, employeeId: { $in: visibleEmployeeIds }, status: 'pending' })
       .populate('employeeId', 'fullName employeeCode department')
@@ -259,12 +277,56 @@ async function getHRDashboard(user) {
     Employee.countDocuments(employeeFilter),
     Employee.countDocuments({ ...employeeFilter, status: 'active' }),
     settingsService.getPolicy(user.companyId),
+    Employee.find({
+      ...employeeFilter,
+      status: 'active',
+    })
+      .select('_id fullName employeeCode department currentSalary workMode')
+      .lean(),
   ]);
 
   const enabledLeaveTypes = settings.leavePolicy?.enabledTypes || ['paid', 'sick', 'annual'];
   const leaveEntitlements = Object.fromEntries(enabledLeaveTypes
     .filter((type) => settings.leavePolicy?.entitlements?.[type] !== undefined)
     .map((type) => [type, Number(settings.leavePolicy.entitlements[type] || 0)]));
+
+  const monthlyEmployeeIds = monthlyHourEmployees
+    .filter((employee) => isMonthlyHourDepartment(employee.department))
+    .map((employee) => employee._id);
+  const monthlyAttendanceRecords = monthlyEmployeeIds.length
+    ? await Attendance.find({
+      companyId: user.companyId,
+      employeeId: { $in: monthlyEmployeeIds },
+      date: { $gte: monthStart, $lte: monthEnd },
+    })
+      .populate('employeeId', 'fullName employeeCode department')
+      .sort({ date: -1 })
+      .lean()
+    : [];
+  const monthlyAttendanceByEmployee = new Map();
+  monthlyAttendanceRecords.forEach((record) => {
+    const id = String(record.employeeId?._id || record.employeeId);
+    if (!monthlyAttendanceByEmployee.has(id)) monthlyAttendanceByEmployee.set(id, []);
+    monthlyAttendanceByEmployee.get(id).push(record);
+  });
+  const monthlyHoursSummary = monthlyHourEmployees
+    .filter((employee) => isMonthlyHourDepartment(employee.department))
+    .map((employee) => {
+      const records = monthlyAttendanceByEmployee.get(String(employee._id)) || [];
+      const overview = buildMonthlyHoursSummary(records, {
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+        now,
+      });
+      return {
+        employeeId: employee._id,
+        employeeName: employee.fullName,
+        employeeCode: employee.employeeCode,
+        department: employee.department,
+        monthlySalary: Number(employee.currentSalary || 0),
+        ...overview,
+      };
+    });
 
   return {
     role: 'hr',
@@ -291,6 +353,7 @@ async function getHRDashboard(user) {
     upcomingHolidays: holidays,
     pendingDocuments: [],
     recruitmentStatus: { openPositions: 0, inInterview: 0, offersPending: 0 },
+    monthlyHoursSummary,
   };
 }
 

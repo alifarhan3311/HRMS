@@ -13,7 +13,7 @@ import { useSelector } from 'react-redux';
 import {
   Clock, CheckCircle2, XCircle, AlertCircle, Calendar,
   ChevronLeft, ChevronRight, Edit, RefreshCw, Search, X,
-  Download, CalendarRange, Timer, BarChart3,
+  Download, CalendarRange, Timer, BarChart3, Target,
 } from 'lucide-react';
 import { BarChart, Bar, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import {
@@ -135,6 +135,10 @@ function presetRange(preset) {
 
 function csvCell(value) {
   return `"${String(value ?? '').replaceAll('"', '""')}"`;
+}
+
+function isMonthlyHourDepartment(value) {
+  return ['operations', 'accounting'].includes(String(value || '').trim().toLowerCase());
 }
 
 // ─── Sign-In/Out Widget ──────────────────────────────────────────────────────
@@ -511,6 +515,7 @@ export default function AttendanceListPage() {
   const isTeamOverview = isTeamRole && !selectedEmployeeId;
   const isMyAttendance = String(selectedEmployeeId || '') === String(user?.id || user?._id || '');
   const viewedEmployee = employees.find(employee => employee._id === selectedEmployeeId);
+  const monthlyHoursView = isMonthlyHourDepartment(selectedEmployee?.department || viewedEmployee?.department || user?.department);
   const monthParams = {
     year: ym.year,
     month: ym.month,
@@ -577,6 +582,7 @@ export default function AttendanceListPage() {
   const trend = selectedEmployeeId ? (rangeData?.data?.trend || []) : [];
   const reportRecords = selectedEmployeeId ? (rangeData?.data?.records || []) : listRecords;
   const calRecords = selectedEmployeeId ? (summaryData?.data?.records || []) : listRecords;
+  const monthlyHours = summaryData?.data?.monthlyHours;
   const total = listData?.total || 0;
   const totalPages = listData?.totalPages || 1;
   const todayDateKey = inputDate(new Date());
@@ -719,6 +725,67 @@ export default function AttendanceListPage() {
 
       {/* Sign In/Out widget (own attendance) */}
       <SignInWidget user={user} onSigningOutChange={setFullPageSigningOut} />
+
+      {monthlyHours && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card p-5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Target</p>
+              <h3 className="mt-1 text-lg font-semibold">Operations / Accounting attendance summary</h3>
+              <p className="text-sm text-muted-foreground">
+                {monthlyHours.completedHours}h completed of {monthlyHours.targetHours}h target.
+                {monthlyHours.daysRemaining > 0
+                  ? ` You need ${monthlyHours.requiredAverageHoursPerRemainingDay}h/day for the remaining ${monthlyHours.daysRemaining} day(s).`
+                  : ' Monthly target period is complete.'}
+              </p>
+              {monthlyHours.daysRemaining > 0 && (
+                <p className="mt-2 inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                  Daily target to complete month: {monthlyHours.requiredAverageHoursPerRemainingDay}h per day
+                </p>
+              )}
+            </div>
+            <div className="text-right">
+              <p className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
+                monthlyHours.status === 'target_completed'
+                  ? 'bg-emerald-500/10 text-emerald-600'
+                  : monthlyHours.status === 'ahead'
+                    ? 'bg-blue-500/10 text-blue-600'
+                    : monthlyHours.status === 'on_track'
+                      ? 'bg-amber-500/10 text-amber-600'
+                      : 'bg-red-500/10 text-red-600'
+              }`}>
+                {monthlyHours.statusLabel}
+              </p>
+              <p className="mt-2 text-2xl font-bold">{monthlyHours.completionPercentage}%</p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+            <div className="rounded-xl border border-border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Remaining</p>
+              <p className="mt-1 font-semibold text-primary">{monthlyHours.remainingHours}h</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Extra</p>
+              <p className="mt-1 font-semibold text-emerald-600">{monthlyHours.extraHours}h</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Average / Day</p>
+              <p className="mt-1 font-semibold">{monthlyHours.averageHoursPerDay}h</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Status</p>
+              <p className="mt-1 font-semibold">{monthlyHours.statusLabel}</p>
+            </div>
+          </div>
+          <div className="mt-4 h-2 rounded-full bg-muted">
+            <div className="h-2 rounded-full bg-primary" style={{ width: `${Math.min(100, monthlyHours.completionPercentage || 0)}%` }} />
+          </div>
+        </motion.div>
+      )}
 
       {canSelectEmployee && (
         <div className="relative z-30 rounded-2xl border border-border bg-card p-4 shadow-soft">
@@ -907,62 +974,87 @@ export default function AttendanceListPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        {rangeLoading ? (
-          [...Array(6)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)
-        ) : (
-          <>
-            <StatCard title="Present" value={summary.present ?? 0} icon={CheckCircle2}
-              trend={{ label: `${summary.attendanceRate ?? 0}% attendance`, positive: true }} />
-            <StatCard title="Late" value={summary.late ?? 0} icon={AlertCircle} />
-            <StatCard title="Absent" value={summary.absent ?? 0} icon={XCircle} />
-            <StatCard title="On Leave" value={summary.on_leave ?? 0} icon={Calendar} />
-            <StatCard title="Worked Hours" value={`${summary.workedHours ?? 0}h`} icon={Timer} />
-            <StatCard title="Half Days" value={summary.half_day ?? 0} icon={AlertCircle} />
-          </>
-        )}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-        <div className="glass-card min-h-[310px] p-5">
-          <h3 className="mb-1 flex items-center gap-2 font-semibold"><BarChart3 className="h-4 w-4 text-primary" /> Monthly attendance trend</h3>
-          <p className="mb-5 text-xs text-muted-foreground">Present, late and absent days across the selected report period.</p>
-          {trend.length ? (
-            <div className="h-60 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.25} />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={{ borderRadius: 10, borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="present" name="Present" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="late" name="Late" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">No records in this period.</div>}
+      {monthlyHoursView && monthlyHours ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {rangeLoading ? (
+            [...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)
+          ) : (
+            <>
+              <StatCard
+                title="Monthly Target"
+                value={`${monthlyHours.targetHours}h`}
+                icon={Target}
+                trend={{ label: `${monthlyHours.statusLabel}`, positive: monthlyHours.status === 'target_completed' || monthlyHours.status === 'ahead' || monthlyHours.status === 'on_track' }}
+              />
+              <StatCard title="Completed" value={`${monthlyHours.completedHours}h`} icon={CheckCircle2}
+                trend={{ label: `${monthlyHours.completionPercentage}% done`, positive: true }} />
+              <StatCard title="Remaining" value={`${monthlyHours.remainingHours}h`} icon={Timer}
+                trend={{ label: monthlyHours.daysRemaining > 0 ? `${monthlyHours.requiredAverageHoursPerRemainingDay}h/day needed` : 'Target complete', positive: false }} />
+              <StatCard title="Shortfall" value={`${monthlyHours.shortHours}h`} icon={AlertCircle}
+                trend={{ label: monthlyHours.extraHours > 0 ? `${monthlyHours.extraHours}h extra` : `${monthlyHours.requiredAverageHoursPerRemainingDay}h/day needed`, positive: monthlyHours.extraHours > 0 }} />
+            </>
+          )}
         </div>
-        <div className="glass-card p-5">
-          <h3 className="font-semibold">Period details</h3>
-          <div className="mt-4 divide-y divide-border text-sm">
-            {[
-              ['Attendance rate', `${summary.attendanceRate ?? 0}%`],
-              ['Average daily hours', `${summary.averageHours ?? 0}h`],
-              ['Half days', summary.half_day ?? 0],
-              ['Holidays', summary.holiday ?? 0],
-              ['Late time', `${summary.lateMinutes ?? 0} min`],
-              ['Early departures', `${summary.earlyLeaveMinutes ?? 0} min`],
-              ['Total records', summary.totalRecords ?? 0],
-            ].map(([label, value]) => (
-              <div key={label} className="flex items-center justify-between gap-3 py-2.5">
-                <span className="text-muted-foreground">{label}</span><strong>{value}</strong>
-              </div>
-            ))}
+      ) : (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+            {rangeLoading ? (
+              [...Array(6)].map((_, i) => <Skeleton key={i} className="h-28 rounded-xl" />)
+            ) : (
+              <>
+                <StatCard title="Present" value={summary.present ?? 0} icon={CheckCircle2}
+                  trend={{ label: `${summary.attendanceRate ?? 0}% attendance`, positive: true }} />
+                <StatCard title="Late" value={summary.late ?? 0} icon={AlertCircle} />
+                <StatCard title="Absent" value={summary.absent ?? 0} icon={XCircle} />
+                <StatCard title="On Leave" value={summary.on_leave ?? 0} icon={Calendar} />
+                <StatCard title="Worked Hours" value={`${summary.workedHours ?? 0}h`} icon={Timer} />
+                <StatCard title="Half Days" value={summary.half_day ?? 0} icon={AlertCircle} />
+              </>
+            )}
           </div>
-        </div>
-      </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+            <div className="glass-card min-h-[310px] p-5">
+              <h3 className="mb-1 flex items-center gap-2 font-semibold"><BarChart3 className="h-4 w-4 text-primary" /> Monthly attendance trend</h3>
+              <p className="mb-5 text-xs text-muted-foreground">Present, late and absent days across the selected report period.</p>
+              {trend.length ? (
+                <div className="h-60 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={trend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} opacity={0.25} />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                      <Tooltip contentStyle={{ borderRadius: 10, borderColor: 'hsl(var(--border))', background: 'hsl(var(--card))' }} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Bar dataKey="present" name="Present" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="late" name="Late" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="absent" name="Absent" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <div className="flex h-60 items-center justify-center text-sm text-muted-foreground">No records in this period.</div>}
+            </div>
+            <div className="glass-card p-5">
+              <h3 className="font-semibold">Period details</h3>
+              <div className="mt-4 divide-y divide-border text-sm">
+                {[
+                  ['Attendance rate', `${summary.attendanceRate ?? 0}%`],
+                  ['Average daily hours', `${summary.averageHours ?? 0}h`],
+                  ['Half days', summary.half_day ?? 0],
+                  ['Holidays', summary.holiday ?? 0],
+                  ['Late time', `${summary.lateMinutes ?? 0} min`],
+                  ['Early departures', `${summary.earlyLeaveMinutes ?? 0} min`],
+                  ['Total records', summary.totalRecords ?? 0],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex items-center justify-between gap-3 py-2.5">
+                    <span className="text-muted-foreground">{label}</span><strong>{value}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Month navigator + Calendar */}
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
@@ -1028,6 +1120,14 @@ export default function AttendanceListPage() {
                     ? { label: 'Awaiting Punch', variant: 'gray' }
                     : STATUS_STYLES[rec.status] || STATUS_STYLES.present;
                   const recordEmployee = employees.find(employee => employee._id === (rec.employeeId?._id || rec.employeeId));
+                  const reasonLabel = (() => {
+                    if (rec.missedPunchType === 'sign_in') return 'Missing Sign-In';
+                    if (rec.missedPunchType === 'sign_out') return 'Missing Sign-Out';
+                    const notesLower = rec.notes?.toLowerCase() || '';
+                    if (notesLower.includes('missing sign-in')) return 'Missing Sign-In';
+                    if (notesLower.includes('missing sign-out')) return 'Missing Sign-Out';
+                    return null;
+                  })();
                   return (
                     <motion.div key={rec._id} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                       transition={{ delay: i * 0.02 }}
@@ -1038,7 +1138,14 @@ export default function AttendanceListPage() {
                         <p className="text-xs text-muted-foreground">{fmtDate(rec.date)}</p>
                       </div>
                       <div className="flex flex-col items-end gap-1">
-                        <Badge variant={st.variant}>{st.label}</Badge>
+                        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                          <Badge variant={st.variant}>{st.label}</Badge>
+                          {reasonLabel && (
+                            <span className="rounded-full bg-red-500/15 text-red-600 dark:bg-red-950/50 dark:text-red-400 border border-red-500/30 px-2 py-0.5 text-[10px] font-bold">
+                              {reasonLabel}
+                            </span>
+                          )}
+                        </div>
                         <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                           rec.workMode === 'wfh'
                             ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
@@ -1052,6 +1159,9 @@ export default function AttendanceListPage() {
                           ? 'No biometric punch yet'
                           : `${fmtTime(rec.signInTime, rec.shiftTimezone)} – ${fmtTime(rec.signOutTime, rec.shiftTimezone)}`}</p>
                         {rec.totalHours > 0 && <p>{rec.totalHours}h</p>}
+                        {reasonLabel && (
+                          <p className="text-[10px] text-red-500 font-semibold">{reasonLabel}</p>
+                        )}
                       </div>
                       {rec.lateMinutes > 0 && (
                         <span className="text-xs text-amber-500">{rec.lateMinutes}m late</span>

@@ -9,6 +9,9 @@ import {
   AlertTriangle,
   Gift,
   Briefcase,
+  Target,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import {
   BarChart,
@@ -38,6 +41,7 @@ export default function EmployeeDashboard({ data }) {
     remaining: l.remaining,
     used: l.used,
   }));
+  const monthlyHours = data.monthlyHours;
 
   return (
     <div className="space-y-6">
@@ -95,6 +99,77 @@ export default function EmployeeDashboard({ data }) {
           icon={CalendarDays}
         />
       </div>
+
+      {monthlyHours && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="glass-card overflow-hidden"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <div>
+              <h3 className="font-semibold">Monthly Attendance Target</h3>
+              <p className="text-sm text-muted-foreground">
+                Operations and Accounting follow a monthly 184-hour attendance target.
+              </p>
+            </div>
+            <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
+              monthlyHours.status === 'target_completed'
+                ? 'bg-emerald-500/10 text-emerald-600'
+                : monthlyHours.status === 'ahead'
+                  ? 'bg-blue-500/10 text-blue-600'
+                  : monthlyHours.status === 'on_track'
+                    ? 'bg-amber-500/10 text-amber-600'
+                    : 'bg-red-500/10 text-red-600'
+            }`}>
+              {monthlyHours.statusLabel}
+            </span>
+          </div>
+          <div className="grid gap-4 p-5 lg:grid-cols-3">
+            <div className="rounded-2xl border border-border bg-background p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">Progress</p>
+                  <p className="mt-1 text-2xl font-bold">{monthlyHours.completionPercentage}%</p>
+                </div>
+                <Target className="h-5 w-5 text-primary" />
+              </div>
+              <div className="mt-4 h-2 rounded-full bg-muted">
+                <div
+                  className="h-2 rounded-full bg-primary transition-all"
+                  style={{ width: `${Math.min(100, monthlyHours.completionPercentage || 0)}%` }}
+                />
+              </div>
+              <p className="mt-3 text-sm text-muted-foreground">
+                {monthlyHours.completedHours}h completed of {monthlyHours.targetHours}h target.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-border bg-background p-4">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Remaining / Extra</p>
+              <p className="mt-1 text-2xl font-bold text-primary">
+                {monthlyHours.remainingHours}h remaining
+              </p>
+              <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                {monthlyHours.extraHours > 0 ? <TrendingUp className="h-4 w-4 text-emerald-600" /> : <TrendingDown className="h-4 w-4 text-red-500" />}
+                {monthlyHours.extraHours > 0
+                  ? `${monthlyHours.extraHours}h extra completed`
+                  : `${monthlyHours.shortHours}h short of target`}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-border bg-background p-4">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Daily guidance</p>
+              <p className="mt-1 text-lg font-semibold">
+                {monthlyHours.daysRemaining > 0
+                  ? `${monthlyHours.requiredAverageHoursPerRemainingDay}h/day required`
+                  : 'Monthly target period completed'}
+              </p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Average so far: {monthlyHours.averageHoursPerDay}h/day
+              </p>
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <motion.div
