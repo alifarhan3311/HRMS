@@ -1,4 +1,4 @@
-/**
+﻿/**
  * modules/employees/employees.service.js
  * Business logic for Employee management. All domain rules live here;
  * controllers call this and repository methods handle DB I/O.
@@ -381,7 +381,13 @@ async function createEmployee(payload, actor) {
   };
   delete data.password; // never store plaintext
 
-  const employee = await repository.create(data);
+  let employee;
+  try {
+    employee = await repository.create(data);
+  } catch (err) {
+    if (err.code === 11000) throwDuplicateKeyError(err);
+    throw err;
+  }
   if (employee.role === 'manager') {
     for (const department of employee.managedDepartments || [employee.department]) {
       // eslint-disable-next-line no-await-in-loop
@@ -541,7 +547,13 @@ async function updateEmployee(id, payload, actor) {
     ];
   }
 
-  const updated = await repository.updateById(id, payload);
+  let updated;
+  try {
+    updated = await repository.updateById(id, payload);
+  } catch (err) {
+    if (err.code === 11000) throwDuplicateKeyError(err);
+    throw err;
+  }
   if (!updated) throw createHttpError(404, 'Employee not found.');
   if (existing.role === 'manager') {
     await repository.clearManagerReferences(id);
@@ -819,6 +831,29 @@ async function getEmployeeStats(actor) {
 // -------------------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------------------
+
+/**
+ * Translates a MongoDB duplicate-key (E11000) error into a human-readable
+ * 409 Conflict HTTP error so the client sees a clear message instead of a
+ * raw database error string.
+ */
+function throwDuplicateKeyError(err) {
+  const keys = err.keyPattern || {};
+  if (keys.email) {
+    throw createHttpError(409, 'An employee with this email already exists.');
+  }
+  if (keys.biometricDeviceUserId) {
+    throw createHttpError(
+      409,
+      'Biometric Device ID is already assigned to another employee. Please use a different ID.'
+    );
+  }
+  if (keys.employeeCardNumber) {
+    throw createHttpError(409, 'Employee card number conflict. Please try again.');
+  }
+  // Generic fallback for any other unique index
+  throw createHttpError(409, 'A record with these details already exists. Please check for duplicates.');
+}
 
 /** Strip passwordHash from any returned object. */
 function sanitize(employee) {
