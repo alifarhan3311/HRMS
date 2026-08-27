@@ -141,7 +141,7 @@ export default function EmployeeDashboard({ data }) {
                 />
               </div>
               <p className="mt-3 text-sm text-muted-foreground">
-                {monthlyHours.completedHours}h completed of {monthlyHours.targetHours}h target.
+                {monthlyHours.completedHours}h worked + {monthlyHours.leaveHours}h leaves = {monthlyHours.totalEffectiveHours}h effective of {monthlyHours.targetHours}h target.
               </p>
             </div>
             <div className="rounded-2xl border border-border bg-background p-4">

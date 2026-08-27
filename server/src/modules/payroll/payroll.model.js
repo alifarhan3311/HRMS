@@ -46,6 +46,8 @@ const payrollSchema = new mongoose.Schema(
     workedMinutes: { type: Number, default: 0 },
     monthlyTargetHours: { type: Number, default: null },
     monthlyCompletedHours: { type: Number, default: null },
+    monthlyLeaveHours: { type: Number, default: null },
+    monthlyTotalEffectiveHours: { type: Number, default: null },
     monthlyRemainingHours: { type: Number, default: null },
     monthlyShortHours: { type: Number, default: null },
     monthlyExtraHours: { type: Number, default: null },

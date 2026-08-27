@@ -65,7 +65,7 @@ function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, 
   const monthlyHours = buildMonthlyHoursSummary(records, { month, year, targetHours });
   const monthlyDeduction = calculateMonthlyHoursDeduction({
     monthlySalary: Number(employee.currentSalary) || 0,
-    completedHours: monthlyHours.completedHours,
+    completedHours: monthlyHours.totalEffectiveHours,
     targetHours,
   });
 
@@ -290,7 +290,7 @@ async function generatePayslip(payload, actor) {
   const calculation = monthlyMode
     ? calculateMonthlyHoursDeduction({
       monthlySalary: basicSalary,
-      completedHours: monthlyHours?.completedHours || 0,
+      completedHours: monthlyHours?.totalEffectiveHours || 0,
       targetHours: MONTHLY_HOUR_TARGET,
     })
     : calculateAttendancePayroll({
@@ -359,6 +359,8 @@ async function generatePayslip(payload, actor) {
     workedMinutes,
     monthlyTargetHours: monthlyMode ? MONTHLY_HOUR_TARGET : null,
     monthlyCompletedHours: monthlyMode ? monthlyHours?.completedHours || 0 : null,
+    monthlyLeaveHours: monthlyMode ? monthlyHours?.leaveHours || 0 : null,
+    monthlyTotalEffectiveHours: monthlyMode ? monthlyHours?.totalEffectiveHours || 0 : null,
     monthlyRemainingHours: monthlyMode ? monthlyHours?.remainingHours || 0 : null,
     monthlyShortHours: monthlyMode ? shortHours : null,
     monthlyExtraHours: monthlyMode ? monthlyHours?.extraHours || 0 : null,
@@ -478,7 +480,7 @@ async function getLivePayroll(query, actor) {
     const calculation = monthlyMode
       ? calculateMonthlyHoursDeduction({
         monthlySalary: basicSalary,
-        completedHours: attendance.monthlyHours?.completedHours || 0,
+        completedHours: attendance.monthlyHours?.totalEffectiveHours || 0,
         targetHours: MONTHLY_HOUR_TARGET,
       })
       : calculateAttendancePayroll({
@@ -498,7 +500,7 @@ async function getLivePayroll(query, actor) {
       : calculation.absenceDeduction + calculation.halfDayDeduction
         + calculation.lateDeduction + calculation.unpaidLeaveDeduction;
     const creditedDays = monthlyMode
-      ? Math.min(30, Math.max(0, attendance.monthlyHours?.completedHours || 0) / 8)
+      ? Math.min(30, Math.max(0, attendance.monthlyHours?.totalEffectiveHours || 0) / 8)
       : attendance.present + (attendance.halfDay * 0.5)
         + attendance.paidLeave + attendance.holiday;
     const earnedSalary = monthlyMode

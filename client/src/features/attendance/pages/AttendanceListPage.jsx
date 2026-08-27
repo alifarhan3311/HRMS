@@ -737,7 +737,7 @@ export default function AttendanceListPage() {
               <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Target</p>
               <h3 className="mt-1 text-lg font-semibold">Operations / Accounting attendance summary</h3>
               <p className="text-sm text-muted-foreground">
-                {monthlyHours.completedHours}h completed of {monthlyHours.targetHours}h target.
+                {monthlyHours.completedHours}h worked + {monthlyHours.leaveHours}h leaves = {monthlyHours.totalEffectiveHours}h effective of {monthlyHours.targetHours}h target.
                 {monthlyHours.daysRemaining > 0
                   ? ` You need ${monthlyHours.requiredAverageHoursPerRemainingDay}h/day for the remaining ${monthlyHours.daysRemaining} day(s).`
                   : ' Monthly target period is complete.'}
@@ -763,7 +763,15 @@ export default function AttendanceListPage() {
               <p className="mt-2 text-2xl font-bold">{monthlyHours.completionPercentage}%</p>
             </div>
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <div className="mt-4 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="rounded-xl border border-border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Leave Hours</p>
+              <p className="mt-1 font-semibold text-purple-600">{monthlyHours.leaveHours}h</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-3">
+              <p className="text-xs text-muted-foreground">Total (incl. Leaves)</p>
+              <p className="mt-1 font-semibold text-emerald-600">{monthlyHours.totalEffectiveHours}h</p>
+            </div>
             <div className="rounded-xl border border-border bg-background p-3">
               <p className="text-xs text-muted-foreground">Remaining</p>
               <p className="mt-1 font-semibold text-primary">{monthlyHours.remainingHours}h</p>

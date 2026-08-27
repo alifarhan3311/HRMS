@@ -16,34 +16,6 @@ function roundHours(value) {
 }
 
 function buildMonthlyHoursSummary(records = [], { month, year, now = new Date(), targetHours = 184 } = {}) {
-  const target = Number(targetHours || 184);
-  const targetMinutes = target * 60;
-  const completedMinutes = records.reduce((total, record) => (
-    total + Number(record.workedMinutes || Math.round(Number(record.totalHours || 0) * 60) || 0)
-  ), 0);
-  const completedHours = roundHours(completedMinutes / 60);
-  const remainingHours = Math.max(0, roundHours(target - completedHours));
-  const shortHours = remainingHours;
-  const extraHours = Math.max(0, roundHours(completedHours - target));
-  const completionPercentage = target > 0
-    ? Number(Math.min(100, ((completedHours / target) * 100)).toFixed(1))
-    : 0;
-  const targetMonth = Number(month || now.getMonth() + 1);
-  const targetYear = Number(year || now.getFullYear());
-  const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
-  const monthStart = new Date(targetYear, targetMonth - 1, 1);
-  const monthEnd = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
-  const boundedNow = now < monthStart ? null : (now > monthEnd ? monthEnd : now);
-  const daysElapsed = boundedNow ? Math.max(1, boundedNow.getDate()) : 0;
-  const daysRemaining = Math.max(daysInMonth - daysElapsed, 0);
-  const averageHoursPerDay = daysElapsed ? roundHours(completedHours / daysElapsed) : 0;
-  const requiredAverageHoursPerRemainingDay = daysRemaining ? roundHours(remainingHours / daysRemaining) : 0;
-  const projectedMonthlyTotal = daysElapsed ? roundHours(averageHoursPerDay * daysInMonth) : completedHours;
-  let status = 'behind';
-  if (completedHours >= target) status = 'target_completed';
-  else if (extraHours > 0) status = 'ahead';
-  else if (projectedMonthlyTotal >= target) status = 'on_track';
-
   const counts = records.reduce((acc, record) => {
     if (Object.prototype.hasOwnProperty.call(acc, record.status)) acc[record.status] += 1;
     return acc;
@@ -58,11 +30,44 @@ function buildMonthlyHoursSummary(records = [], { month, year, now = new Date(),
     weekend: 0,
   });
 
+  const target = Number(targetHours || 184);
+  const targetMinutes = target * 60;
+  const completedMinutes = records.reduce((total, record) => (
+    total + Number(record.workedMinutes || Math.round(Number(record.totalHours || 0) * 60) || 0)
+  ), 0);
+  const completedHours = roundHours(completedMinutes / 60);
+  const leaveHours = counts.on_leave * 8;
+  const totalEffectiveHours = roundHours(completedHours + leaveHours);
+
+  const remainingHours = Math.max(0, roundHours(target - totalEffectiveHours));
+  const shortHours = remainingHours;
+  const extraHours = Math.max(0, roundHours(totalEffectiveHours - target));
+  const completionPercentage = target > 0
+    ? Number(Math.min(100, ((totalEffectiveHours / target) * 100)).toFixed(1))
+    : 0;
+  const targetMonth = Number(month || now.getMonth() + 1);
+  const targetYear = Number(year || now.getFullYear());
+  const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+  const monthStart = new Date(targetYear, targetMonth - 1, 1);
+  const monthEnd = new Date(targetYear, targetMonth, 0, 23, 59, 59, 999);
+  const boundedNow = now < monthStart ? null : (now > monthEnd ? monthEnd : now);
+  const daysElapsed = boundedNow ? Math.max(1, boundedNow.getDate()) : 0;
+  const daysRemaining = Math.max(daysInMonth - daysElapsed, 0);
+  const averageHoursPerDay = daysElapsed ? roundHours(totalEffectiveHours / daysElapsed) : 0;
+  const requiredAverageHoursPerRemainingDay = daysRemaining ? roundHours(remainingHours / daysRemaining) : 0;
+  const projectedMonthlyTotal = daysElapsed ? roundHours(averageHoursPerDay * daysInMonth) : totalEffectiveHours;
+  let status = 'behind';
+  if (totalEffectiveHours >= target) status = 'target_completed';
+  else if (extraHours > 0) status = 'ahead';
+  else if (projectedMonthlyTotal >= target) status = 'on_track';
+
   return {
     targetHours: target,
     targetMinutes,
     completedHours,
     completedMinutes,
+    leaveHours,
+    totalEffectiveHours,
     remainingHours,
     shortHours,
     extraHours,
