@@ -491,10 +491,14 @@ async function applyLeave(payload, actor) {
     startTime: settings.timing.officeStart,
     endTime: settings.timing.officeEnd,
   };
+  const resolvedWeekendDays = assignedShift.workingDays?.length
+    ? [0, 1, 2, 3, 4, 5, 6].filter(day => !assignedShift.workingDays.includes(day))
+    : settings.timing.weekendDays;
+
   const dutyDates = calculateLeaveDutyDates(
     start,
     end,
-    settings.timing.weekendDays,
+    resolvedWeekendDays,
     assignedShift,
     settings.company?.timezone || 'Asia/Karachi',
   );

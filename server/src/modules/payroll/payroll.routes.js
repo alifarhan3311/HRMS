@@ -8,7 +8,7 @@ const { authenticate, authorize, enforceTenantScope } = require('../../middlewar
 
 const router = express.Router();
 const PAYROLL_VIEWERS = ['super_admin','admin','hr','manager','floor_head','team_lead','employee'];
-const PAYROLL_ADMINS = ['super_admin','admin'];
+const PAYROLL_ADMINS = ['super_admin','admin','hr'];
 const ADMIN_HR = ['super_admin','admin','hr'];
 
 router.use(authenticate);
@@ -17,6 +17,7 @@ router.use(authenticate);
 router.get('/',    authorize(...PAYROLL_VIEWERS), controller.list);
 router.get('/live', authorize(...PAYROLL_VIEWERS), controller.live);
 router.post('/',   authorize(...PAYROLL_ADMINS), controller.generate);
+router.post('/bulk', authorize(...PAYROLL_ADMINS), controller.bulkGenerate);
 
 // Per-payslip
 router.get('/:id',  authorize(...PAYROLL_VIEWERS),

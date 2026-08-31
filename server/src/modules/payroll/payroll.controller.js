@@ -1,6 +1,7 @@
 /**
  * modules/payroll/payroll.controller.js
  */
+
 const service = require('./payroll.service');
 
 function asyncHandler(fn) {
@@ -10,6 +11,11 @@ function asyncHandler(fn) {
 const generate = asyncHandler(async (req, res) => {
   const record = await service.generatePayslip(req.body, req.user);
   res.status(201).json({ success: true, data: record });
+});
+
+const bulkGenerate = asyncHandler(async (req, res) => {
+  const result = await service.bulkGeneratePayslips(req.body, req.user);
+  res.status(201).json({ success: true, data: result });
 });
 
 const list = asyncHandler(async (req, res) => {
@@ -52,4 +58,4 @@ const lock = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: record });
 });
 
-module.exports = { generate, list, live, getById, update, submit, approve, markPaid, lock };
+module.exports = { generate, bulkGenerate, list, live, getById, update, submit, approve, markPaid, lock };

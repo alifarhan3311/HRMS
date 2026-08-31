@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import {
   useListPayrollQuery, useGetLivePayrollQuery, useGeneratePayrollMutation,
+  useBulkGeneratePayrollMutation,
   useSubmitPayrollMutation, useApprovePayrollMutation,
   useMarkPayrollPaidMutation, useLockPayrollMutation,
 } from '../api/payroll.api';
@@ -644,6 +645,7 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
       <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
         <Select label="Employee" required value={form.employeeId} onChange={(e) => set('employeeId', e.target.value)}>
           <option value="">Select employee</option>
+          <option value="ALL" className="font-bold text-primary">✅ Bulk Generate All Employees</option>
           {employees.map(employee => (
             <option key={employee._id} value={employee._id}>
               {employee.fullName} · {employee.employeeCode} · {employee.department}
@@ -657,31 +659,41 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
           <Input label="Year" type="number" value={form.year} onChange={(e) => set('year', e.target.value)} />
         </div>
 
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">Allowances</label>
-            <button type="button" onClick={addAllowance}
-              className="text-xs text-primary hover:underline">+ Add</button>
-          </div>
-          {form.allowanceItems.map((a, i) => (
-            <div key={i} className="flex gap-2">
-              <Input placeholder="Label (e.g. House Rent)" value={a.label}
-                onChange={(e) => setAllowance(i, 'label', e.target.value)} />
-              <Input placeholder="Amount" type="number" sensitive value={a.amount}
-                onChange={(e) => setAllowance(i, 'amount', e.target.value)} className="w-32" />
-              <button type="button" onClick={() => removeAllowance(i)}
-                className="text-muted-foreground hover:text-destructive text-xs px-1">✕</button>
+        {form.employeeId !== 'ALL' && (
+          <>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Allowances</label>
+                <button type="button" onClick={addAllowance}
+                  className="text-xs text-primary hover:underline">+ Add</button>
+              </div>
+              {form.allowanceItems.map((a, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input placeholder="Label (e.g. House Rent)" value={a.label}
+                    onChange={(e) => setAllowance(i, 'label', e.target.value)} />
+                  <Input placeholder="Amount" type="number" sensitive value={a.amount}
+                    onChange={(e) => setAllowance(i, 'amount', e.target.value)} className="w-32" />
+                  <button type="button" onClick={() => removeAllowance(i)}
+                    className="text-muted-foreground hover:text-destructive text-xs px-1">✕</button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input label="Bonus (PKR)" type="number" sensitive placeholder="0" value={form.bonus} onChange={(e) => set('bonus', e.target.value)} />
-          <Input label="Incentives (PKR)" type="number" sensitive placeholder="0" value={form.incentives} onChange={(e) => set('incentives', e.target.value)} />
-          <Input label="Loan Deduction (PKR)" type="number" sensitive placeholder="0" value={form.loanDeduction} onChange={(e) => set('loanDeduction', e.target.value)} />
-          <Input label="Advance Salary (PKR)" type="number" sensitive placeholder="0" value={form.advanceSalary} onChange={(e) => set('advanceSalary', e.target.value)} />
-        </div>
-        <Input label="Notes" value={form.notes} onChange={(e) => set('notes', e.target.value)} placeholder="Optional notes..." />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input label="Bonus (PKR)" type="number" sensitive placeholder="0" value={form.bonus} onChange={(e) => set('bonus', e.target.value)} />
+              <Input label="Incentives (PKR)" type="number" sensitive placeholder="0" value={form.incentives} onChange={(e) => set('incentives', e.target.value)} />
+              <Input label="Loan Deduction (PKR)" type="number" sensitive placeholder="0" value={form.loanDeduction} onChange={(e) => set('loanDeduction', e.target.value)} />
+              <Input label="Advance Salary (PKR)" type="number" sensitive placeholder="0" value={form.advanceSalary} onChange={(e) => set('advanceSalary', e.target.value)} />
+            </div>
+            <Input label="Notes" placeholder="Optional notes..." value={form.notes} onChange={(e) => set('notes', e.target.value)} />
+          </>
+        )}
+        
+        {form.employeeId === 'ALL' && (
+          <div className="p-4 bg-primary/10 text-primary rounded-lg text-sm font-medium">
+            Note: Custom allowances, bonuses, and deductions are disabled during bulk generation. Payslips will be generated using base salary and attendance records only. You can edit individual payslips after generation if needed.
+          </div>
+        )}
       </div>
       <ModalFooter>
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
@@ -696,7 +708,7 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PayrollListPage() {
   const { user } = useSelector((s) => s.auth);
-  const canGenerate = ['admin', 'super_admin'].includes(user?.role);
+  const canGenerate = ['admin', 'super_admin', 'hr'].includes(user?.role);
   const canApprove = ['admin', 'super_admin', 'hr'].includes(user?.role);
   const canViewTeamPayroll = canGenerate || canApprove;
   const now = new Date();
@@ -720,6 +732,7 @@ export default function PayrollListPage() {
     { skip: !canGenerate }
   );
   const [generatePayroll, { isLoading: generating }] = useGeneratePayrollMutation();
+  const [bulkGeneratePayroll, { isLoading: bulkGenerating }] = useBulkGeneratePayrollMutation();
   const [submitPayroll,   { isLoading: submitting }]  = useSubmitPayrollMutation();
   const [approvePayroll,  { isLoading: approving }]   = useApprovePayrollMutation();
   const [markPaid,        { isLoading: paying }]      = useMarkPayrollPaidMutation();
@@ -768,6 +781,18 @@ export default function PayrollListPage() {
   };
 
   async function handleGenerate(payload) {
+    if (payload.employeeId === 'ALL') {
+      try {
+        const res = await bulkGeneratePayroll({ month: payload.month, year: payload.year }).unwrap();
+        toast.success(`Generated ${res.data?.generatedCount || 0} payslips in bulk`);
+        setGenerateOpen(false);
+        return true;
+      } catch (err) {
+        toast.error(err?.data?.error?.message || 'Failed to bulk generate payslips');
+        return false;
+      }
+    }
+
     try { await generatePayroll(payload).unwrap(); toast.success('Payslip generated'); setGenerateOpen(false); return true; }
     catch (err) { toast.error(err?.data?.error?.message || 'Failed to generate payslip'); return false; }
   }
@@ -1136,7 +1161,7 @@ export default function PayrollListPage() {
 
         {/* Generate Modal */}
         <Modal isOpen={generateOpen} onClose={() => setGenerateOpen(false)} title="Generate Payslip" size="lg">
-          <GenerateForm onSubmit={handleGenerate} onClose={() => setGenerateOpen(false)} isLoading={generating}
+          <GenerateForm onSubmit={handleGenerate} onClose={() => setGenerateOpen(false)} isLoading={generating || bulkGenerating}
             employees={employees}
             draftKey={`hrms:draft:payroll:create:${user?.id || 'user'}`} />
         </Modal>

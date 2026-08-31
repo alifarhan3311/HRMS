@@ -110,16 +110,7 @@ function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, 
 }
 
 function calcTaxDeduction(gross) {
-  // Simplified Pakistani income tax slab (annual income basis)
-  // These are approximations — a real system would use exact FBR slabs
-  const annual = gross * 12;
-  let annualTax = 0;
-  if (annual <= 600000) annualTax = 0;
-  else if (annual <= 1200000) annualTax = (annual - 600000) * 0.025;
-  else if (annual <= 2400000) annualTax = 15000 + (annual - 1200000) * 0.125;
-  else if (annual <= 3600000) annualTax = 165000 + (annual - 2400000) * 0.20;
-  else annualTax = 405000 + (annual - 3600000) * 0.25;
-  return Math.round(annualTax / 12);
+  return 0; // Income tax deduction disabled as per request
 }
 
 function dateKey(value) {
@@ -381,6 +372,38 @@ async function generatePayslip(payload, actor) {
   return payslip.toObject({ getters: true });
 }
 
+async function bulkGeneratePayslips(payload, actor) {
+  const { month, year } = payload;
+  const employees = await Employee.find({ companyId: actor.companyId, status: 'active' });
+  let generatedCount = 0;
+  
+  for (const employee of employees) {
+    if (!employee.currentSalary || Number(employee.currentSalary) <= 0) continue;
+    
+    const existing = await repository.findByEmployeeAndPeriod(employee._id, month, year);
+    if (existing) continue; // Skip if already generated
+
+    try {
+      await generatePayslip({
+        employeeId: employee._id,
+        month,
+        year,
+        allowanceItems: [],
+        bonus: 0,
+        incentives: 0,
+        loanDeduction: 0,
+        advanceSalary: 0,
+        notes: 'Bulk generated'
+      }, actor);
+      generatedCount++;
+    } catch (err) {
+      // Ignore errors for individual employees during bulk generation
+    }
+  }
+  
+  return { generatedCount };
+}
+
 // ─── Update payslip (before approval) ────────────────────────────────────────
 async function updatePayslip(id, payload, actor) {
   const record = await repository.findById(id);
@@ -528,7 +551,7 @@ async function getLivePayroll(query, actor) {
 }
 
 module.exports = {
-  generatePayslip, updatePayslip, listPayslips, getPayslipById,
+  generatePayslip, bulkGeneratePayslips, updatePayslip, listPayslips, getPayslipById,
   submitForApproval, approvePayslip, markPaid, lockPayslip,
   calculateAttendancePayroll, calculateSandwichDates,
   isPayrollAbsentRecord, isPayrollLateRecord, getLivePayroll,

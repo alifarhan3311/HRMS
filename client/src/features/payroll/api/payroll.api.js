@@ -21,6 +21,10 @@ export const payrollApi = api.injectEndpoints({
       query: (body) => ({ url: '/payroll', method: 'POST', body }),
       invalidatesTags: ['Payroll', 'Dashboard'],
     }),
+    bulkGeneratePayroll: builder.mutation({
+      query: (body) => ({ url: '/payroll/bulk', method: 'POST', body }),
+      invalidatesTags: ['Payroll', 'Dashboard'],
+    }),
     updatePayroll: builder.mutation({
       query: ({ id, ...body }) => ({ url: `/payroll/${id}`, method: 'PUT', body }),
       invalidatesTags: (result, error, { id }) => [{ type: 'Payroll', id }, 'Payroll', 'Dashboard', 'Reports'],
@@ -50,6 +54,7 @@ export const {
   useGetLivePayrollQuery,
   useGetPayrollByIdQuery,
   useGeneratePayrollMutation,
+  useBulkGeneratePayrollMutation,
   useUpdatePayrollMutation,
   useSubmitPayrollMutation,
   useApprovePayrollMutation,
