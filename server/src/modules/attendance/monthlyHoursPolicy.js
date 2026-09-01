@@ -89,6 +89,80 @@ function buildMonthlyHoursSummary(records = [], { month, year, now = new Date(),
   };
 }
 
+function buildRangeHoursSummary(records = [], { dateFrom, dateTo, now = new Date(), baseTargetHours = 184 } = {}) {
+  const counts = records.reduce((acc, record) => {
+    if (Object.prototype.hasOwnProperty.call(acc, record.status)) acc[record.status] += 1;
+    return acc;
+  }, { present: 0, late: 0, absent: 0, half_day: 0, incomplete: 0, on_leave: 0, holiday: 0, weekend: 0 });
+
+  const dFrom = new Date(dateFrom);
+  const dTo = new Date(dateTo);
+  const monthsSpanned = Math.max(1, (dTo.getFullYear() - dFrom.getFullYear()) * 12 + (dTo.getMonth() - dFrom.getMonth()) + 1);
+  
+  const target = Number(baseTargetHours || 184) * monthsSpanned;
+  const targetMinutes = target * 60;
+  
+  const completedMinutes = records.reduce((total, record) => (
+    total + Number(record.workedMinutes || Math.round(Number(record.totalHours || 0) * 60) || 0)
+  ), 0);
+  const completedHours = roundHours(completedMinutes / 60);
+  const leaveHours = counts.on_leave * 8;
+  const totalEffectiveHours = roundHours(completedHours + leaveHours);
+
+  const remainingHours = Math.max(0, roundHours(target - totalEffectiveHours));
+  const shortHours = remainingHours;
+  const extraHours = Math.max(0, roundHours(totalEffectiveHours - target));
+  const completionPercentage = target > 0
+    ? Number(Math.min(100, ((totalEffectiveHours / target) * 100)).toFixed(1))
+    : 0;
+    
+  const rangeStart = new Date(dFrom.getFullYear(), dFrom.getMonth(), dFrom.getDate());
+  const rangeEnd = new Date(dTo.getFullYear(), dTo.getMonth(), dTo.getDate(), 23, 59, 59, 999);
+  
+  const daysInRange = Math.max(1, Math.round((rangeEnd - rangeStart) / (1000 * 60 * 60 * 24)));
+  
+  const boundedNow = now < rangeStart ? null : (now > rangeEnd ? rangeEnd : now);
+  const daysElapsed = boundedNow ? Math.max(1, Math.ceil((boundedNow - rangeStart) / (1000 * 60 * 60 * 24))) : 0;
+  const daysRemaining = Math.max(daysInRange - daysElapsed, 0);
+  
+  const averageHoursPerDay = daysElapsed ? roundHours(totalEffectiveHours / daysElapsed) : 0;
+  const requiredAverageHoursPerRemainingDay = daysRemaining ? roundHours(remainingHours / daysRemaining) : 0;
+  const projectedMonthlyTotal = daysElapsed ? roundHours(averageHoursPerDay * daysInRange) : totalEffectiveHours;
+  
+  let status = 'behind';
+  if (totalEffectiveHours >= target) status = 'target_completed';
+  else if (extraHours > 0) status = 'ahead';
+  else if (projectedMonthlyTotal >= target) status = 'on_track';
+
+  return {
+    targetHours: target,
+    targetMinutes,
+    completedHours,
+    completedMinutes,
+    leaveHours,
+    totalEffectiveHours,
+    remainingHours,
+    shortHours,
+    extraHours,
+    completionPercentage,
+    daysElapsed,
+    daysRemaining,
+    daysInRange,
+    averageHoursPerDay,
+    requiredAverageHoursPerRemainingDay,
+    projectedMonthlyTotal,
+    status,
+    statusLabel: {
+      target_completed: 'Target Completed',
+      ahead: 'Ahead',
+      on_track: 'On Track',
+      behind: 'Behind',
+    }[status] || 'Behind',
+    monthsSpanned,
+    ...counts,
+  };
+}
+
 function calculateMonthlyHoursDeduction({ monthlySalary = 0, completedHours = 0, targetHours = 184 }) {
   const salary = Number(monthlySalary || 0);
   const perDaySalary = salary / 30;
@@ -110,6 +184,7 @@ module.exports = {
   MONTHLY_HOUR_TARGET: 184,
   isMonthlyHourDepartment,
   buildMonthlyHoursSummary,
+  buildRangeHoursSummary,
   calculateMonthlyHoursDeduction,
   normalizeDepartment,
 };

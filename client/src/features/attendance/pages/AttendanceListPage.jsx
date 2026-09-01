@@ -585,7 +585,7 @@ export default function AttendanceListPage() {
   const trend = selectedEmployeeId ? (rangeData?.data?.trend || []) : [];
   const reportRecords = selectedEmployeeId ? (rangeData?.data?.records || []) : listRecords;
   const calRecords = selectedEmployeeId ? (summaryData?.data?.records || []) : listRecords;
-  const monthlyHours = summaryData?.data?.monthlyHours;
+  const monthlyHours = rangeData?.data?.rangeHours || summaryData?.data?.monthlyHours;
   const total = listData?.total || 0;
   const totalPages = listData?.totalPages || 1;
   const todayDateKey = inputDate(new Date());
@@ -737,17 +737,19 @@ export default function AttendanceListPage() {
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Target</p>
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {monthlyHours.monthsSpanned > 1 ? `Target (${monthlyHours.monthsSpanned} Months)` : 'Monthly Target'}
+              </p>
               <h3 className="mt-1 text-lg font-semibold">Operations / Accounting attendance summary</h3>
               <p className="text-sm text-muted-foreground">
                 {monthlyHours.completedHours}h worked + {monthlyHours.leaveHours}h leaves = {monthlyHours.totalEffectiveHours}h effective of {monthlyHours.targetHours}h target.
                 {monthlyHours.daysRemaining > 0
                   ? ` You need ${monthlyHours.requiredAverageHoursPerRemainingDay}h/day for the remaining ${monthlyHours.daysRemaining} day(s).`
-                  : ' Monthly target period is complete.'}
+                  : ' Target period is complete.'}
               </p>
               {monthlyHours.daysRemaining > 0 && (
                 <p className="mt-2 inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-                  Daily target to complete month: {monthlyHours.requiredAverageHoursPerRemainingDay}h per day
+                  Daily target to complete period: {monthlyHours.requiredAverageHoursPerRemainingDay}h per day
                 </p>
               )}
             </div>
@@ -992,7 +994,7 @@ export default function AttendanceListPage() {
           ) : (
             <>
               <StatCard
-                title="Monthly Target"
+                title={monthlyHours.monthsSpanned > 1 ? `Target (${monthlyHours.monthsSpanned}M)` : 'Monthly Target'}
                 value={`${monthlyHours.targetHours}h`}
                 icon={Target}
                 trend={{ label: `${monthlyHours.statusLabel}`, positive: monthlyHours.status === 'target_completed' || monthlyHours.status === 'ahead' || monthlyHours.status === 'on_track' }}

@@ -35,6 +35,7 @@ const {
 const {
   isMonthlyHourDepartment,
   buildMonthlyHoursSummary,
+  buildRangeHoursSummary,
 } = require('./monthlyHoursPolicy');
 
 function startOfDay(date = new Date()) {
@@ -844,6 +845,7 @@ async function getRangeSummary(employeeId, dateFrom, dateTo, actor, workMode) {
   const scheduledDays = summary.present + summary.late + summary.absent + summary.half_day + summary.incomplete + summary.on_leave;
   const attendedDays = summary.present + summary.late + (summary.half_day * 0.5);
   const daysWithHours = records.filter((record) => Number(record.totalHours || record.workedMinutes) > 0).length;
+
   summary.attendanceRate = scheduledDays ? Number(((attendedDays / scheduledDays) * 100).toFixed(1)) : 0;
   summary.workedHours = Number(summary.workedHours.toFixed(2));
   summary.overtimeHours = Number(summary.overtimeHours.toFixed(2));
@@ -853,7 +855,14 @@ async function getRangeSummary(employeeId, dateFrom, dateTo, actor, workMode) {
     ...row,
     workedHours: Number(row.workedHours.toFixed(2)),
   }));
-  return { summary, trend, records };
+
+  const employee = await Employee.findById(employeeId).select('department');
+  let rangeHours = null;
+  if (employee && isMonthlyHourDepartment(employee.department)) {
+    rangeHours = buildRangeHoursSummary(records, { dateFrom, dateTo });
+  }
+
+  return { summary, trend, records, rangeHours };
 }
 
 async function requestRegularization(id, payload, actor) {
