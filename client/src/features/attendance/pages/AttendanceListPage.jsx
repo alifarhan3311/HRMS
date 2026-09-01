@@ -7,7 +7,7 @@
  *  - Regularization request
  *  - HR/Admin: manual correction, approve/reject regularizations
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
@@ -481,8 +481,11 @@ export default function AttendanceListPage() {
   const canSelectEmployee = ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin'].includes(user?.role);
   const canViewLeaveBalances = canSelectEmployee;
 
-  const [ym, setYm] = useState(nowYM());
   const [reportRange, setReportRange] = useState(() => presetRange('month'));
+  const ym = useMemo(() => {
+    const d = new Date(reportRange.preset === 'month' ? reportRange.dateFrom : reportRange.dateTo);
+    return { year: d.getFullYear(), month: d.getMonth() + 1 };
+  }, [reportRange.dateFrom, reportRange.dateTo, reportRange.preset]);
   const [filters, setFilters] = useState({ status: '', workMode: '', employeeId: '' });
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [employeePickerOpen, setEmployeePickerOpen] = useState(false);
@@ -606,7 +609,6 @@ export default function AttendanceListPage() {
       workMode: user?.workMode || 'office',
     }, ...listRecords]
     : listRecords;
-
   useEffect(() => {
     if (!employeePickerOpen) return undefined;
     const closeOutside = (event) => {
@@ -624,26 +626,27 @@ export default function AttendanceListPage() {
   }, [employeePickerOpen]);
 
   function prevMonth() {
-    setYm(({ year, month }) => {
-      const next = month === 1 ? { year: year - 1, month: 12 } : { year, month: month - 1 };
-      setReportRange({
+    setReportRange((prev) => {
+      const currentMonthStart = new Date(prev.dateFrom);
+      const nextDate = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() - 1, 1);
+      return {
         preset: 'month',
-        dateFrom: inputDate(new Date(next.year, next.month - 1, 1)),
-        dateTo: inputDate(new Date(next.year, next.month, 0)),
-      });
-      return next;
+        dateFrom: inputDate(nextDate),
+        dateTo: inputDate(new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0)),
+      };
     });
     setPage(1);
   }
+
   function nextMonth() {
-    setYm(({ year, month }) => {
-      const next = month === 12 ? { year: year + 1, month: 1 } : { year, month: month + 1 };
-      setReportRange({
+    setReportRange((prev) => {
+      const currentMonthStart = new Date(prev.dateFrom);
+      const nextDate = new Date(currentMonthStart.getFullYear(), currentMonthStart.getMonth() + 1, 1);
+      return {
         preset: 'month',
-        dateFrom: inputDate(new Date(next.year, next.month - 1, 1)),
-        dateTo: inputDate(new Date(next.year, next.month, 0)),
-      });
-      return next;
+        dateFrom: inputDate(nextDate),
+        dateTo: inputDate(new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0)),
+      };
     });
     setPage(1);
   }
