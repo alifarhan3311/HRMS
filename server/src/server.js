@@ -4,6 +4,8 @@
  * Socket.io server together, and handles graceful shutdown.
  */
 require('dotenv').config();
+const dns = require('dns');
+try { dns.setServers(['8.8.8.8', '1.1.1.1']); } catch (_) {}
 const http = require('http');
 const app = require('./app');
 const { connectDatabase, disconnectDatabase, ensureDatabaseIndexes } = require('./database/db');
