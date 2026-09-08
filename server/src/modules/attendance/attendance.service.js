@@ -987,16 +987,17 @@ async function reviewRegularization(id, { action, remarks }, actor) {
     throw createHttpError(400, 'No pending regularization for this record.');
   }
 
+  const isHrOrAdmin = ['super_admin', 'admin', 'hr'].includes(actor.role);
   const approvalStage = record.regularization?.approvalStage
     || (['hr', 'super_admin'].includes(record.regularization?.assignedApprover?.role) ? 'hr' : 'reporting');
-  const elevatedReviewer = approvalStage === 'hr' && ['super_admin', 'hr'].includes(actor.role);
   const assignedId = record.regularization?.assignedApprover?._id
     || record.regularization?.assignedApprover;
-  if (!elevatedReviewer && String(assignedId) !== String(actor.id)) {
+  if (!isHrOrAdmin && String(assignedId) !== String(actor.id)) {
     throw createHttpError(403, 'This request is assigned to another approver.');
   }
 
-  if (approvalStage === 'reporting' && action === 'approve') {
+  // If reporting approver (manager/TL) approves, advance to HR stage:
+  if (!isHrOrAdmin && approvalStage === 'reporting' && action === 'approve') {
     const hrApprover = await resolveHrRegularizationApprover(record.companyId);
     if (!hrApprover) throw createHttpError(422, 'No active HR user is available for final approval.');
     await repository.updateById(id, {
@@ -1034,7 +1035,13 @@ async function reviewRegularization(id, { action, remarks }, actor) {
     'regularization.reviewedBy': actor.id,
     'regularization.reviewedAt': new Date(),
     'regularization.remarks': remarks || '',
+    'regularization.approvalStage': 'hr',
   };
+  if (isHrOrAdmin && approvalStage === 'reporting') {
+    update['regularization.reportingReviewedBy'] = actor.id;
+    update['regularization.reportingReviewedAt'] = new Date();
+    update['regularization.reportingRemarks'] = 'Direct HR approval';
+  }
   let recoveredPunches = {};
   let waivedAppliedPenalty = false;
 

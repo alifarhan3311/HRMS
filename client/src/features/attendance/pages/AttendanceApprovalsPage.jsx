@@ -51,10 +51,8 @@ export default function AttendanceApprovalsPage() {
 
   const canReview = (record) => {
     if (record.regularizationStatus !== 'pending') return false;
+    if (['hr', 'super_admin', 'admin'].includes(user?.role)) return true;
     const assigned = record.regularization?.assignedApprover?._id || record.regularization?.assignedApprover;
-    const stage = record.regularization?.approvalStage
-      || (['hr', 'super_admin'].includes(record.regularization?.assignedApprover?.role) ? 'hr' : 'reporting');
-    if (stage === 'hr' && ['hr', 'super_admin'].includes(user?.role)) return true;
     return String(assigned || '') === String(user?.id || user?._id || '');
   };
 
