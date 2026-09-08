@@ -431,13 +431,22 @@ async function reconcileAttendance(now = new Date()) {
   // Normalize historical missed sign-outs as well as new ones. This is
   // intentionally idempotent so records outside the rolling reconciliation
   // window cannot remain counted as lates after this policy change.
+  // ONLY target records where signOutTime is actually absent/null.
   const historicalMissingSignOuts = await Attendance.find({
     employeeId: { $in: employeeIds },
     missedPunchType: 'sign_out',
     status: { $nin: ['on_leave', 'holiday', 'weekend'] },
     $or: [
-      { status: { $ne: 'half_day' } },
-      { lateCountAppliedAt: { $exists: true } },
+      { signOutTime: { $exists: false } },
+      { signOutTime: null },
+    ],
+    $and: [
+      {
+        $or: [
+          { status: { $ne: 'half_day' } },
+          { lateCountAppliedAt: { $exists: true } },
+        ],
+      },
     ],
   }).limit(5000);
   for (const record of historicalMissingSignOuts) {
@@ -455,6 +464,68 @@ async function reconcileAttendance(now = new Date()) {
     record.lateCountAppliedAt = undefined;
     await record.save();
     if (hadAppliedLate) {
+      await Employee.updateOne(
+        { _id: record.employeeId, lateCount: { $gt: 0 } },
+        { $inc: { lateCount: -1 } },
+      );
+    }
+  }
+
+  // Self-heal any attendance records where both punches exist but carry a stale
+  // missed-punch marker, zero total hours, stale notes, or incorrect half-day status.
+  const recordsToHeal = await Attendance.find({
+    employeeId: { $in: employeeIds },
+    signInTime: { $exists: true, $ne: null },
+    signOutTime: { $exists: true, $ne: null },
+    $or: [
+      { missedPunchType: { $exists: true, $ne: null } },
+      { autoClosedAt: { $exists: true, $ne: null } },
+      { totalHours: 0, workedMinutes: 0 },
+      { notes: { $regex: /Missing sign-out/i } },
+      { notes: { $regex: /Missing sign-in/i } },
+      { status: 'half_day', shiftType: 'flexible' },
+    ],
+    status: { $nin: ['on_leave', 'holiday', 'weekend'] },
+  }).limit(2000);
+
+  for (const record of recordsToHeal) {
+    if (new Date(record.signOutTime) <= new Date(record.signInTime)) continue;
+    const hadPenalty = Boolean(record.lateCountAppliedAt);
+    record.missedPunchType = undefined;
+    record.autoClosedAt = undefined;
+    record.lateCountAppliedAt = undefined;
+    if (record.notes && record.notes.includes('Missing sign-out')) {
+      record.notes = record.notes.replace(/Missing sign-out:[^.]*\.?/gi, '').trim();
+    }
+    if (record.notes && record.notes.includes('Missing sign-in')) {
+      record.notes = record.notes.replace(/Missing sign-in:[^.]*\.?/gi, '').trim();
+    }
+    const clockMinutes = Math.max(0, Math.round((new Date(record.signOutTime) - new Date(record.signInTime)) / 60000));
+    record.workedMinutes = clockMinutes;
+    record.totalHours = Number((clockMinutes / 60).toFixed(2));
+    const reqMinutes = Number(record.effectiveRequiredMinutes || record.shiftRequiredMinutes || 480);
+    const isFlex = record.shiftType === 'flexible';
+    if (isFlex) {
+      record.status = clockMinutes >= (reqMinutes - 149)
+        ? 'present'
+        : (clockMinutes >= (Number(record.shiftHalfDayMinutes) || 240) ? 'half_day' : 'absent');
+    } else if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) {
+      record.status = 'present';
+      record.lateMinutes = 0;
+    } else {
+      const isLateArrival = Number(record.lateMinutes) > 0;
+      const isHalfDayArrival = Number(record.shiftLateHalfDayAfterMinutes) > 0
+        && Number(record.lateMinutes) > Number(record.shiftLateHalfDayAfterMinutes);
+      if (clockMinutes >= (reqMinutes - 15)) {
+        record.status = isHalfDayArrival ? 'half_day' : (isLateArrival ? 'late' : 'present');
+      } else if (clockMinutes >= (Number(record.shiftHalfDayMinutes) || Math.ceil(reqMinutes / 2))) {
+        record.status = 'half_day';
+      } else {
+        record.status = 'absent';
+      }
+    }
+    await record.save();
+    if (hadPenalty) {
       await Employee.updateOne(
         { _id: record.employeeId, lateCount: { $gt: 0 } },
         { $inc: { lateCount: -1 } },
@@ -646,6 +717,49 @@ async function reconcileAttendance(now = new Date()) {
     });
     for (const record of existingMissingPunchRecords) {
       if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) continue;
+      // If both punches are now present, heal the record and do not treat as missed
+      if (record.signInTime && record.signOutTime && new Date(record.signOutTime) > new Date(record.signInTime)) {
+        const hadPenalty = Boolean(record.lateCountAppliedAt);
+        record.missedPunchType = undefined;
+        record.autoClosedAt = undefined;
+        record.lateCountAppliedAt = undefined;
+        if (record.notes && record.notes.includes('Missing sign-out')) {
+          record.notes = record.notes.replace(/Missing sign-out:[^.]*\.?/gi, '').trim();
+        }
+        if (record.notes && record.notes.includes('Missing sign-in')) {
+          record.notes = record.notes.replace(/Missing sign-in:[^.]*\.?/gi, '').trim();
+        }
+        const clockMinutes = Math.max(0, Math.round((new Date(record.signOutTime) - new Date(record.signInTime)) / 60000));
+        record.workedMinutes = clockMinutes;
+        record.totalHours = Number((clockMinutes / 60).toFixed(2));
+        const reqMinutes = Number(record.effectiveRequiredMinutes || record.shiftRequiredMinutes || 480);
+        const isFlex = record.shiftType === 'flexible';
+        if (isFlex) {
+          record.status = clockMinutes >= (reqMinutes - 149)
+            ? 'present'
+            : (clockMinutes >= (Number(record.shiftHalfDayMinutes) || 240) ? 'half_day' : 'absent');
+        } else {
+          const isLateArrival = Number(record.lateMinutes) > 0;
+          const isHalfDayArrival = Number(record.shiftLateHalfDayAfterMinutes) > 0
+            && Number(record.lateMinutes) > Number(record.shiftLateHalfDayAfterMinutes);
+          if (clockMinutes >= (reqMinutes - 15)) {
+            record.status = isHalfDayArrival ? 'half_day' : (isLateArrival ? 'late' : 'present');
+          } else if (clockMinutes >= (Number(record.shiftHalfDayMinutes) || Math.ceil(reqMinutes / 2))) {
+            record.status = 'half_day';
+          } else {
+            record.status = 'absent';
+          }
+        }
+        await record.save();
+        if (hadPenalty) {
+          await Employee.updateOne(
+            { _id: record.employeeId, lateCount: { $gt: 0 } },
+            { $inc: { lateCount: -1 } },
+          );
+        }
+        continue;
+      }
+
       const nextStatus = missingPunchStatus(record, record.missedPunchType);
       if (record.status !== nextStatus) {
         const removeOldLatePenalty = nextStatus !== 'late' && Boolean(record.lateCountAppliedAt);

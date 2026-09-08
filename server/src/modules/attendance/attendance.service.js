@@ -91,17 +91,18 @@ function completionToleranceMinutes(record, requiredMinutes) {
   return Number(requiredMinutes) > 420 ? 15 : 0;
 }
 
-function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0) {
+function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0, baseArrivalStatus = null) {
   const clockMinutes = Math.max(0, Math.round((new Date(signOut) - new Date(signIn)) / 60000));
   const workedMinutes = clockMinutes;
   const requiredMinutes = Number(record.effectiveRequiredMinutes || record.shiftRequiredMinutes || 480);
   const halfDayMinutes = Number(record.shiftHalfDayMinutes || Math.ceil(requiredMinutes / 2));
+  const arrivalInput = baseArrivalStatus || (lateMinutes > 0 ? 'late' : 'present');
   return {
     totalHours: Number((clockMinutes / 60).toFixed(2)),
     workedMinutes,
     overtimeMinutes: Math.max(0, workedMinutes - Number(record.shiftOvertimeAfterMinutes || requiredMinutes)),
     status: attendanceStatus(
-      lateMinutes > 0 ? 'late' : 'present',
+      arrivalInput,
       workedMinutes,
       requiredMinutes,
       halfDayMinutes,
@@ -295,6 +296,9 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
   const workedMinutes = clockMinutes;
   const overtimeMinutes = attendanceExempt ? 0 : Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
   const fullDayClosure = closure?.eventType === 'full_day' || (closure && !closure.eventType);
+  const baseArrivalStatus = (isFlexible || record.missedPunchType)
+    ? (record.lateMinutes > 0 ? 'late' : 'present')
+    : record.status;
   const status = attendanceExempt
     ? 'present'
     : saturdayStatus({
@@ -302,13 +306,17 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
         hasSignIn: true,
         isFullDayClosure: fullDayClosure,
       }) || completedFixedShiftStatus(record, now, policy.effectiveEnd, policy.effectiveStart) || attendanceStatus(
-        record.status,
+        baseArrivalStatus,
         workedMinutes,
         policy.effectiveRequiredMinutes,
         policy.effectiveHalfDayMinutes,
         fullDayClosure,
         completionToleranceMinutes(record, policy.effectiveRequiredMinutes),
       );
+
+  const cleanNotes = notes || (record.notes && record.notes.includes('Missing sign-out')
+    ? record.notes.replace(/Missing sign-out:[^.]*\.?/gi, '').trim()
+    : record.notes);
 
   const updated = await repository.updateById(record._id, {
     signOutTime: now,
@@ -319,13 +327,14 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
     status,
     autoClosedAt: null,
     missedPunchType: null,
+    $unset: { missedPunchType: '', autoClosedAt: '' },
     effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
     ...(closure && {
       closureId: closure._id,
       closureType: closure.eventType || 'full_day',
       attendanceAdjustmentReason: `${closure.title}${closure.isPaid === false ? ' (unpaid)' : ' (paid)'}`,
     }),
-    ...(notes && { notes }),
+    ...(cleanNotes !== undefined && { notes: cleanNotes }),
   });
 
   const penaltyCleared = await clearRecoveredMissedPunchPenalty(record, { signOutTime: now });
@@ -496,10 +505,8 @@ function attendanceStatus(
   completionTolerance = 0,
 ) {
   if (isFullDayClosure) return 'holiday';
-  // A fixed-shift employee who crossed the arrival half-day boundary remains
-  // half-day even when they stay late enough to complete the raw hours.
-  if (currentStatus === 'half_day') return 'half_day';
   if (workedMinutes >= Math.max(0, requiredMinutes - completionTolerance)) {
+    if (currentStatus === 'half_day') return 'half_day';
     return currentStatus === 'late' ? 'late' : 'present';
   }
   if (workedMinutes >= halfDayMinutes) return 'half_day';
@@ -761,13 +768,23 @@ async function manualCorrection(id, payload, actor) {
     update.earlyLeaveMinutes = calcEarlyLeaveMinutes(signOutTime, recordTiming(record, settings.timing));
   }
   if ((signInTime || signOutTime) && correctedSignIn && correctedSignOut) {
+    const isFlexible = (record.shiftType || 'fixed') === 'flexible';
+    const baseArrivalStatus = (isFlexible || record.missedPunchType)
+      ? (update.lateMinutes > 0 ? 'late' : 'present')
+      : record.status;
     Object.assign(update, correctedWorkMetrics(
       record,
       correctedSignIn,
       correctedSignOut,
       update.lateMinutes ?? Number(record.lateMinutes || 0),
+      baseArrivalStatus,
     ));
     update.autoClosedAt = null;
+    update.missedPunchType = null;
+    update.$unset = { missedPunchType: '', autoClosedAt: '' };
+    if (!payload.notes && record.notes && record.notes.includes('Missing sign-out')) {
+      update.notes = record.notes.replace(/Missing sign-out:[^.]*\.?/gi, '').trim();
+    }
   }
   if (status) update.status = status;
   if (isSaturdayShiftDate(record.shiftDate) && correctedSignIn) {
@@ -1055,6 +1072,11 @@ async function reviewRegularization(id, { action, remarks }, actor) {
           update.lateMinutes ?? Number(record.lateMinutes || 0),
         ));
         update.autoClosedAt = null;
+        update.missedPunchType = null;
+        update.$unset = { missedPunchType: '', autoClosedAt: '' };
+        if (record.notes && record.notes.includes('Missing sign-out')) {
+          update.notes = record.notes.replace(/Missing sign-out:[^.]*\.?/gi, '').trim();
+        }
       }
       recoveredPunches = {
         signInTime: record.regularization.requestedSignInTime ? correctedSignIn : null,

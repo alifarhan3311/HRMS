@@ -573,29 +573,60 @@ async function approveLeave(id, { remarks }, actor) {
   await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   if (leave.status !== 'pending') throw createHttpError(400, 'This leave is no longer pending.');
 
-  const ROLE_STAGE_MAP = { team_lead: 1, floor_head: 1, manager: 1, hr: 2 };
+  const isHrOrAdmin = ['hr', 'admin', 'super_admin'].includes(actor.role);
+  const ROLE_STAGE_MAP = { team_lead: 1, floor_head: 1, manager: 1, hr: 2, admin: 2, super_admin: 2 };
   const actorStage = ROLE_STAGE_MAP[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot approve leave requests.');
-  if (actorStage !== leave.currentStage) {
-    throw createHttpError(403, `This leave is at stage ${leave.currentStage}. You can only approve at stage ${actorStage}.`);
+
+  if (!isHrOrAdmin) {
+    if (actorStage !== leave.currentStage) {
+      throw createHttpError(403, `This leave is at stage ${leave.currentStage}. You can only approve at stage ${actorStage}.`);
+    }
+    await assertCanDecideLeaveStage(leave, actor, actorStage);
   }
-  await assertCanDecideLeaveStage(leave, actor, actorStage);
+
+  const isDirectHrApproval = isHrOrAdmin && leave.currentStage < 2;
+  const isLastStage = isHrOrAdmin || actorStage === 2;
+  const nextStage = actorStage + 1;
 
   // Update chain
   const chain = leave.approvalChain.map((step) => {
     const plainStep = step.toObject ? step.toObject() : step;
-    if (step.stage === actorStage) {
-      return { ...plainStep, status: 'approved', approvedBy: actor.id, actionAt: new Date(), remarks: remarks || '' };
+    if (isDirectHrApproval) {
+      if (step.stage < 2 && step.status === 'pending') {
+        return {
+          ...plainStep,
+          status: 'approved',
+          approvedBy: actor.id,
+          actionAt: new Date(),
+          remarks: 'Bypassed by direct HR approval',
+        };
+      }
+      if (step.stage === 2) {
+        return {
+          ...plainStep,
+          status: 'approved',
+          approvedBy: actor.id,
+          actionAt: new Date(),
+          remarks: remarks || 'Direct HR approval',
+        };
+      }
+    } else if (step.stage === actorStage) {
+      return {
+        ...plainStep,
+        status: 'approved',
+        approvedBy: actor.id,
+        actionAt: new Date(),
+        remarks: remarks || '',
+      };
     }
     return plainStep;
   });
 
-  const isLastStage = actorStage === 2;
-  const nextStage = actorStage + 1;
-
+  const finalStageNumber = Math.max(...(leave.approvalChain?.map(s => s.stage) || [2]), 2);
   const update = {
     approvalChain: chain,
-    currentStage: isLastStage ? actorStage : nextStage,
+    currentStage: isLastStage ? finalStageNumber : nextStage,
     status: isLastStage ? 'approved' : 'pending',
   };
 
@@ -604,7 +635,7 @@ async function approveLeave(id, { remarks }, actor) {
   try {
     await session.withTransaction(async () => {
       updated = await LeaveRequest.findOneAndUpdate(
-        { _id: id, status: 'pending', currentStage: actorStage },
+        { _id: id, status: 'pending', currentStage: leave.currentStage },
         { $set: update },
         { new: true, runValidators: true, session },
       );
@@ -651,24 +682,28 @@ async function rejectLeave(id, { remarks }, actor) {
   await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   if (leave.status !== 'pending') throw createHttpError(400, 'This leave is no longer pending.');
 
-  const ROLE_STAGE_MAP = { team_lead: 1, floor_head: 1, manager: 1, hr: 2 };
+  const isHrOrAdmin = ['hr', 'admin', 'super_admin'].includes(actor.role);
+  const ROLE_STAGE_MAP = { team_lead: 1, floor_head: 1, manager: 1, hr: 2, admin: 2, super_admin: 2 };
   const actorStage = ROLE_STAGE_MAP[actor.role];
   if (!actorStage) throw createHttpError(403, 'Your role cannot reject leave requests.');
-  if (actorStage !== leave.currentStage) {
-    throw createHttpError(403, `This leave is at stage ${leave.currentStage}. You can only reject at stage ${actorStage}.`);
+
+  if (!isHrOrAdmin) {
+    if (actorStage !== leave.currentStage) {
+      throw createHttpError(403, `This leave is at stage ${leave.currentStage}. You can only reject at stage ${actorStage}.`);
+    }
+    await assertCanDecideLeaveStage(leave, actor, actorStage);
   }
-  await assertCanDecideLeaveStage(leave, actor, actorStage);
 
   const chain = leave.approvalChain.map((step) => {
     const plainStep = step.toObject ? step.toObject() : step;
-    if (step.stage === actorStage) {
+    if (step.stage === leave.currentStage || (isHrOrAdmin && step.stage === 2)) {
       return { ...plainStep, status: 'rejected', approvedBy: actor.id, actionAt: new Date(), remarks: remarks || '' };
     }
     return plainStep;
   });
 
   const updated = await LeaveRequest.findOneAndUpdate(
-    { _id: id, status: 'pending', currentStage: actorStage },
+    { _id: id, status: 'pending', currentStage: leave.currentStage },
     { $set: { approvalChain: chain, status: 'rejected' } },
     { new: true, runValidators: true },
   ).populate('employeeId', 'fullName employeeCode department');
@@ -687,7 +722,6 @@ async function rejectLeave(id, { remarks }, actor) {
 // ─── Cancel ──────────────────────────────────────────────────────────────────
 async function cancelLeave(id, { reason }, actor) {
   const leave = await repository.findById(id);
-  if (!leave) throw createHttpError(404, 'Leave request not found.');
   await assertCanViewLeave(actor, leave.employeeId?._id || leave.employeeId);
   const isOwner = String(leave.employeeId._id || leave.employeeId) === String(actor.id);
   if (!isOwner && !['admin', 'hr', 'super_admin'].includes(actor.role)) {
@@ -758,6 +792,17 @@ async function getLeaveById(id, actor) {
 }
 
 async function getPendingApprovals(actor) {
+  const isHrOrAdmin = ['hr', 'admin', 'super_admin'].includes(actor.role);
+  if (isHrOrAdmin) {
+    const records = await LeaveRequest.find({
+      companyId: actor.companyId,
+      status: 'pending',
+    })
+      .populate('employeeId', 'fullName employeeCode department designation profilePicture')
+      .sort('-createdAt').limit(100);
+    return records;
+  }
+
   const ROLE_STAGE_MAP = { team_lead: 1, floor_head: 1, manager: 1, hr: 2 };
   const stage = ROLE_STAGE_MAP[actor.role];
   if (!stage) return [];
@@ -771,7 +816,6 @@ async function getPendingApprovals(actor) {
     const { recipientIds } = await stageApproverIds(record, 1);
     return recipientIds.some(id => String(id) === String(actor.id)) ? record : null;
   }))).filter(Boolean);
-  // Backfill notifications for requests created before staged approver
   // notifications were introduced. The dedupe key makes this idempotent.
   await Promise.allSettled(visibleRecords.map(record =>
     notifyStageApprovers(record, stage, actor.id)

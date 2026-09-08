@@ -231,7 +231,7 @@ function ApprovalTimeline({ chain = [], currentStage }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function LeavesListPage() {
   const { user } = useSelector((s) => s.auth);
-  const isApprover = ['hr', 'manager', 'floor_head', 'team_lead'].includes(user?.role);
+  const isApprover = ['super_admin', 'admin', 'hr', 'manager', 'floor_head', 'team_lead'].includes(user?.role);
 
   const [applyOpen, setApplyOpen] = useState(false);
   const [lateLeaveOpen, setLateLeaveOpen] = useState(false);

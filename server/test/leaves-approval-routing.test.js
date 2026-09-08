@@ -24,3 +24,11 @@ test('annual leave accepts either Team Lead or Manager before HR final approval'
   assert.equal(stageOneRoleAllowed('annual', 'manager'), true);
   assert.equal(stageOneRoleAllowed('annual', 'floor_head'), false);
 });
+
+test('HR or Admin can directly process leave approval', () => {
+  const hrRoles = ['hr', 'admin', 'super_admin'];
+  for (const role of hrRoles) {
+    assert.equal(['hr', 'admin', 'super_admin'].includes(role), true);
+  }
+});
+

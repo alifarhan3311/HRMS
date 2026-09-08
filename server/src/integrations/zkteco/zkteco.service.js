@@ -496,10 +496,8 @@ async function syncNewLogs() {
     {
       $setOnInsert: {
         companyId: cfg.companyId,
-        initializedAt: new Date(),
-        // First startup intentionally begins "now" so historical device logs
-        // are not imported into a newly reset HRMS.
-        lastLogTime: new Date(),
+        initializedAt: new Date(Date.now() - (cfg.reconcileLookbackDays * 24 * 60 * 60 * 1000)),
+        lastLogTime: new Date(Date.now() - (cfg.reconcileLookbackDays * 24 * 60 * 60 * 1000)),
       },
     },
     { new: true, upsert: true },
@@ -661,7 +659,10 @@ async function connect() {
           lastConnection: state.lastConnection,
           libraryUsed: `node-zklib@${sdkPackage.version}/${zk.connectionType}`,
         },
-        $setOnInsert: { initializedAt: new Date(), lastLogTime: new Date() },
+        $setOnInsert: {
+          initializedAt: new Date(Date.now() - (cfg.reconcileLookbackDays * 24 * 60 * 60 * 1000)),
+          lastLogTime: new Date(Date.now() - (cfg.reconcileLookbackDays * 24 * 60 * 60 * 1000)),
+        },
       },
       { upsert: true },
     );

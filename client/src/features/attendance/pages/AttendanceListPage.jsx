@@ -1134,11 +1134,12 @@ export default function AttendanceListPage() {
                     : STATUS_STYLES[rec.status] || STATUS_STYLES.present;
                   const recordEmployee = employees.find(employee => employee._id === (rec.employeeId?._id || rec.employeeId));
                   const reasonLabel = (() => {
-                    if (rec.missedPunchType === 'sign_in') return 'Missing Sign-In';
-                    if (rec.missedPunchType === 'sign_out') return 'Missing Sign-Out';
-                    const notesLower = rec.notes?.toLowerCase() || '';
-                    if (notesLower.includes('missing sign-in')) return 'Missing Sign-In';
-                    if (notesLower.includes('missing sign-out')) return 'Missing Sign-Out';
+                    if (!rec.signInTime && (rec.missedPunchType === 'sign_in' || rec.notes?.toLowerCase()?.includes('missing sign-in'))) {
+                      return 'Missing Sign-In';
+                    }
+                    if (!rec.signOutTime && (rec.missedPunchType === 'sign_out' || rec.notes?.toLowerCase()?.includes('missing sign-out'))) {
+                      return 'Missing Sign-Out';
+                    }
                     return null;
                   })();
                   return (
