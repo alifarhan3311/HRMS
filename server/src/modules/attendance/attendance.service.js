@@ -325,8 +325,6 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
     workedMinutes,
     overtimeMinutes,
     status,
-    autoClosedAt: null,
-    missedPunchType: null,
     $unset: { missedPunchType: '', autoClosedAt: '' },
     effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
     ...(closure && {
@@ -779,9 +777,9 @@ async function manualCorrection(id, payload, actor) {
       update.lateMinutes ?? Number(record.lateMinutes || 0),
       baseArrivalStatus,
     ));
-    update.autoClosedAt = null;
-    update.missedPunchType = null;
-    update.$unset = { missedPunchType: '', autoClosedAt: '' };
+    delete update.autoClosedAt;
+    delete update.missedPunchType;
+    update.$unset = { ...(update.$unset || {}), missedPunchType: '', autoClosedAt: '' };
     if (!payload.notes && record.notes && record.notes.includes('Missing sign-out')) {
       update.notes = record.notes.replace(/Missing sign-out:[^.]*\.?/gi, '').trim();
     }
@@ -1078,9 +1076,9 @@ async function reviewRegularization(id, { action, remarks }, actor) {
           correctedSignOut,
           update.lateMinutes ?? Number(record.lateMinutes || 0),
         ));
-        update.autoClosedAt = null;
-        update.missedPunchType = null;
-        update.$unset = { missedPunchType: '', autoClosedAt: '' };
+        delete update.autoClosedAt;
+        delete update.missedPunchType;
+        update.$unset = { ...(update.$unset || {}), missedPunchType: '', autoClosedAt: '' };
         if (record.notes && record.notes.includes('Missing sign-out')) {
           update.notes = record.notes.replace(/Missing sign-out:[^.]*\.?/gi, '').trim();
         }

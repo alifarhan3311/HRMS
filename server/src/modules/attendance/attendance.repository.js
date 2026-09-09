@@ -64,10 +64,22 @@ async function findAll({ filter = {}, page = 1, limit = 30, sort = '-date' } = {
 }
 
 async function updateById(id, data) {
+  if (data && data.$unset) {
+    for (const key of Object.keys(data.$unset)) {
+      if (key in data) delete data[key];
+      if (data.$set && key in data.$set) delete data.$set[key];
+    }
+  }
   return Attendance.findByIdAndUpdate(id, data, { new: true, runValidators: true });
 }
 
 async function upsertByEmployeeShiftDate(employeeId, shiftDate, update) {
+  if (update && update.$unset) {
+    for (const key of Object.keys(update.$unset)) {
+      if (key in update) delete update[key];
+      if (update.$set && key in update.$set) delete update.$set[key];
+    }
+  }
   return Attendance.findOneAndUpdate(
     { employeeId, shiftDate },
     update,

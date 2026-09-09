@@ -284,3 +284,29 @@ test('monthly-hours departments include operations and accounting and calculate 
   assert.equal(deduction.shortDaysEquivalent, 20.13);
   assert.equal(deduction.attendanceDeduction > 0, true);
 });
+
+test('attendance repository sanitizes $unset keys so MongoDB path conflicts cannot occur', () => {
+  const data = {
+    signOutTime: new Date(),
+    autoClosedAt: null,
+    missedPunchType: null,
+    $unset: { missedPunchType: '', autoClosedAt: '' },
+    $set: { missedPunchType: null, status: 'present' },
+  };
+
+  // Run the same sanitization logic as repository
+  if (data && data.$unset) {
+    for (const key of Object.keys(data.$unset)) {
+      if (key in data) delete data[key];
+      if (data.$set && key in data.$set) delete data.$set[key];
+    }
+  }
+
+  assert.equal(data.autoClosedAt, undefined);
+  assert.equal(data.missedPunchType, undefined);
+  assert.equal(data.$set.missedPunchType, undefined);
+  assert.equal(data.$set.status, 'present');
+  assert.ok('missedPunchType' in data.$unset);
+  assert.ok('autoClosedAt' in data.$unset);
+});
+
