@@ -14,6 +14,7 @@ import attendanceRoutes    from './features/attendance/routes/attendance.routes'
 import leavesRoutes        from './features/leaves/routes/leaves.routes';
 import payrollRoutes       from './features/payroll/routes/payroll.routes';
 import expensesRoutes      from './features/expenses/routes/expenses.routes';
+import finesRoutes         from './features/fines/routes/fines.routes';
 import projectsRoutes      from './features/projects/routes/projects.routes';
 import settingsRoutes      from './features/settings/routes/settings.routes';
 import reportsRoutes       from './features/reports/routes/reports.routes';
@@ -53,6 +54,7 @@ const router = createBrowserRouter([
       ...withRoles(actionCenterRoutes, ['hr', 'super_admin']),
       ...withRoles(payrollRoutes, ['employee', 'team_lead', 'manager', 'hr', 'admin', 'super_admin']),
       ...withRoles(expensesRoutes, ['hr', 'super_admin']),
+      ...finesRoutes,
       ...withRoles(assetsRoutes, ['employee', 'team_lead', 'floor_head', 'manager', 'admin', 'hr', 'super_admin']),
       ...withRoles(projectsRoutes, ['employee', 'team_lead', 'floor_head', 'manager']),
       ...withRoles(settingsRoutes, ['hr', 'super_admin']),

@@ -201,6 +201,7 @@ app.use('/api/v1/company-settings', require('./modules/companySettings/companySe
 app.use('/api/v1/exits', require('./modules/exits/exits.routes'));
 app.use('/api/v1/assets', require('./modules/assets/assets.routes'));
 app.use('/api/v1/action-center', require('./modules/actionCenter/actionCenter.routes'));
+app.use('/api/v1/fines', require('./modules/fines/fines.routes'));
 
 // -------------------------------------------------------------------------
 // 404 handler — anything not matched by a route above
