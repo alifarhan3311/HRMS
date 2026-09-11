@@ -767,14 +767,18 @@ async function manualCorrection(id, payload, actor) {
   }
   if ((signInTime || signOutTime) && correctedSignIn && correctedSignOut) {
     const isFlexible = (record.shiftType || 'fixed') === 'flexible';
-    const baseArrivalStatus = (isFlexible || record.missedPunchType)
-      ? (update.lateMinutes > 0 ? 'late' : 'present')
-      : record.status;
+    const effectiveLateMinutes = update.lateMinutes !== undefined
+      ? update.lateMinutes
+      : Number(record.lateMinutes || 0);
+    const baseArrivalStatus = status
+      || (isFlexible || record.missedPunchType || signInTime || effectiveLateMinutes === 0
+        ? (effectiveLateMinutes > 0 ? 'late' : 'present')
+        : (effectiveLateMinutes > 0 ? 'late' : (record.status === 'half_day' ? 'half_day' : 'present')));
     Object.assign(update, correctedWorkMetrics(
       record,
       correctedSignIn,
       correctedSignOut,
-      update.lateMinutes ?? Number(record.lateMinutes || 0),
+      effectiveLateMinutes,
       baseArrivalStatus,
     ));
     delete update.autoClosedAt;
