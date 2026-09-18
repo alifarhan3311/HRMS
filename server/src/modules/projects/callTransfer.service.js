@@ -8,6 +8,7 @@ const TARGET = 3;
 const CALL_CENTER = /^call[\s_-]*center$/i;
 
 function isProbation(employee, date = new Date()) {
+  if (employee.role === 'super_admin') return false;
   const joined = new Date(employee.joiningDate);
   const completed = new Date(joined);
   completed.setMonth(completed.getMonth() + 3);

@@ -26,7 +26,7 @@ async function getActionCenter(query, actor) {
     Attendance.find({ companyId, $or: [{ missedPunchType: 'sign_out' }, { status: 'incomplete', signInTime: { $exists: true }, signOutTime: { $exists: false } }] }).populate('employeeId', 'fullName employeeCode').sort('-date').limit(max).lean(),
     BiometricPunch.find({ companyId, processingStatus: { $in: ['unmapped', 'error'] } }).sort('-punchTime').limit(max).lean(),
     EmployeeExit.find({ companyId, status: { $in: ['pending_approval', 'hr_review', 'clearance'] } }).populate('employeeId', 'fullName employeeCode').sort('createdAt').limit(max).lean(),
-    Employee.find({ companyId, status: 'active', joiningDate: { $gte: probationStart, $lte: probationEnd } }).select('fullName employeeCode joiningDate department').sort('joiningDate').limit(max).lean(),
+    Employee.find({ companyId, status: 'active', role: { $ne: 'super_admin' }, joiningDate: { $gte: probationStart, $lte: probationEnd } }).select('fullName employeeCode joiningDate department').sort('joiningDate').limit(max).lean(),
     Payslip.find({ companyId, month, year, status: { $in: ['draft', 'pending_approval'] } }).populate('employeeId', 'fullName employeeCode').sort('createdAt').limit(max).lean(),
     Notification.find({ companyId, 'delivery.email.status': 'failed' }).populate('recipientId', 'fullName employeeCode').sort('-createdAt').limit(max).lean(),
     BiometricSyncState.find({ companyId }).sort('-updatedAt').lean(),
