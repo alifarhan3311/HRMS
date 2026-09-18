@@ -160,58 +160,58 @@ async function signIn({
 
   const record = existing
     ? await repository.updateById(existing._id, {
-        signInTime: now, status, lateMinutes, method, notes,
-        employeeName: employee.fullName,
-        employeeCode: employee.employeeCode,
-        workMode,
-        shiftDate: schedule.shiftDate,
-        shiftId: shift._id || undefined,
-        shiftName: shift.name,
-        employeeDepartment: employee.department,
-        shiftType: shift.shiftType || 'fixed',
-        shiftStartTime: shift.startTime,
-        shiftEndTime: shift.endTime,
-        shiftGraceMinutes: shift.graceMinutes,
-        shiftLateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes,
-        shiftRequiredMinutes: policy.requiredMinutes,
-        shiftHalfDayMinutes: policy.halfDayMinutes,
-        shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
-        effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
-        scheduledStart: schedule.scheduledStart,
-        scheduledEnd: schedule.scheduledEnd,
-        shiftTimezone: schedule.timeZone,
-      })
+      signInTime: now, status, lateMinutes, method, notes,
+      employeeName: employee.fullName,
+      employeeCode: employee.employeeCode,
+      workMode,
+      shiftDate: schedule.shiftDate,
+      shiftId: shift._id || undefined,
+      shiftName: shift.name,
+      employeeDepartment: employee.department,
+      shiftType: shift.shiftType || 'fixed',
+      shiftStartTime: shift.startTime,
+      shiftEndTime: shift.endTime,
+      shiftGraceMinutes: shift.graceMinutes,
+      shiftLateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes,
+      shiftRequiredMinutes: policy.requiredMinutes,
+      shiftHalfDayMinutes: policy.halfDayMinutes,
+      shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
+      effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
+      scheduledStart: schedule.scheduledStart,
+      scheduledEnd: schedule.scheduledEnd,
+      shiftTimezone: schedule.timeZone,
+    })
     : await repository.create({
-        employeeId,
-        employeeName: employee.fullName,
-        employeeCode: employee.employeeCode,
-        workMode,
-        date: attendanceDate,
-        shiftDate: schedule.shiftDate,
-        shiftId: shift._id || undefined,
-        shiftName: shift.name,
-        employeeDepartment: employee.department,
-        shiftType: shift.shiftType || 'fixed',
-        shiftStartTime: shift.startTime,
-        shiftEndTime: shift.endTime,
-        shiftGraceMinutes: shift.graceMinutes,
-        shiftLateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes,
-        shiftRequiredMinutes: policy.requiredMinutes,
-        shiftHalfDayMinutes: policy.halfDayMinutes,
-        shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
-        effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
-        scheduledStart: schedule.scheduledStart,
-        scheduledEnd: schedule.scheduledEnd,
-        shiftTimezone: schedule.timeZone,
-        ...(closure && { closureId: closure._id, closureType: closure.eventType, attendanceAdjustmentReason: closure.title }),
-        signInTime: now,
-        status,
-        lateMinutes,
-        method,
-        notes,
-        companyId: actor.companyId,
-        branchId: actor.branchId,
-      });
+      employeeId,
+      employeeName: employee.fullName,
+      employeeCode: employee.employeeCode,
+      workMode,
+      date: attendanceDate,
+      shiftDate: schedule.shiftDate,
+      shiftId: shift._id || undefined,
+      shiftName: shift.name,
+      employeeDepartment: employee.department,
+      shiftType: shift.shiftType || 'fixed',
+      shiftStartTime: shift.startTime,
+      shiftEndTime: shift.endTime,
+      shiftGraceMinutes: shift.graceMinutes,
+      shiftLateHalfDayAfterMinutes: shift.lateHalfDayAfterMinutes,
+      shiftRequiredMinutes: policy.requiredMinutes,
+      shiftHalfDayMinutes: policy.halfDayMinutes,
+      shiftOvertimeAfterMinutes: policy.overtimeAfterMinutes,
+      effectiveRequiredMinutes: policy.effectiveRequiredMinutes,
+      scheduledStart: schedule.scheduledStart,
+      scheduledEnd: schedule.scheduledEnd,
+      shiftTimezone: schedule.timeZone,
+      ...(closure && { closureId: closure._id, closureType: closure.eventType, attendanceAdjustmentReason: closure.title }),
+      signInTime: now,
+      status,
+      lateMinutes,
+      method,
+      notes,
+      companyId: actor.companyId,
+      branchId: actor.branchId,
+    });
 
   // Update employee's lateCount if late
   if (attendanceExempt) {
@@ -302,17 +302,17 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
   const status = attendanceExempt
     ? 'present'
     : saturdayStatus({
-        shiftDate: record.shiftDate,
-        hasSignIn: true,
-        isFullDayClosure: fullDayClosure,
-      }) || completedFixedShiftStatus(record, now, policy.effectiveEnd, policy.effectiveStart) || attendanceStatus(
-        baseArrivalStatus,
-        workedMinutes,
-        policy.effectiveRequiredMinutes,
-        policy.effectiveHalfDayMinutes,
-        fullDayClosure,
-        completionToleranceMinutes(record, policy.effectiveRequiredMinutes),
-      );
+      shiftDate: record.shiftDate,
+      hasSignIn: true,
+      isFullDayClosure: fullDayClosure,
+    }) || completedFixedShiftStatus(record, now, policy.effectiveEnd, policy.effectiveStart) || attendanceStatus(
+      baseArrivalStatus,
+      workedMinutes,
+      policy.effectiveRequiredMinutes,
+      policy.effectiveHalfDayMinutes,
+      fullDayClosure,
+      completionToleranceMinutes(record, policy.effectiveRequiredMinutes),
+    );
 
   const cleanNotes = notes || (record.notes && record.notes.includes('Missing sign-out')
     ? record.notes.replace(/Missing sign-out:[^.]*\.?/gi, '').trim()
@@ -352,9 +352,9 @@ function classifyBiometricPunch({ record, punchTime, schedule, shift }) {
   const scheduledEnd = new Date(record.scheduledEnd || schedule.scheduledEnd);
   const requiredMinutes = Number(
     record.effectiveRequiredMinutes
-      || record.shiftRequiredMinutes
-      || shift?.requiredMinutes
-      || 480,
+    || record.shiftRequiredMinutes
+    || shift?.requiredMinutes
+    || 480,
   );
 
   // A second entry-area scan is not a checkout. Fixed shifts enter their
@@ -422,16 +422,16 @@ async function ingestBiometricPunch({ employee, punchTime, punchKey, deviceId, d
     || (isFlexibleCheckoutRecoveryCandidate(openRecord, punchTime) ? openRecord : null);
   const context = checkoutRecord
     ? {
-        shift: {
-          shiftType: checkoutRecord.shiftType,
-          requiredMinutes: checkoutRecord.shiftRequiredMinutes,
-        },
-        schedule: {
-          shiftDate: checkoutRecord.shiftDate,
-          scheduledStart: checkoutRecord.scheduledStart,
-          scheduledEnd: checkoutRecord.scheduledEnd,
-        },
-      }
+      shift: {
+        shiftType: checkoutRecord.shiftType,
+        requiredMinutes: checkoutRecord.shiftRequiredMinutes,
+      },
+      schedule: {
+        shiftDate: checkoutRecord.shiftDate,
+        scheduledStart: checkoutRecord.scheduledStart,
+        scheduledEnd: checkoutRecord.scheduledEnd,
+      },
+    }
     : await resolveShiftContext(employee._id, employee.companyId, new Date(punchTime));
   const { shift, schedule } = context;
   const existing = checkoutRecord

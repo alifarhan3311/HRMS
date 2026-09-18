@@ -87,8 +87,29 @@ const regularizationApprovals = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: result });
 });
 
+const syncBiometric = asyncHandler(async (req, res) => {
+  const { syncAllBiometric } = require('../../integrations/zkteco/zkteco.service');
+  const result = await syncAllBiometric(req.user.companyId);
+  res.status(200).json({
+    success: true,
+    message: 'Biometric sync and attendance backfill completed.',
+    data: result,
+  });
+});
+
+const backfillEmployee = asyncHandler(async (req, res) => {
+  const { backfillEmployeeAttendance } = require('../../integrations/zkteco/zkteco.service');
+  const result = await backfillEmployeeAttendance(req.params.employeeId);
+  res.status(200).json({
+    success: true,
+    message: 'Employee biometric backfill completed.',
+    data: result,
+  });
+});
+
 module.exports = {
   signIn, signOut, today, monthlySummary, rangeSummary, list,
   getById, manualCorrection, requestRegularization,
   reviewRegularization, pendingRegularizations, regularizationApprovals,
+  syncBiometric, backfillEmployee,
 };

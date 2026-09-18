@@ -22,6 +22,8 @@ const employeesSchema = new mongoose.Schema(
   contactNumber: { type: String, set: encryptField, get: decryptFieldSafe },
   address: { type: String, set: encryptField, get: decryptFieldSafe },
   joiningDate: { type: Date, required: true },
+  probationEndDate: { type: Date },
+  probationStatus: { type: String, enum: ['ongoing', 'completed', 'extended'], default: 'ongoing' },
   department: { type: String, required: true, trim: true },
   workMode: { type: String, enum: ['office', 'wfh'], default: 'office' },
   managedDepartments: { type: [String], default: [] },

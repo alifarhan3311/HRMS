@@ -25,6 +25,7 @@ import {
   useSignOutMutation,
   useManualCorrectionMutation,
   useRequestRegularizationMutation,
+  useSyncBiometricMutation,
 } from '../api/attendance.api';
 import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import { useApplyLeaveMutation } from '../../leaves/api/leaves.api';
@@ -540,6 +541,17 @@ export default function AttendanceListPage() {
   const [manualCorrection, { isLoading: correcting }] = useManualCorrectionMutation();
   const [requestReg, { isLoading: requesting }] = useRequestRegularizationMutation();
   const [applyLeaveForEmployee] = useApplyLeaveMutation();
+  const [syncBiometric, { isLoading: isSyncingBiometric }] = useSyncBiometricMutation();
+
+  async function handleSyncBiometric() {
+    try {
+      const res = await syncBiometric().unwrap();
+      toast.success(res.message || 'Machine biometric attendance synced and updated!');
+      refetch();
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Biometric sync failed. Check machine connection.');
+    }
+  }
 
   async function markHrLeave(record) {
     const leaveType = window.prompt('Leave type likhein: annual, sick, paid, ya unpaid', 'unpaid');
@@ -977,6 +989,18 @@ export default function AttendanceListPage() {
               disabled={rangeLoading || !reportRecords.length}>
               <Download className="h-4 w-4" /> Export CSV
             </Button>
+            {isAdminHR && (
+              <Button
+                type="button"
+                variant="primary"
+                className="gap-2 whitespace-nowrap"
+                onClick={handleSyncBiometric}
+                disabled={isSyncingBiometric}
+              >
+                <RefreshCw className={`h-4 w-4 ${isSyncingBiometric ? 'animate-spin' : ''}`} />
+                {isSyncingBiometric ? 'Syncing...' : 'Sync Biometric'}
+              </Button>
+            )}
           </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">

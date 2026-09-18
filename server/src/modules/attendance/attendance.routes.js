@@ -47,6 +47,10 @@ router.get('/', authorize(...ALL), validate(listQuerySchema, 'query'), controlle
 router.get('/pending-regularizations', authorize(...MANAGERS_UP), controller.pendingRegularizations);
 router.get('/regularization-approvals', authorize(...MANAGERS_UP), controller.regularizationApprovals);
 
+// Biometric Machine Sync & Historical Backfill (HR / Super Admin)
+router.post('/sync-biometric', authorize(...HR_MANAGEMENT), controller.syncBiometric);
+router.post('/backfill/:employeeId', authorize(...HR_MANAGEMENT), controller.backfillEmployee);
+
 // Per-record operations
 router.get(
   '/:id',

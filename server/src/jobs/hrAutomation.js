@@ -586,34 +586,34 @@ async function reconcileAttendance(now = new Date()) {
         const settings = policyCache.get(String(employee.companyId));
         const shiftDate = zonedDateKey(date, settings?.company?.timezone || 'Asia/Karachi');
         return ({
-        updateOne: {
-          filter: {
-            employeeId: employee._id,
-            $or: [
-              { shiftDate },
-              { date: { $gte: date, $lte: dayEnd } },
-            ],
-          },
-          update: {
-            $setOnInsert: {
+          updateOne: {
+            filter: {
               employeeId: employee._id,
-              employeeName: employee.fullName,
-              employeeCode: employee.employeeCode,
-              workMode: employee.workMode === 'wfh' ? 'wfh' : 'office',
-              companyId: employee.companyId,
-              branchId: employee.branchId,
-              date,
-              shiftDate,
-              status: onLeave ? 'on_leave' : 'absent',
-              method: 'manual',
-              notes: onLeave
-                ? 'Approved leave recorded by HR automation.'
-                : 'No attendance punches were received; marked absent.',
+              $or: [
+                { shiftDate },
+                { date: { $gte: date, $lte: dayEnd } },
+              ],
             },
+            update: {
+              $setOnInsert: {
+                employeeId: employee._id,
+                employeeName: employee.fullName,
+                employeeCode: employee.employeeCode,
+                workMode: employee.workMode === 'wfh' ? 'wfh' : 'office',
+                companyId: employee.companyId,
+                branchId: employee.branchId,
+                date,
+                shiftDate,
+                status: onLeave ? 'on_leave' : 'absent',
+                method: 'manual',
+                notes: onLeave
+                  ? 'Approved leave recorded by HR automation.'
+                  : 'No attendance punches were received; marked absent.',
+              },
+            },
+            upsert: true,
           },
-          upsert: true,
-        },
-      });
+        });
       });
 
     if (operations.length) {
@@ -920,7 +920,7 @@ async function runHrAutomation(now = new Date()) {
 function startHrAutomation() {
   if (process.env.HR_AUTOMATION_ENABLED === 'false') {
     logger.info('[hr-automation] Disabled by environment configuration');
-    return () => {};
+    return () => { };
   }
 
   runHrAutomation().catch((error) => {

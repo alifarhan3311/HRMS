@@ -393,38 +393,129 @@ async function backfillEmployeeAttendance(employeeId) {
   if (!employee?.biometricDeviceUserId || employee.status !== 'active') {
     return { punchesProcessed: 0, attendanceRecords: 0, ignored: 0 };
   }
-  const joiningDay = employee.joiningDate ? new Date(employee.joiningDate) : new Date(0);
-  joiningDay.setUTCHours(0, 0, 0, 0);
+
+  const cfg = config();
+  const targetDeviceUserId = String(employee.biometricDeviceUserId).trim();
   const summary = { punchesProcessed: 0, attendanceRecords: 0, ignored: 0 };
   const attendanceIds = new Set();
-  while (true) {
-    const punches = await BiometricPunch.find({
-      companyId: employee.companyId,
-      deviceUserId: String(employee.biometricDeviceUserId),
-      processingStatus: 'unmapped',
-    }).sort({ punchTime: 1 }).limit(250);
-    if (!punches.length) break;
-    for (const rawPunch of punches) {
-      if (rawPunch.punchTime < joiningDay) {
-        rawPunch.processingStatus = 'ignored';
-        rawPunch.error = 'BEFORE_JOINING_DATE';
-        rawPunch.employeeId = employee._id;
-        rawPunch.mappedAt = new Date();
-        rawPunch.backfilledAt = new Date();
-        await rawPunch.save();
-        summary.ignored += 1;
-        continue;
+
+  // 1. Direct machine pull: If device is available, download all historical logs for this user
+  try {
+    let zk = state.device;
+    let ownConnection = false;
+    if ((!zk || !state.connected) && cfg.enabled && cfg.ip) {
+      zk = new ZKLib(cfg.ip, cfg.port, cfg.timeout, 4000, cfg.commKey);
+      await zk.createSocket();
+      ownConnection = true;
+    }
+
+    if (zk) {
+      const response = await (ownConnection ? zk.getAttendances() : enqueueSdk(() => zk.getAttendances()));
+      const downloadedLogs = response?.data || [];
+      const userLogs = downloadedLogs.filter((l) => String(l.deviceUserId || l.userId) === targetDeviceUserId);
+
+      for (const log of userLogs) {
+        try {
+          const normalized = normalizePunch(log, 'polling');
+          if (normalized) {
+            const res = await processPunch(normalized);
+            if (res.record?._id && !res.action?.endsWith('_ignored')) {
+              attendanceIds.add(String(res.record._id));
+            }
+          }
+        } catch (err) {
+          logger.warn('[zkteco] Error processing machine punch in backfill', { error: err.message });
+        }
       }
-      const result = await processPunch(inputFromStoredPunch(rawPunch), rawPunch);
+
+      if (ownConnection) {
+        await zk.disconnect().catch(() => {});
+      }
+    }
+  } catch (deviceError) {
+    logger.warn('[zkteco] Machine query during backfill skipped', { error: deviceError.message });
+  }
+
+  // 2. Process stored BiometricPunch records for this deviceUserId
+  let rawJoiningDay = employee.joiningDate ? new Date(employee.joiningDate) : null;
+  if (rawJoiningDay && (rawJoiningDay.getFullYear() < 2000 || rawJoiningDay > new Date())) {
+    rawJoiningDay = null; // Do not discard valid punches due to a malformed or future joiningDate
+  }
+  const joiningDay = rawJoiningDay || new Date(0);
+  joiningDay.setUTCHours(0, 0, 0, 0);
+
+  const punches = await BiometricPunch.find({
+    companyId: employee.companyId,
+    deviceUserId: targetDeviceUserId,
+    processingStatus: { $in: ['unmapped', 'error', 'received', 'ignored'] },
+  }).sort({ punchTime: 1 });
+
+  for (const rawPunch of punches) {
+    if (rawJoiningDay && rawPunch.punchTime < joiningDay) {
+      rawPunch.processingStatus = 'ignored';
+      rawPunch.error = 'BEFORE_JOINING_DATE';
+      rawPunch.employeeId = employee._id;
+      rawPunch.mappedAt = new Date();
       rawPunch.backfilledAt = new Date();
       await rawPunch.save();
-      summary.punchesProcessed += 1;
-      if (result.record?._id && !result.action?.endsWith('_ignored')) attendanceIds.add(String(result.record._id));
-      if (result.status === 'ignored') summary.ignored += 1;
+      summary.ignored += 1;
+      continue;
+    }
+    const result = await processPunch(inputFromStoredPunch(rawPunch), rawPunch);
+    rawPunch.backfilledAt = new Date();
+    await rawPunch.save();
+    summary.punchesProcessed += 1;
+    if (result.record?._id && !result.action?.endsWith('_ignored')) {
+      attendanceIds.add(String(result.record._id));
+    }
+    if (result.status === 'ignored') summary.ignored += 1;
+  }
+
+  summary.attendanceRecords = attendanceIds.size;
+  if (summary.punchesProcessed || summary.ignored) {
+    await notifyBackfillComplete(employee, summary);
+  }
+
+  emitToCompany(employee.companyId, 'data:changed', dataChangedPayload(deviceId(cfg)));
+  emitToCompany(employee.companyId, 'attendance:biometric', {
+    employeeId: employee._id,
+    action: 'backfill',
+    count: summary.attendanceRecords,
+  });
+
+  return summary;
+}
+
+async function syncAllBiometric(companyId) {
+  const cfg = config();
+  const summary = { downloaded: 0, processed: 0, backfilledRecords: 0 };
+
+  // 1. Sync new logs from device
+  try {
+    const syncResult = await syncNewLogs();
+    summary.downloaded = syncResult.fetched || 0;
+    summary.processed = syncResult.processed || 0;
+  } catch (error) {
+    logger.error('[zkteco] Error in manual syncNewLogs', { error: error.message });
+  }
+
+  // 2. Backfill for all active employees that have biometricDeviceUserId
+  const activeEmployees = await Employee.find({
+    companyId: companyId || cfg.companyId,
+    status: 'active',
+    biometricDeviceUserId: { $exists: true, $ne: '' },
+  }).select('_id fullName biometricDeviceUserId');
+
+  for (const emp of activeEmployees) {
+    try {
+      const bSummary = await backfillEmployeeAttendance(emp._id);
+      summary.backfilledRecords += bSummary.attendanceRecords || 0;
+    } catch (err) {
+      logger.warn('[zkteco] Backfill error for employee', { employeeId: emp._id, error: err.message });
     }
   }
-  summary.attendanceRecords = attendanceIds.size;
-  if (summary.punchesProcessed || summary.ignored) await notifyBackfillComplete(employee, summary);
+
+  emitToCompany(companyId || cfg.companyId, 'data:changed', dataChangedPayload(deviceId(cfg)));
   return summary;
 }
 
@@ -791,6 +882,7 @@ module.exports = {
   testDeviceConnection,
   getServiceStatus,
   syncNewLogs,
+  syncAllBiometric,
   processPunch,
   backfillEmployeeAttendance,
   replayStoredPunchesForAttendance,

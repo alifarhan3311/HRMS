@@ -56,6 +56,15 @@ export const attendanceApi = api.injectEndpoints({
       query: ({ id, ...body }) => ({ url: `/attendance/${id}/regularize/review`, method: 'PATCH', body }),
       invalidatesTags: ['Attendance', 'Payroll', 'Dashboard', 'Reports'],
     }),
+    // Sync Biometric Machine on demand (HR/Admin)
+    syncBiometric: builder.mutation({
+      query: () => ({ url: '/attendance/sync-biometric', method: 'POST' }),
+      invalidatesTags: ['Attendance', 'Dashboard', 'Reports'],
+    }),
+    backfillEmployeeBiometric: builder.mutation({
+      query: (employeeId) => ({ url: `/attendance/backfill/${employeeId}`, method: 'POST' }),
+      invalidatesTags: ['Attendance', 'Dashboard', 'Reports'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -72,4 +81,6 @@ export const {
   useManualCorrectionMutation,
   useRequestRegularizationMutation,
   useReviewRegularizationMutation,
+  useSyncBiometricMutation,
+  useBackfillEmployeeBiometricMutation,
 } = attendanceApi;
