@@ -1217,8 +1217,8 @@ export default function AttendanceListPage() {
                             Leave
                           </button>
                         )}
-                        {!isAdminHR && rec.regularizationStatus === 'none' && (
-                          <button onClick={() => setRegularizeRecord(rec)} title="Request regularization"
+                        {!isAdminHR && ['none', 'rejected'].includes(rec.regularizationStatus) && (
+                          <button onClick={() => setRegularizeRecord(rec)} title={rec.regularizationStatus === 'rejected' ? 'Request regularization (Previous Rejected)' : 'Request regularization'}
                             className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-amber-500">
                             <AlertCircle className="h-3.5 w-3.5" />
                           </button>
@@ -1228,6 +1228,9 @@ export default function AttendanceListPage() {
                         )}
                         {rec.regularizationStatus === 'approved' && (
                           <Badge variant="green">Regularized</Badge>
+                        )}
+                        {rec.regularizationStatus === 'rejected' && (
+                          <Badge variant="red">Reg. Rejected</Badge>
                         )}
                       </div>
                     </motion.div>

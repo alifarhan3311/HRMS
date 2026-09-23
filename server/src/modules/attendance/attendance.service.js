@@ -891,8 +891,8 @@ async function requestRegularization(id, payload, actor) {
   if (String(record.employeeId._id || record.employeeId) !== String(actor.id)) {
     throw createHttpError(403, 'You can only regularize your own attendance.');
   }
-  if (record.regularizationStatus !== 'none') {
-    throw createHttpError(409, 'A regularization request already exists for this record.');
+  if (record.regularizationStatus !== 'none' && record.regularizationStatus !== 'rejected') {
+    throw createHttpError(409, 'A pending or approved regularization request already exists for this record.');
   }
   if (requestType === 'late_waiver' && record.lateMinutes <= 0 && record.status !== 'late') {
     throw createHttpError(422, 'A late waiver can only be requested for a late attendance record.');
