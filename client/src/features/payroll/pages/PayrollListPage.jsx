@@ -477,6 +477,7 @@ function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
     ['Half-day deduction', employee.halfDayDeduction],
     ['Unpaid leave deduction', employee.unpaidLeaveDeduction],
     ['Late deduction', employee.lateDeduction],
+    ['Fines', employee.totalFines],
   ];
 
   return (
@@ -538,7 +539,7 @@ function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
               { label: 'Monthly Salary', value: employee.monthlySalary, formatter: fmtPKR },
               { label: 'Daily Salary', value: employee.dailySalary, formatter: fmtPKR },
               { label: 'Earned So Far', value: employee.earnedSalary, formatter: fmtPKR, color: 'text-emerald-600' },
-              { label: 'Attendance Deduction', value: employee.deductions, formatter: (value) => `− ${fmtPKR(value)}`, color: 'text-red-500' },
+              { label: 'Total Deductions', value: employee.deductions, formatter: (value) => `− ${fmtPKR(value)}`, color: 'text-red-500' },
               { label: 'Projected Net Payable', value: employee.netPayable, formatter: fmtPKR, color: 'text-primary' },
               ...(monthlyMode
                 ? [
