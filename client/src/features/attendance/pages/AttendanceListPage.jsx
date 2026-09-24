@@ -341,7 +341,7 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
   function handleSubmit(e) {
     e.preventDefault();
     const fixedShift = (record.shiftType || 'fixed') === 'fixed';
-    const crossesMidnight = fixedShift && form.signInTime && form.signOutTime
+    const crossesMidnight = form.signInTime && form.signOutTime
       && form.signOutTime <= form.signInTime;
     const resolvedSignOutDate = crossesMidnight
       ? addIsoDateDays(form.signInDate, 1)
@@ -420,7 +420,7 @@ function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
   function handleSubmit(e) {
     e.preventDefault();
     const fixedShift = (record.shiftType || 'fixed') === 'fixed';
-    const crossesMidnight = fixedShift && times.signInTime && times.signOutTime
+    const crossesMidnight = times.signInTime && times.signOutTime
       && times.signOutTime <= times.signInTime;
     const resolvedSignOutDate = crossesMidnight
       ? addIsoDateDays(times.signInDate, 1)

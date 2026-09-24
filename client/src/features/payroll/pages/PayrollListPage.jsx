@@ -1008,7 +1008,7 @@ export default function PayrollListPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1150px] text-sm">
                 <thead className="bg-muted/30 text-xs uppercase text-muted-foreground"><tr>
-                  {['Employee','Monthly','Daily','Earned','Present','Absent','Half Day','Paid Leave','Unpaid Leave','Sandwich','Late','Attendance Deduction','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
+                  {['Employee','Monthly','Daily','Earned','Present','Absent','Half Day','Paid Leave','Unpaid Leave','Sandwich','Late','Attendance Deduction','Fines','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-border">{liveRows.map(row => (
                   <tr key={row.employeeId} className="hover:bg-accent/30">
@@ -1024,6 +1024,7 @@ export default function PayrollListPage() {
                     <td className="px-4 py-3 text-red-600">{row.sandwichLeave}</td>
                     <td className="px-4 py-3 text-amber-500">{row.late}</td>
                     <td className="px-4 py-3 text-red-500"><SensitiveValue value={row.deductions} formatter={(value) => `− ${fmtPKR(value)}`} visible={salaryVisible} showToggle={false} /></td>
+                    <td className="px-4 py-3 text-red-500"><SensitiveValue value={row.totalFines || 0} formatter={(value) => `− ${fmtPKR(value)}`} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 font-bold text-primary"><SensitiveValue value={row.netPayable} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
                   </tr>
                 ))}</tbody>

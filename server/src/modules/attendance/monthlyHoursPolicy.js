@@ -89,6 +89,25 @@ function buildMonthlyHoursSummary(records = [], { month, year, now = new Date(),
   };
 }
 
+function getExactMonthsSpanned(start, end) {
+  if (start > end) return 0;
+  let totalMonths = 0;
+  let current = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  while (current <= end) {
+    const year = current.getFullYear();
+    const month = current.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    if (end.getFullYear() === year && end.getMonth() === month) {
+      totalMonths += (end.getDate() - current.getDate() + 1) / daysInMonth;
+      break;
+    } else {
+      totalMonths += (daysInMonth - current.getDate() + 1) / daysInMonth;
+      current = new Date(year, month + 1, 1);
+    }
+  }
+  return totalMonths;
+}
+
 function buildRangeHoursSummary(records = [], { dateFrom, dateTo, now = new Date(), baseTargetHours = 184 } = {}) {
   const counts = records.reduce((acc, record) => {
     if (Object.prototype.hasOwnProperty.call(acc, record.status)) acc[record.status] += 1;
@@ -97,9 +116,14 @@ function buildRangeHoursSummary(records = [], { dateFrom, dateTo, now = new Date
 
   const dFrom = new Date(dateFrom);
   const dTo = new Date(dateTo);
-  const monthsSpanned = Math.max(1, (dTo.getFullYear() - dFrom.getFullYear()) * 12 + (dTo.getMonth() - dFrom.getMonth()) + 1);
+  const rangeStart = new Date(dFrom.getFullYear(), dFrom.getMonth(), dFrom.getDate());
+  const rangeEnd = new Date(dTo.getFullYear(), dTo.getMonth(), dTo.getDate(), 23, 59, 59, 999);
+  const daysInRange = Math.max(1, Math.round((rangeEnd - rangeStart) / (1000 * 60 * 60 * 24)));
+
+  const exactMonths = getExactMonthsSpanned(rangeStart, rangeEnd);
+  const monthsSpanned = exactMonths > 0 ? roundHours(exactMonths) : 1;
   
-  const target = Number(baseTargetHours || 184) * monthsSpanned;
+  const target = roundHours(Number(baseTargetHours || 184) * exactMonths);
   const targetMinutes = target * 60;
   
   const completedMinutes = records.reduce((total, record) => (
@@ -116,11 +140,6 @@ function buildRangeHoursSummary(records = [], { dateFrom, dateTo, now = new Date
     ? Number(Math.min(100, ((totalEffectiveHours / target) * 100)).toFixed(1))
     : 0;
     
-  const rangeStart = new Date(dFrom.getFullYear(), dFrom.getMonth(), dFrom.getDate());
-  const rangeEnd = new Date(dTo.getFullYear(), dTo.getMonth(), dTo.getDate(), 23, 59, 59, 999);
-  
-  const daysInRange = Math.max(1, Math.round((rangeEnd - rangeStart) / (1000 * 60 * 60 * 24)));
-  
   const boundedNow = now < rangeStart ? null : (now > rangeEnd ? rangeEnd : now);
   const daysElapsed = boundedNow ? Math.max(1, Math.ceil((boundedNow - rangeStart) / (1000 * 60 * 60 * 24))) : 0;
   const daysRemaining = Math.max(daysInRange - daysElapsed, 0);

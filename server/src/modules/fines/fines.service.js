@@ -154,9 +154,10 @@ async function listFines({ employeeId, page = 1, limit = 20 }, actor) {
  * Get fines issued specifically to the logged-in employee (self portal view).
  */
 async function getMyFines({ page = 1, limit = 20 }, actor) {
+  const mongoose = require('mongoose');
   const filter = {
-    employeeId: actor.id,
-    companyId: actor.companyId,
+    employeeId: new mongoose.Types.ObjectId(actor.id),
+    companyId: new mongoose.Types.ObjectId(actor.companyId),
     voidedAt: { $exists: false },
   };
 

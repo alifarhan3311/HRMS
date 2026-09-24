@@ -11,6 +11,7 @@ const repository = require('./payroll.repository');
 const Employee = require('../employees/employees.model');
 const Attendance = require('../attendance/attendance.model');
 const LeaveRequest = require('../leaves/leaves.model');
+const Fine = require('../fines/fine.model');
 const settingsService = require('../companySettings/companySettings.service');
 const notificationService = require('../notifications/notifications.service');
 const {
@@ -270,6 +271,16 @@ async function generatePayslip(payload, actor) {
 
   // Deductions
   const settings = await settingsService.getPolicy(actor.companyId);
+
+  const fineRecords = await Fine.find({
+    employeeId: employeeId,
+    voidedAt: { $exists: false },
+    $or: [
+      { payrollMonth: month, payrollYear: year },
+      { payrollMonth: { $exists: false }, createdAt: { $gte: monthBounds(month, year).start, $lte: monthBounds(month, year).end } }
+    ]
+  });
+  const totalFines = fineRecords.reduce((sum, f) => sum + f.amount, 0);
   const monthlyMode = isMonthlyHourDepartment(employee.department);
   const monthlyHours = monthlyMode
     ? buildMonthlyHoursSummary(await Attendance.find({ employeeId, date: { $gte: monthBounds(month, year).start, $lte: monthBounds(month, year).end } }), {
@@ -306,6 +317,7 @@ async function generatePayslip(payload, actor) {
       { label: `Monthly Hours Shortfall (${shortHours}h)`, amount: attendanceDeduction },
       { label: 'Loan', amount: Number(loanDeduction) || 0 },
       { label: 'Advance Salary', amount: Number(advanceSalary) || 0 },
+      { label: 'Fines', amount: totalFines },
     ].filter(d => d.amount > 0)
     : [
       { label: 'Absence Deduction', amount: absenceDeduction },
@@ -314,6 +326,7 @@ async function generatePayslip(payload, actor) {
       { label: 'Unpaid Leave Deduction', amount: unpaidLeaveDeduction },
       { label: 'Loan', amount: Number(loanDeduction) || 0 },
       { label: 'Advance Salary', amount: Number(advanceSalary) || 0 },
+      { label: 'Fines', amount: totalFines },
     ].filter(d => d.amount > 0);
 
   const deductionTotal = deductionItems.reduce((s, d) => s + d.amount, 0);
@@ -498,6 +511,17 @@ async function getLivePayroll(query, actor) {
   ]);
   const items = await Promise.all(employees.map(async (employee) => {
     const attendance = await getAttendanceData(employee, month, year);
+    
+    const fineRecords = await Fine.find({
+      employeeId: employee._id,
+      voidedAt: { $exists: false },
+      $or: [
+        { payrollMonth: month, payrollYear: year },
+        { payrollMonth: { $exists: false }, createdAt: { $gte: monthBounds(month, year).start, $lte: monthBounds(month, year).end } }
+      ]
+    });
+    const totalFines = fineRecords.reduce((sum, f) => sum + f.amount, 0);
+
     const basicSalary = Number(employee.currentSalary) || 0;
     const monthlyMode = isMonthlyHourDepartment(employee.department);
     const calculation = monthlyMode
@@ -519,9 +543,9 @@ async function getLivePayroll(query, actor) {
         payrollPolicy: settings.payrollPolicy,
       });
     const deductions = monthlyMode
-      ? calculation.attendanceDeduction
+      ? calculation.attendanceDeduction + totalFines
       : calculation.absenceDeduction + calculation.halfDayDeduction
-        + calculation.lateDeduction + calculation.unpaidLeaveDeduction;
+        + calculation.lateDeduction + calculation.unpaidLeaveDeduction + totalFines;
     const creditedDays = monthlyMode
       ? Math.min(30, Math.max(0, attendance.monthlyHours?.totalEffectiveHours || 0) / 8)
       : attendance.present + (attendance.halfDay * 0.5)
@@ -538,6 +562,7 @@ async function getLivePayroll(query, actor) {
       monthlySalary: basicSalary,
       dailySalary: Math.round(calculation.perDaySalary),
       earnedSalary,
+      totalFines,
       deductions,
       netPayable: Math.max(0, basicSalary - deductions),
       month,
