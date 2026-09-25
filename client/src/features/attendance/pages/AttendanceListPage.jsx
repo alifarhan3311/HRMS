@@ -327,7 +327,7 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
     const overnight = fixedShift && record.shiftStartTime && record.shiftEndTime
       && record.shiftEndTime <= record.shiftStartTime;
     setForm({
-      signInDate: fixedShift ? fixedWorkDate : signInParts.date,
+      signInDate: fixedWorkDate,
       signInTime: signInParts.time || '',
       signOutDate: fixedShift
         ? addIsoDateDays(fixedWorkDate, overnight ? 1 : 0)
@@ -408,7 +408,7 @@ function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
     setReason('');
     setRequestType(record.status === 'late' || record.lateMinutes > 0 ? 'late_waiver' : 'time_correction');
     setTimes({
-      signInDate: fixedShift ? fixedWorkDate : signInParts.date,
+      signInDate: fixedWorkDate,
       signInTime: record.signInTime ? (signInParts.time || '') : '',
       signOutDate: fixedShift
         ? addIsoDateDays(fixedWorkDate, overnight ? 1 : 0)
