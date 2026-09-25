@@ -26,8 +26,10 @@ import {
   useManualCorrectionMutation,
   useRequestRegularizationMutation,
   useSyncBiometricMutation,
+  useBulkRecoveryMutation,
 } from '../api/attendance.api';
 import { useListEmployeesQuery } from '../../employees/api/employees.api';
+import { useListShiftsQuery } from '../../shifts/api/shifts.api';
 import { useApplyLeaveMutation } from '../../leaves/api/leaves.api';
 import { toast } from '../../../utils/toast';
 import StatCard from '../../../components/ui/StatCard';
@@ -387,6 +389,83 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
   );
 }
 
+// ─── Bulk Recovery Modal ───────────────────────────────────────────────────────
+function BulkRecoveryModal({ isOpen, onClose, onSubmit, isLoading }) {
+  const [date, setDate] = useState('');
+  const [selectedDepartments, setSelectedDepartments] = useState([]);
+  const [shiftHours, setShiftHours] = useState('8');
+  const [notes, setNotes] = useState('Manual recovery due to power outage');
+
+  const { data: employeesData } = useListEmployeesQuery({ limit: 1000 });
+  const { data: shiftsData } = useListShiftsQuery({ limit: 100 });
+  
+  const departments = useMemo(() => {
+    const list = employeesData?.items || employeesData?.docs || [];
+    if (!list.length) return [];
+    return [...new Set(list.map(e => e.department).filter(Boolean))];
+  }, [employeesData]);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    onSubmit({ date: new Date(date).toISOString(), departments: selectedDepartments, shiftHours: Number(shiftHours), notes });
+  }
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Bulk Attendance Recovery" size="sm">
+      <form onSubmit={handleSubmit}>
+        <div className="px-6 py-5 space-y-4">
+          <div className="text-sm bg-blue-50 dark:bg-blue-900/20 text-blue-700 rounded-lg px-3 py-2">
+            Recover missing attendance for an entire department. Overwrites existing absent/zero-hour records with standard shift hours.
+          </div>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Shift Date <span className="text-red-500">*</span>
+            <Input type="date" value={date} onChange={e => setDate(e.target.value)} required />
+          </label>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Departments (Ctrl/Cmd+Click for multiple)
+            <select
+              multiple
+              className="flex w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-900"
+              value={selectedDepartments}
+              onChange={e => {
+                const values = Array.from(e.target.selectedOptions, option => option.value);
+                setSelectedDepartments(values);
+              }}
+              style={{ minHeight: '100px' }}
+            >
+              {departments.map(dep => <option key={dep} value={dep}>{dep}</option>)}
+            </select>
+          </label>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Shift to Recover (determines timings) <span className="text-red-500">*</span>
+            <select
+              className="flex h-10 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 dark:border-slate-700 dark:bg-slate-900"
+              value={shiftHours}
+              onChange={e => setShiftHours(e.target.value)}
+            >
+              <option value="8">Default Shift (8 Hours)</option>
+              {shiftsData?.data?.map(s => (
+                <option key={s._id} value={String(Math.max(1, Math.round((s.requiredMinutes || 480) / 60)))}>
+                  {s.name} ({s.startTime} - {s.endTime})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1.5 text-sm font-medium">
+            Notes
+            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} />
+          </label>
+        </div>
+        <ModalFooter>
+          <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="primary" size="sm" disabled={isLoading || !date}>
+            {isLoading ? 'Recovering...' : 'Run Bulk Recovery'}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
 // ─── Regularization Modal ────────────────────────────────────────────────────
 function RegularizeModal({ record, isOpen, onClose, onSubmit, isLoading }) {
   const [reason, setReason] = useState('');
@@ -494,6 +573,7 @@ export default function AttendanceListPage() {
   const [page, setPage] = useState(1);
   const [correctionRecord, setCorrectionRecord] = useState(null);
   const [regularizeRecord, setRegularizeRecord] = useState(null);
+  const [bulkRecoveryOpen, setBulkRecoveryOpen] = useState(false);
   const [fullPageSigningOut, setFullPageSigningOut] = useState(false);
 
   const { data: employeesData, isLoading: employeesLoading } = useListEmployeesQuery(
@@ -542,6 +622,7 @@ export default function AttendanceListPage() {
   const [requestReg, { isLoading: requesting }] = useRequestRegularizationMutation();
   const [applyLeaveForEmployee] = useApplyLeaveMutation();
   const [syncBiometric, { isLoading: isSyncingBiometric }] = useSyncBiometricMutation();
+  const [bulkRecovery, { isLoading: isBulkRecovering }] = useBulkRecoveryMutation();
 
   async function handleSyncBiometric() {
     try {
@@ -550,6 +631,17 @@ export default function AttendanceListPage() {
       refetch();
     } catch (error) {
       toast.error(error?.data?.error?.message || 'Biometric sync failed. Check machine connection.');
+    }
+  }
+
+  async function handleBulkRecoverySubmit(data) {
+    try {
+      const res = await bulkRecovery(data).unwrap();
+      toast.success(res.message || 'Bulk recovery completed.');
+      setBulkRecoveryOpen(false);
+      refetch();
+    } catch (err) {
+      toast.error(err?.data?.error?.message || err?.data?.message || 'Failed to run bulk recovery.');
     }
   }
 
@@ -990,16 +1082,26 @@ export default function AttendanceListPage() {
               <Download className="h-4 w-4" /> Export CSV
             </Button>
             {isAdminHR && (
-              <Button
-                type="button"
-                variant="primary"
-                className="gap-2 whitespace-nowrap"
-                onClick={handleSyncBiometric}
-                disabled={isSyncingBiometric}
-              >
-                <RefreshCw className={`h-4 w-4 ${isSyncingBiometric ? 'animate-spin' : ''}`} />
-                {isSyncingBiometric ? 'Syncing...' : 'Sync Biometric'}
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="primary"
+                  className="gap-2 whitespace-nowrap"
+                  onClick={handleSyncBiometric}
+                  disabled={isSyncingBiometric}
+                >
+                  <RefreshCw className={`h-4 w-4 ${isSyncingBiometric ? 'animate-spin' : ''}`} />
+                  {isSyncingBiometric ? 'Syncing...' : 'Sync Biometric'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2 whitespace-nowrap"
+                  onClick={() => setBulkRecoveryOpen(true)}
+                >
+                  <Timer className="h-4 w-4" /> Bulk Recovery
+                </Button>
+              </>
             )}
           </div>
         </div>
@@ -1268,6 +1370,13 @@ export default function AttendanceListPage() {
 
       <RegularizeModal record={regularizeRecord} isOpen={!!regularizeRecord}
         onClose={() => setRegularizeRecord(null)} onSubmit={handleRegularize} isLoading={requesting} />
+
+      <BulkRecoveryModal
+        isOpen={bulkRecoveryOpen}
+        onClose={() => setBulkRecoveryOpen(false)}
+        onSubmit={handleBulkRecoverySubmit}
+        isLoading={isBulkRecovering}
+      />
 
     </div>
   );

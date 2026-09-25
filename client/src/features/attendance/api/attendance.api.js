@@ -65,6 +65,10 @@ export const attendanceApi = api.injectEndpoints({
       query: (employeeId) => ({ url: `/attendance/backfill/${employeeId}`, method: 'POST' }),
       invalidatesTags: ['Attendance', 'Dashboard', 'Reports'],
     }),
+    bulkRecovery: builder.mutation({
+      query: (body) => ({ url: `/attendance/bulk-recovery`, method: 'POST', body }),
+      invalidatesTags: ['Attendance', 'Payroll', 'Dashboard', 'Reports'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -83,4 +87,5 @@ export const {
   useReviewRegularizationMutation,
   useSyncBiometricMutation,
   useBackfillEmployeeBiometricMutation,
+  useBulkRecoveryMutation,
 } = attendanceApi;

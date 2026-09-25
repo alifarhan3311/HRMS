@@ -16,6 +16,7 @@ const {
   manualCorrectionSchema,
   regularizationRequestSchema,
   regularizationReviewSchema,
+  bulkRecoverySchema,
 } = require('./attendance.validation');
 
 const router = express.Router();
@@ -58,6 +59,14 @@ router.get(
   validate(idParamsSchema, 'params'),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.getById
+);
+
+// Bulk recovery (HR/Super Admin only)
+router.post(
+  '/bulk-recovery',
+  authorize(...HR_MANAGEMENT),
+  validate(bulkRecoverySchema),
+  controller.bulkRecovery
 );
 
 // Manual correction (HR/Super Admin only)

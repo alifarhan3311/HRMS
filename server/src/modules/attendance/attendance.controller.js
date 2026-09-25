@@ -107,9 +107,23 @@ const backfillEmployee = asyncHandler(async (req, res) => {
   });
 });
 
+const bulkRecovery = asyncHandler(async (req, res) => {
+  const result = await service.bulkRecovery(req.body, {
+    id: req.user.id,
+    role: req.user.role,
+    companyId: req.user.companyId,
+    branchId: req.user.branchId,
+  });
+  res.status(200).json({
+    success: true,
+    message: `Successfully recovered ${result.count} attendance records.`,
+    data: result,
+  });
+});
+
 module.exports = {
   signIn, signOut, today, monthlySummary, rangeSummary, list,
   getById, manualCorrection, requestRegularization,
   reviewRegularization, pendingRegularizations, regularizationApprovals,
-  syncBiometric, backfillEmployee,
+  syncBiometric, backfillEmployee, bulkRecovery,
 };

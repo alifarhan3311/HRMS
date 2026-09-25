@@ -20,6 +20,14 @@ const signOutSchema = Joi.object({
   notes: Joi.string().trim().max(500).allow('').optional(),
 });
 
+const bulkRecoverySchema = Joi.object({
+  date: Joi.date().iso().required(),
+  departments: Joi.array().items(Joi.string().trim()).optional(),
+  shiftId: objectId.empty('').optional(),
+  shiftHours: Joi.number().min(0).max(24).default(8),
+  notes: Joi.string().trim().max(500).allow('').optional(),
+});
+
 const monthlySummaryQuerySchema = Joi.object({
   year: Joi.number().integer().min(2000).max(2100).optional(),
   month: Joi.number().integer().min(1).max(12).optional(),
@@ -101,4 +109,5 @@ module.exports = {
   manualCorrectionSchema,
   regularizationRequestSchema,
   regularizationReviewSchema,
+  bulkRecoverySchema,
 };

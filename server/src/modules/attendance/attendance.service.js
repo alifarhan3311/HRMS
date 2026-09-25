@@ -1313,6 +1313,45 @@ async function removeClosureFromAttendance(closure) {
   return adjusted;
 }
 
+async function bulkRecovery(data, actor) {
+  const Employee = require('../employees/employees.model');
+  const { date, departments, shiftHours, notes } = data;
+  const shiftDate = typeof date === 'string' ? date.split('T')[0] : date.toISOString().split('T')[0];
+  
+  const query = { status: 'active', role: { $ne: 'super_admin' } };
+  if (departments && departments.length > 0) {
+    query.department = { $in: departments.map(d => new RegExp(`^${d}$`, 'i')) };
+  }
+  
+  const emps = await Employee.find(query);
+  let count = 0;
+  
+  for (const emp of emps) {
+    const existing = await repository.findByEmployeeAndShiftDate(emp._id, shiftDate);
+    if (existing && (existing.status === 'absent' || existing.totalHours === 0)) {
+      const sIn = existing.scheduledStart || new Date(`${shiftDate}T09:00:00.000+05:00`);
+      const sOut = existing.scheduledEnd || new Date(sIn.getTime() + (shiftHours * 60 * 60 * 1000));
+      
+      await repository.updateById(existing._id, {
+        signInTime: sIn,
+        signOutTime: sOut,
+        status: 'present',
+        totalHours: shiftHours,
+        workedMinutes: shiftHours * 60,
+        lateMinutes: 0,
+        overtimeMinutes: 0,
+        earlyLeaveMinutes: 0,
+        method: 'manual',
+        notes: notes || 'Bulk manual recovery'
+      });
+      
+      await Employee.updateOne({ _id: emp._id, lateCount: { $gt: 0 } }, { $inc: { lateCount: -1 } });
+      count++;
+    }
+  }
+  return { count };
+}
+
 module.exports = {
   signIn,
   signOut,
@@ -1336,4 +1375,5 @@ module.exports = {
   isFlexibleCheckoutRecoveryCandidate,
   isRecoveredMissedPunchPenalty,
   ingestBiometricPunch,
+  bulkRecovery,
 };
