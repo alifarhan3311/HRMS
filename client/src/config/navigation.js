@@ -135,6 +135,10 @@ export const NAV_GROUPS = [
         id: 'settings', label: 'Settings', path: '/settings',
         icon: Settings, roles: ['hr', 'super_admin'],
       },
+      {
+        id: 'audit-logs', label: 'Audit Logs', path: '/audit-logs',
+        icon: Shield, roles: ['hr', 'manager', 'super_admin'],
+      },
     ],
   },
 ];

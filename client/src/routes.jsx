@@ -23,6 +23,7 @@ import profileRoutes       from './features/profile/routes/profile.routes';
 import exitsRoutes         from './features/exits/routes/exits.routes';
 import actionCenterRoutes  from './features/actionCenter/routes/actionCenter.routes';
 import assetsRoutes        from './features/assets/routes/assets.routes';
+import auditLogsRoutes     from './features/auditLogs/routes/auditLogs.routes';
 
 const withRoles = (routes, roles) => routes.map((route) => ({
   ...route,
@@ -58,6 +59,7 @@ const router = createBrowserRouter([
       ...withRoles(assetsRoutes, ['employee', 'team_lead', 'floor_head', 'manager', 'admin', 'hr', 'super_admin']),
       ...withRoles(projectsRoutes, ['employee', 'team_lead', 'floor_head', 'manager']),
       ...withRoles(settingsRoutes, ['hr', 'super_admin']),
+      ...withDeclaredRoles(auditLogsRoutes),
       ...withRoles(reportsRoutes, ['hr', 'admin', 'super_admin']),
       ...notificationsRoutes,
       ...profileRoutes,
