@@ -52,8 +52,6 @@ export default function ShiftSettings() {
     const requiredMinutes = Math.max(60, windowMinutes);
     return {
       ...next,
-      graceMinutes: windowMinutes > 420 ? 15 : 0,
-      lateHalfDayAfterMinutes: windowMinutes > 420 ? 150 : 120,
       requiredMinutes,
       halfDayMinutes: Math.ceil(requiredMinutes / 2),
       overtimeAfterMinutes: requiredMinutes,
@@ -118,8 +116,8 @@ export default function ShiftSettings() {
           <label className="space-y-1.5 text-sm"><span className="font-medium">Flexible Duration</span><select value={form.requiredMinutes} disabled={form.shiftType !== 'flexible'} onChange={event => setFlexibleDuration(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 disabled:cursor-not-allowed disabled:opacity-60"><option value={480}>Flexible 8 Hours</option><option value={360}>Flexible 6 Hours</option></select></label>
           <Input label="Start" type="time" required disabled={form.shiftType === 'flexible'} value={form.startTime} onChange={event => setTime('startTime', event.target.value)} />
           <Input label="End" type="time" required disabled={form.shiftType === 'flexible'} value={form.endTime} onChange={event => setTime('endTime', event.target.value)} />
-          <Input label="Grace (automatic)" type="number" readOnly value={form.graceMinutes} />
-          <Input label="Late Half Day After" type="number" readOnly value={form.lateHalfDayAfterMinutes} />
+          <Input label="Grace Minutes" type="number" disabled={form.shiftType === 'flexible'} value={form.graceMinutes} onChange={event => set('graceMinutes', event.target.value)} />
+          <Input label="Late Half Day After" type="number" disabled={form.shiftType === 'flexible'} value={form.lateHalfDayAfterMinutes} onChange={event => set('lateHalfDayAfterMinutes', event.target.value)} />
           <Input label="Required Duty (automatic)" type="number" readOnly value={form.requiredMinutes} />
           <Input label="Worked Half Day At" type="number" readOnly value={form.halfDayMinutes} />
         </div>

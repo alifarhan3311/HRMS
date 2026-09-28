@@ -24,8 +24,8 @@ function normalizeDurationPolicy(payload, existing = {}) {
   const endTime = isFlexible ? (flexibleMinutes === 360 ? '06:00' : '08:00') : (payload.endTime || existing.endTime);
   const windowMinutes = shiftWindowMinutes(startTime, endTime);
   const requiredMinutes = isFlexible ? flexibleMinutes : Math.max(60, windowMinutes);
-  const graceMinutes = isFlexible ? 0 : (windowMinutes > 420 ? 15 : 0);
-  const lateHalfDayAfterMinutes = isFlexible ? 0 : (windowMinutes > 420 ? 150 : 120);
+  const graceMinutes = isFlexible ? 0 : (payload.graceMinutes ?? existing.graceMinutes ?? (windowMinutes > 420 ? 15 : 0));
+  const lateHalfDayAfterMinutes = isFlexible ? 0 : (payload.lateHalfDayAfterMinutes ?? existing.lateHalfDayAfterMinutes ?? (windowMinutes > 420 ? 150 : 120));
   const halfDayMinutes = Math.ceil(requiredMinutes / 2);
   const overtimeAfterMinutes = requiredMinutes;
   return {

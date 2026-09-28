@@ -127,6 +127,7 @@ const EMPTY_FORM = {
   currentSalary: '',
   salaryPaymentMethod: '',
   salaryAccountNumber: '',
+  monthlyTargetHours: '',
   salaryAccountTitle: '',
   // Professional
   qualification: '',
@@ -237,6 +238,7 @@ export default function EmployeeForm({
         managedDepartments: initial.managedDepartments || [],
         salaryPaymentMethod: initial.salaryPaymentMethod || '',
         salaryAccountNumber: initial.salaryAccountNumber || '',
+        monthlyTargetHours: initial.monthlyTargetHours || '',
         salaryAccountTitle: initial.salaryAccountTitle || '',
         skills: initial.skills || [],
         password: '',
@@ -388,6 +390,7 @@ export default function EmployeeForm({
     payload.floorHeadId = payload.floorHeadId || null;
     payload.teamLeadId = payload.teamLeadId || null;
     payload.shiftId = payload.shiftId || null;
+    payload.monthlyTargetHours = payload.monthlyTargetHours ? Number(payload.monthlyTargetHours) : null;
     payload.managedDepartments = form.role === 'manager'
       ? [...new Set([form.department, ...form.managedDepartments].filter(Boolean))]
       : [];
@@ -724,6 +727,14 @@ export default function EmployeeForm({
                   <option value="office">Office</option>
                   <option value="wfh">Work From Home</option>
                 </Select>
+                <Input
+                  label="Custom Monthly Target Hours (Optional)"
+                  placeholder="e.g. 144"
+                  type="number"
+                  value={form.monthlyTargetHours}
+                  onChange={(e) => set('monthlyTargetHours', e.target.value)}
+                  error={errors.monthlyTargetHours}
+                />
                 <Input
                   label="Account / IBAN / Wallet Number"
                   placeholder="PK00BANK0000000000000000"

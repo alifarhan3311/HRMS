@@ -62,7 +62,7 @@ function calculateAttendancePayroll({
 }
 
 function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, year) {
-  const targetHours = MONTHLY_HOUR_TARGET;
+  const targetHours = employee.monthlyTargetHours || MONTHLY_HOUR_TARGET;
   const monthlyHours = buildMonthlyHoursSummary(records, { month, year, targetHours });
   const monthlyDeduction = calculateMonthlyHoursDeduction({
     monthlySalary: Number(employee.currentSalary) || 0,
@@ -286,14 +286,14 @@ async function generatePayslip(payload, actor) {
     ? buildMonthlyHoursSummary(await Attendance.find({ employeeId, date: { $gte: monthBounds(month, year).start, $lte: monthBounds(month, year).end } }), {
       month,
       year,
-      targetHours: MONTHLY_HOUR_TARGET,
+      targetHours: employee.monthlyTargetHours || MONTHLY_HOUR_TARGET,
     })
     : null;
   const calculation = monthlyMode
     ? calculateMonthlyHoursDeduction({
       monthlySalary: basicSalary,
       completedHours: monthlyHours?.totalEffectiveHours || 0,
-      targetHours: MONTHLY_HOUR_TARGET,
+      targetHours: employee.monthlyTargetHours || MONTHLY_HOUR_TARGET,
     })
     : calculateAttendancePayroll({
       basicSalary,
@@ -361,7 +361,7 @@ async function generatePayslip(payload, actor) {
     weekendDays: weekend,
     workingDays,
     workedMinutes,
-    monthlyTargetHours: monthlyMode ? MONTHLY_HOUR_TARGET : null,
+    monthlyTargetHours: monthlyMode ? (employee.monthlyTargetHours || MONTHLY_HOUR_TARGET) : null,
     monthlyCompletedHours: monthlyMode ? monthlyHours?.completedHours || 0 : null,
     monthlyLeaveHours: monthlyMode ? monthlyHours?.leaveHours || 0 : null,
     monthlyTotalEffectiveHours: monthlyMode ? monthlyHours?.totalEffectiveHours || 0 : null,
@@ -528,7 +528,7 @@ async function getLivePayroll(query, actor) {
       ? calculateMonthlyHoursDeduction({
         monthlySalary: basicSalary,
         completedHours: attendance.monthlyHours?.totalEffectiveHours || 0,
-        targetHours: MONTHLY_HOUR_TARGET,
+        targetHours: employee.monthlyTargetHours || MONTHLY_HOUR_TARGET,
       })
       : calculateAttendancePayroll({
         basicSalary,
@@ -569,7 +569,7 @@ async function getLivePayroll(query, actor) {
       year,
       ...attendance,
       ...calculation,
-      monthlyTargetHours: monthlyMode ? MONTHLY_HOUR_TARGET : null,
+      monthlyTargetHours: monthlyMode ? (employee.monthlyTargetHours || MONTHLY_HOUR_TARGET) : null,
     };
   }));
   return { items, month, year, total: items.length };

@@ -70,6 +70,7 @@ const createSchema = Joi.object({
   shiftId: Joi.string().hex().length(24).required(),
   role: Joi.string().valid(...ROLES).required(),
   status: Joi.string().valid(...STATUSES).optional(),
+  monthlyTargetHours: Joi.number().optional().allow(null, ''),
 
   // Salary
   currentSalary: salarySchema,
@@ -116,6 +117,7 @@ const updateSchema = Joi.object({
   floorHeadId: Joi.string().hex().length(24).optional().allow(null, ''),
   teamLeadId: Joi.string().hex().length(24).optional().allow(null, ''),
   shiftId: Joi.string().hex().length(24).optional().allow(null, ''),
+  monthlyTargetHours: Joi.number().optional().allow(null, ''),
   skills: Joi.array().items(Joi.string().trim()).optional(),
   qualification: Joi.string().trim().max(200).optional().allow(''),
   experience: Joi.string().trim().max(500).optional().allow(''),

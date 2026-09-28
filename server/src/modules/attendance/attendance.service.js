@@ -82,13 +82,14 @@ function calcTotalHours(signIn, signOut) {
 }
 
 function completionToleranceMinutes(record, requiredMinutes) {
-  if ((record.shiftType || 'fixed') === 'flexible') {
-    // Flexible duty remains present while the shortfall is below 2h30.
-    // Since work is stored in whole minutes, 149 minutes is the inclusive
-    // completion tolerance; a 150-minute shortfall becomes half-day.
-    return 149;
+  const reqMins = Number(requiredMinutes) || 0;
+  if (reqMins >= 480) {
+    return 150; // 2.5 hours
   }
-  return Number(requiredMinutes) > 420 ? 15 : 0;
+  if (reqMins > 360) {
+    return 120; // 2 hours
+  }
+  return 60; // 1 hour for 6 hours or less
 }
 
 function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0, baseArrivalStatus = null) {

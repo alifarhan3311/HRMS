@@ -119,6 +119,7 @@ const employeesSchema = new mongoose.Schema(
 
   passwordHash: { type: String, required: true, select: false },
   tokenVersion: { type: Number, default: 0 },
+  monthlyTargetHours: { type: Number },
   companyId: { type: mongoose.Schema.Types.ObjectId, required: true, ref: 'Company' },
   branchId: { type: mongoose.Schema.Types.ObjectId, ref: 'Branch' },
   },
