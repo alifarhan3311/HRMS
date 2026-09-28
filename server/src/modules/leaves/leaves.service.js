@@ -361,13 +361,17 @@ async function assertCanDecideLeaveStage(leave, actor, actorStage) {
 
 async function getEligibleLates(actor) {
   const reservedIds = await reservedLateAttendanceIds(actor.id);
+  const now = new Date();
+  const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
   const records = await Attendance.find({
     employeeId: actor.id,
     companyId: actor.companyId,
     _id: { $nin: reservedIds },
     status: 'late',
+    shiftDate: { $regex: `^${currentMonthPrefix}` },
   })
-    .select('_id shiftDate date signInTime signOutTime lateMinutes status missedPunchType shiftName')
+    .select('_id shiftDate date signInTime signOutTime lateMinutes earlyLeaveMinutes status missedPunchType shiftName')
     .sort({ shiftDate: -1, date: -1 })
     .lean();
   return records.filter((record) => !isSaturdayShiftDate(record.shiftDate));

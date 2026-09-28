@@ -586,7 +586,13 @@ export default function LeavesListPage() {
                   <div>
                     <p className="text-sm font-medium">{fmtDate(record.shiftDate || record.date)}</p>
                     <p className="text-xs text-muted-foreground">
-                      {record.missedPunchType ? 'Missed sign-out violation' : `${record.lateMinutes || 0} minute(s) late`}
+                      {record.missedPunchType ? 'Missed sign-out violation' :
+                        (record.lateMinutes > 0
+                          ? `${record.lateMinutes} minute(s) late`
+                          : (record.earlyLeaveMinutes > 0
+                              ? `${record.earlyLeaveMinutes} minute(s) early leave (Short hours)`
+                              : 'Short working hours')
+                        )}
                     </p>
                   </div>
                 </label>
