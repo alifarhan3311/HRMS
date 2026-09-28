@@ -1108,6 +1108,18 @@ export default function AttendanceListPage() {
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
           <span><strong className="text-foreground">Period:</strong> {fmtDate(reportRange.dateFrom)} – {fmtDate(reportRange.dateTo)}</span>
           <span><strong className="text-foreground">Employee:</strong> {selectedEmployee?.fullName || (isTeamOverview ? 'My Team' : ['hr', 'super_admin'].includes(user?.role) ? 'All Employees' : user?.fullName)}</span>
+          {(() => {
+            const targetEmp = selectedEmployee || user;
+            const shiftName = targetEmp?.shiftId?.name || targetEmp?.shift?.name;
+            const start = targetEmp?.shiftId?.startTime || targetEmp?.shift?.startTime;
+            const end = targetEmp?.shiftId?.endTime || targetEmp?.shift?.endTime;
+            if (!shiftName && !start) return null;
+            return (
+              <span>
+                <strong className="text-foreground">Timing:</strong> {shiftName} {start && end ? `(${start} – ${end})` : ''}
+              </span>
+            );
+          })()}
           {rangeFetching && <span className="text-primary">Updating report...</span>}
         </div>
       </div>

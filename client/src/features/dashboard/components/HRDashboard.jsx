@@ -171,7 +171,7 @@ export default function HRDashboard({ data }) {
                 Operations / Accounting Monthly Hours
               </h3>
               <p className="text-sm text-muted-foreground">
-                Employee-wise progress against the 184-hour monthly target.
+                Employee-wise progress against their respective monthly target.
               </p>
             </div>
             <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">

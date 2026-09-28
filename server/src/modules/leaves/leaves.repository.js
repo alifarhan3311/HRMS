@@ -38,11 +38,17 @@ async function cancelPendingById(id, reason = '') {
 }
 
 async function countActiveLeaves(employeeId, startDate, endDate) {
+  const startOfDay = new Date(startDate);
+  startOfDay.setUTCHours(0, 0, 0, 0);
+  
+  const endOfDay = new Date(endDate);
+  endOfDay.setUTCHours(23, 59, 59, 999);
+
   return LeaveRequest.countDocuments({
     employeeId,
     status: { $in: ['pending', 'approved'] },
     $or: [
-      { startDate: { $lte: endDate }, endDate: { $gte: startDate } },
+      { startDate: { $lte: endOfDay }, endDate: { $gte: startOfDay } },
     ],
   });
 }

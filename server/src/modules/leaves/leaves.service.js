@@ -140,9 +140,6 @@ function calculateLeaveDutyDates(startDate, endDate, weekendDays = [0, 6], shift
     if (!weekendDays.includes(dow)) dutyDates.push(cur.toISOString().slice(0, 10));
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
-  if (!dutyDates.length) {
-    dutyDates.push(`${startParts.year}-${String(startParts.month).padStart(2, '0')}-${String(startParts.day).padStart(2, '0')}`);
-  }
   return dutyDates;
 }
 
@@ -507,6 +504,9 @@ async function applyLeave(payload, actor) {
     settings.company?.timezone || 'Asia/Karachi',
   );
   const totalDays = dutyDates.length;
+  if (totalDays === 0) {
+    throw createHttpError(400, 'The selected dates only fall on non-working days (e.g. weekends). Please select a valid working day.');
+  }
 
   // Check balance for paid leave types
   if (LEAVE_BALANCE_KEYS[leaveType]) {

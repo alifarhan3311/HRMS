@@ -282,7 +282,7 @@ async function getHRDashboard(user) {
       ...employeeFilter,
       status: 'active',
     })
-      .select('_id fullName employeeCode department currentSalary workMode')
+      .select('_id fullName employeeCode department currentSalary workMode monthlyTargetHours')
       .lean(),
   ]);
 
@@ -318,6 +318,7 @@ async function getHRDashboard(user) {
         month: now.getMonth() + 1,
         year: now.getFullYear(),
         now,
+        targetHours: employee.monthlyTargetHours || 184,
       });
       return {
         employeeId: employee._id,

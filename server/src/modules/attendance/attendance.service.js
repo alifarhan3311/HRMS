@@ -876,10 +876,14 @@ async function getRangeSummary(employeeId, dateFrom, dateTo, actor, workMode) {
     workedHours: Number(row.workedHours.toFixed(2)),
   }));
 
-  const employee = await Employee.findById(employeeId).select('department');
+  const employee = await Employee.findById(employeeId).select('department monthlyTargetHours');
   let rangeHours = null;
   if (employee && isMonthlyHourDepartment(employee.department)) {
-    rangeHours = buildRangeHoursSummary(records, { dateFrom, dateTo });
+    rangeHours = buildRangeHoursSummary(records, { 
+      dateFrom, 
+      dateTo, 
+      baseTargetHours: employee.monthlyTargetHours || 184 
+    });
   }
 
   return { summary, trend, records, rangeHours };
