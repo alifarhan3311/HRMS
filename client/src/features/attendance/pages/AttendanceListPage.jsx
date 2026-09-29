@@ -613,7 +613,7 @@ export default function AttendanceListPage() {
     dateTo: reportRange.dateTo,
   }, { skip: !selectedEmployeeId });
   const { data: listData, isLoading: listLoading, isFetching, refetch } = useListAttendanceQuery({
-    page, limit: selectedEmployeeId ? 30 : 2000, status: filters.status, workMode: filters.workMode,
+    page, limit: selectedEmployeeId ? 100 : 2000, status: filters.status, workMode: filters.workMode,
     dateFrom: reportRange.dateFrom,
     dateTo: reportRange.dateTo,
     ...(selectedEmployeeId && { employeeId: selectedEmployeeId }),

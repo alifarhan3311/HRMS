@@ -82,14 +82,8 @@ function calcTotalHours(signIn, signOut) {
 }
 
 function completionToleranceMinutes(record, requiredMinutes) {
-  const reqMins = Number(requiredMinutes) || 0;
-  if (reqMins >= 480) {
-    return 150; // 2.5 hours
-  }
-  if (reqMins > 360) {
-    return 120; // 2 hours
-  }
-  return 60; // 1 hour for 6 hours or less
+  // Use the shift's "Late Half Day After" setting as the tolerance (default 150 min)
+  return Number(record.shiftLateHalfDayAfterMinutes || 150);
 }
 
 function correctedWorkMetrics(record, signIn, signOut, lateMinutes = 0, baseArrivalStatus = null) {
@@ -297,9 +291,12 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
   const workedMinutes = clockMinutes;
   const overtimeMinutes = attendanceExempt ? 0 : Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
   const fullDayClosure = closure?.eventType === 'full_day' || (closure && !closure.eventType);
-  const baseArrivalStatus = (isFlexible || record.missedPunchType)
+  let baseArrivalStatus = (isFlexible || record.missedPunchType)
     ? (record.lateMinutes > 0 ? 'late' : 'present')
     : record.status;
+  if (earlyLeaveMinutes > 0 && baseArrivalStatus === 'present') {
+    baseArrivalStatus = 'late';
+  }
   const status = attendanceExempt
     ? 'present'
     : saturdayStatus({

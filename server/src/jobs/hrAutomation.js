@@ -504,6 +504,8 @@ async function reconcileAttendance(now = new Date()) {
     record.workedMinutes = clockMinutes;
     record.totalHours = Number((clockMinutes / 60).toFixed(2));
     const reqMinutes = Number(record.effectiveRequiredMinutes || record.shiftRequiredMinutes || 480);
+    // Use the same completion tolerance as attendance.service.js
+    const completionTolerance = Number(record.shiftLateHalfDayAfterMinutes || 150);
     const isFlex = record.shiftType === 'flexible';
     if (isFlex) {
       record.status = clockMinutes >= (reqMinutes - 149)
@@ -514,10 +516,12 @@ async function reconcileAttendance(now = new Date()) {
       record.lateMinutes = 0;
     } else {
       const isLateArrival = Number(record.lateMinutes) > 0;
+      const isEarlyDeparture = Number(record.earlyLeaveMinutes) > 0;
+      const isLateOrEarly = isLateArrival || isEarlyDeparture;
       const isHalfDayArrival = Number(record.shiftLateHalfDayAfterMinutes) > 0
         && Number(record.lateMinutes) > Number(record.shiftLateHalfDayAfterMinutes);
-      if (clockMinutes >= (reqMinutes - 15)) {
-        record.status = isHalfDayArrival ? 'half_day' : (isLateArrival ? 'late' : 'present');
+      if (clockMinutes >= Math.max(0, reqMinutes - completionTolerance)) {
+        record.status = isHalfDayArrival ? 'half_day' : (isLateOrEarly ? 'late' : 'present');
       } else if (clockMinutes >= (Number(record.shiftHalfDayMinutes) || Math.ceil(reqMinutes / 2))) {
         record.status = 'half_day';
       } else {
@@ -733,6 +737,8 @@ async function reconcileAttendance(now = new Date()) {
         record.workedMinutes = clockMinutes;
         record.totalHours = Number((clockMinutes / 60).toFixed(2));
         const reqMinutes = Number(record.effectiveRequiredMinutes || record.shiftRequiredMinutes || 480);
+        // Use the same completion tolerance as attendance.service.js
+        const completionTolerance = Number(record.shiftLateHalfDayAfterMinutes || 150);
         const isFlex = record.shiftType === 'flexible';
         if (isFlex) {
           record.status = clockMinutes >= (reqMinutes - 149)
@@ -740,10 +746,12 @@ async function reconcileAttendance(now = new Date()) {
             : (clockMinutes >= (Number(record.shiftHalfDayMinutes) || 240) ? 'half_day' : 'absent');
         } else {
           const isLateArrival = Number(record.lateMinutes) > 0;
+          const isEarlyDeparture = Number(record.earlyLeaveMinutes) > 0;
+          const isLateOrEarly = isLateArrival || isEarlyDeparture;
           const isHalfDayArrival = Number(record.shiftLateHalfDayAfterMinutes) > 0
             && Number(record.lateMinutes) > Number(record.shiftLateHalfDayAfterMinutes);
-          if (clockMinutes >= (reqMinutes - 15)) {
-            record.status = isHalfDayArrival ? 'half_day' : (isLateArrival ? 'late' : 'present');
+          if (clockMinutes >= Math.max(0, reqMinutes - completionTolerance)) {
+            record.status = isHalfDayArrival ? 'half_day' : (isLateOrEarly ? 'late' : 'present');
           } else if (clockMinutes >= (Number(record.shiftHalfDayMinutes) || Math.ceil(reqMinutes / 2))) {
             record.status = 'half_day';
           } else {
