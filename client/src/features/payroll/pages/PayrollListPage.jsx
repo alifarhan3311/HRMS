@@ -941,7 +941,13 @@ export default function PayrollListPage() {
                   <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
                     <div><p className="font-bold text-emerald-600">{row.present ?? 0}</p><p className="text-[11px] text-muted-foreground">Present</p></div>
                     <div><p className="font-bold text-red-500">{row.absent ?? 0}</p><p className="text-[11px] text-muted-foreground">Absent</p></div>
-                    <div><p className="font-bold text-amber-500">{row.late ?? 0}</p><p className="text-[11px] text-muted-foreground">Late</p></div>
+                    <div>
+                      <p className="font-bold text-amber-500">
+                        {row.late ?? 0}
+                        {row.waivedLate > 0 && <span className="text-[10px] text-emerald-600 font-medium ml-1">({row.waivedLate} waived)</span>}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">Late</p>
+                    </div>
                   </div>
                   <p className="mt-3 text-center text-xs font-medium text-primary">Click to view complete payroll</p>
                 </motion.button>
@@ -966,7 +972,12 @@ export default function PayrollListPage() {
                     <td className="px-4 py-3">{row.paidLeave}</td>
                     <td className="px-4 py-3 text-red-500">{row.unpaidLeave}</td>
                     <td className="px-4 py-3 text-red-600">{row.sandwichLeave}</td>
-                    <td className="px-4 py-3 text-amber-500">{row.late}</td>
+                    <td className="px-4 py-3 text-amber-500">
+                      {row.late}
+                      {row.waivedLate > 0 && (
+                        <span className="block text-[11px] text-emerald-600 font-medium">({row.waivedLate} waived)</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-red-500"><SensitiveValue value={row.deductions} formatter={(value) => `− ${fmtPKR(value)}`} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 text-red-500"><SensitiveValue value={row.totalFines || 0} formatter={(value) => `− ${fmtPKR(value)}`} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 font-bold text-primary"><SensitiveValue value={row.netPayable} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>

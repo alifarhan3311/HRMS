@@ -128,7 +128,11 @@ function calculateLeaveDutyDates(startDate, endDate, weekendDays = [0, 6], shift
   const sameSubmittedClock = clockMinutes(startParts) === clockMinutes(endParts);
   const explicitOvernightTimes = clockMinutes(startParts) >= shiftStart
     && clockMinutes(endParts) <= shiftEnd;
-  if (isOvernightShift && (sameSubmittedClock || explicitOvernightTimes)) {
+    
+  const curTest = new Date(Date.UTC(startParts.year, startParts.month - 1, startParts.day, 12));
+  const endTest = new Date(Date.UTC(endParts.year, endParts.month - 1, endParts.day, 12));
+
+  if (isOvernightShift && endTest > curTest && (sameSubmittedClock || explicitOvernightTimes)) {
     endParts = previousCalendarDate(endParts);
   }
 
