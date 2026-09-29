@@ -47,6 +47,7 @@ async function countActiveLeaves(employeeId, startDate, endDate) {
   return LeaveRequest.countDocuments({
     employeeId,
     status: { $in: ['pending', 'approved'] },
+    requestKind: { $ne: 'late_conversion' },
     $or: [
       { startDate: { $lte: endOfDay }, endDate: { $gte: startOfDay } },
     ],

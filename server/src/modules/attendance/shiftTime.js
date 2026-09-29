@@ -95,7 +95,7 @@ function arrivalStatus(signInTime, schedule, shift = {}) {
   );
   const late = lateMinutes(signInTime, schedule, Number(shift.graceMinutes || 0));
   return {
-    status: arrivalMinutes > Number(shift.lateHalfDayAfterMinutes || 0)
+    status: arrivalMinutes > (typeof shift.lateHalfDayAfterMinutes === 'number' && shift.lateHalfDayAfterMinutes > 0 ? shift.lateHalfDayAfterMinutes : 150)
       ? 'half_day'
       : late > 0 ? 'late' : 'present',
     lateMinutes: late,

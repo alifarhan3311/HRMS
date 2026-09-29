@@ -624,8 +624,8 @@ async function reconcileAttendance(now = new Date()) {
     const invalidClosedRecords = await Attendance.find({
       employeeId: { $in: employeeIds },
       date: { $gte: date, $lte: dayEnd },
-      signInTime: { $exists: true },
-      signOutTime: { $exists: true },
+      signInTime: { $exists: true, $ne: null },
+      signOutTime: { $exists: true, $ne: null },
       $expr: { $lte: ['$signOutTime', '$signInTime'] },
       autoClosedAt: { $exists: false },
     });
@@ -660,7 +660,7 @@ async function reconcileAttendance(now = new Date()) {
     const expiredOpenRecords = await Attendance.find({
       employeeId: { $in: employeeIds },
       date: { $gte: date, $lte: dayEnd },
-      signInTime: { $exists: true },
+      signInTime: { $exists: true, $ne: null },
       signOutTime: { $exists: false },
       autoClosedAt: { $exists: false },
       // Overnight and late shifts can still be legitimately open when the
@@ -692,7 +692,7 @@ async function reconcileAttendance(now = new Date()) {
       employeeId: { $in: employeeIds },
       date: { $gte: date, $lte: dayEnd },
       signInTime: { $exists: false },
-      signOutTime: { $exists: true },
+      signOutTime: { $exists: true, $ne: null },
       status: { $nin: ['on_leave', 'holiday', 'weekend'] },
     });
     for (const record of missingSignInRecords) {
