@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Clock3, Pencil, Plus, Power, Trash2 } from 'lucide-react';
+import { Clock3, Pencil, Plus, Power, Trash2, Users } from 'lucide-react';
+import { Modal } from '../../../components/ui/Modal';
+import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import Button from '../../../components/ui/Button';
 import { Input } from '../../../components/ui/Input';
 import { toast } from '../../../utils/toast';
@@ -26,12 +28,26 @@ function durationMinutes(start, end) {
 
 export default function ShiftSettings() {
   const { data, isLoading } = useListShiftsQuery();
+  const { data: employeesData } = useListEmployeesQuery({ limit: 1000, status: 'active' });
   const [createShift, { isLoading: creating }] = useCreateShiftMutation();
   const [updateShift, { isLoading: updating }] = useUpdateShiftMutation();
   const [deleteShift] = useDeleteShiftMutation();
   const [form, setForm] = useState(EMPTY);
   const [editingId, setEditingId] = useState(null);
+  const [viewingShift, setViewingShift] = useState(null);
   const shifts = data?.data || [];
+  const employees = employeesData?.items || [];
+
+  // Group employees by their assigned shift ID
+  const employeesByShift = employees.reduce((acc, emp) => {
+    const shiftId = String(emp.shiftId?._id || emp.shiftId || '');
+    if (shiftId) {
+      if (!acc[shiftId]) acc[shiftId] = [];
+      acc[shiftId].push(emp);
+    }
+    return acc;
+  }, {});
+
   const set = (field, value) => setForm(previous => ({ ...previous, [field]: value }));
 
   function applyPolicy(next) {
@@ -133,20 +149,79 @@ export default function ShiftSettings() {
       </form>
 
       <div className="glass-card overflow-hidden">
-        {isLoading ? <p className="p-8 text-center text-sm text-muted-foreground">Loading shifts...</p> : shifts.length === 0 ? <p className="p-8 text-center text-sm text-muted-foreground">No custom shifts yet. Employees use the General Shift until one is assigned.</p> : shifts.map(shift => (
-          <div key={shift._id} className="flex flex-col gap-3 border-b border-border p-4 last:border-0 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2"><p className="font-medium">{shift.name}</p><span className="rounded bg-muted px-2 py-0.5 text-xs">{shift.code}</span><span className={`rounded-full px-2 py-0.5 text-xs ${shift.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{shift.isActive ? 'Active' : 'Inactive'}</span></div>
-              <p className="mt-1 text-sm text-muted-foreground">{shift.shiftType === 'flexible' ? 'Flexible · any start time' : `${shift.startTime} – ${shift.endTime} · Window ${duration(shift.startTime, shift.endTime)}`} · Required {shift.requiredMinutes || 480}m · Worked half day {shift.halfDayMinutes || 240}m · Grace {shift.graceMinutes}m{shift.shiftType !== 'flexible' ? ` · Late half day after ${shift.lateHalfDayAfterMinutes || 150}m` : ''} · {shift.workingDays.map(day => DAYS[day]).join(', ')}</p>
+        {isLoading ? (
+          <p className="p-8 text-center text-sm text-muted-foreground">Loading shifts...</p>
+        ) : shifts.length === 0 ? (
+          <p className="p-8 text-center text-sm text-muted-foreground">No custom shifts yet. Employees use the General Shift until one is assigned.</p>
+        ) : shifts.map(shift => {
+          const shiftEmployees = employeesByShift[String(shift._id)] || [];
+          return (
+            <div
+              key={shift._id}
+              className="flex flex-col gap-3 border-b border-border p-4 last:border-0 sm:flex-row sm:items-center sm:justify-between hover:bg-muted/10 cursor-pointer transition-colors"
+              onClick={() => setViewingShift(shift)}
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium">{shift.name}</p>
+                  <span className="rounded bg-muted px-2 py-0.5 text-xs">{shift.code}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs ${shift.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                    {shift.isActive ? 'Active' : 'Inactive'}
+                  </span>
+                  <span className="flex items-center gap-1 rounded bg-blue-500/10 px-2 py-0.5 text-xs text-blue-600 font-medium">
+                    <Users className="h-3 w-3" /> {shiftEmployees.length} employees
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {shift.shiftType === 'flexible' ? 'Flexible · any start time' : `${shift.startTime} – ${shift.endTime} · Window ${duration(shift.startTime, shift.endTime)}`} · Required {shift.requiredMinutes || 480}m · Worked half day {shift.halfDayMinutes || 240}m · Grace {shift.graceMinutes}m{shift.shiftType !== 'flexible' ? ` · Late half day after ${shift.lateHalfDayAfterMinutes || 150}m` : ''} · {shift.workingDays.map(day => DAYS[day]).join(', ')}
+                </p>
+              </div>
+              <div className="flex gap-2" onClick={e => e.stopPropagation()}>
+                <Button size="sm" variant="outline" onClick={() => edit(shift)} className="gap-1"><Pencil className="h-3.5 w-3.5" /> Edit</Button>
+                <Button size="sm" variant="outline" onClick={() => updateShift({ id: shift._id, isActive: !shift.isActive })} className="gap-1"><Power className="h-3.5 w-3.5" /> {shift.isActive ? 'Deactivate' : 'Activate'}</Button>
+                <Button size="sm" variant="outline" onClick={() => remove(shift)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => edit(shift)} className="gap-1"><Pencil className="h-3.5 w-3.5" /> Edit</Button>
-              <Button size="sm" variant="outline" onClick={() => updateShift({ id: shift._id, isActive: !shift.isActive })} className="gap-1"><Power className="h-3.5 w-3.5" /> {shift.isActive ? 'Deactivate' : 'Activate'}</Button>
-              <Button size="sm" variant="outline" onClick={() => remove(shift)} className="text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {/* Shift Employees Modal */}
+      <Modal
+        isOpen={!!viewingShift}
+        onClose={() => setViewingShift(null)}
+        title={viewingShift ? `Employees in ${viewingShift.name}` : ''}
+        size="md"
+      >
+        <div className="space-y-3">
+          {viewingShift && (() => {
+            const list = employeesByShift[String(viewingShift._id)] || [];
+            return list.length > 0 ? (
+              <>
+                <p className="text-sm text-muted-foreground mb-3">Total: <strong>{list.length}</strong> active employees</p>
+                <div className="max-h-[55vh] overflow-y-auto divide-y divide-border">
+                  {list.map(emp => (
+                    <div key={emp._id} className="flex justify-between items-center py-3 px-1">
+                      <div>
+                        <p className="font-medium text-sm">{emp.fullName}</p>
+                        <p className="text-xs text-muted-foreground">{emp.employeeCode}</p>
+                      </div>
+                      <span className="text-xs bg-muted px-2.5 py-1 rounded-md capitalize">{emp.department}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-center text-sm text-muted-foreground py-10">
+                No active employees are assigned to this shift.
+              </p>
+            );
+          })()}
+          <div className="flex justify-end pt-3 border-t border-border">
+            <Button variant="outline" onClick={() => setViewingShift(null)}>Close</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
