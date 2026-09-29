@@ -188,7 +188,7 @@ export default function HRDashboard({ data }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {data.monthlyHoursSummary.slice(0, 8).map((row) => (
+                {data.monthlyHoursSummary.map((row) => (
                   <tr key={row.employeeId} className="hover:bg-accent/20">
                     <td className="px-4 py-3">
                       <p className="font-medium">{row.employeeName}</p>
