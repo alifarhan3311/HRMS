@@ -50,7 +50,7 @@ async function findCheckoutCandidate(employeeId, punchTime, recoveryWindowMinute
   }).sort({ signInTime: -1 });
 }
 
-async function findAll({ filter = {}, page = 1, limit = 30, sort = '-date' } = {}) {
+async function findAll({ filter = {}, page = 1, limit = 30, sort = '-shiftDate' } = {}) {
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
     Attendance.find(filter)

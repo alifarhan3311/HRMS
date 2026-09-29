@@ -687,21 +687,30 @@ async function listAttendances(query, actor) {
   if (status) filter.status = status;
   Object.assign(filter, buildWorkModeFilter(workMode));
 
+  // Use shiftDate (YYYY-MM-DD string) instead of date field for filtering.
+  // Overnight shift employees (e.g. 18:00-02:00) have `date` stored as the
+  // previous calendar day in UTC, which causes the 1st of month record to be
+  // missed when filtering by date. shiftDate always reflects the actual working day.
   if (month && year) {
-    filter.date = {
-      $gte: new Date(year, month - 1, 1),
-      $lte: new Date(year, month, 0, 23, 59, 59, 999),
+    const mm = String(month).padStart(2, '0');
+    const lastDay = new Date(year, month, 0).getDate();
+    const lastMM = String(lastDay).padStart(2, '0');
+    filter.shiftDate = {
+      $gte: `${year}-${mm}-01`,
+      $lte: `${year}-${mm}-${lastMM}`,
     };
   } else if (dateFrom || dateTo) {
-    filter.date = {};
-    if (dateFrom) {
-      filter.date.$gte = new Date(dateFrom);
-      filter.date.$gte.setUTCHours(0, 0, 0, 0);
-    }
-    if (dateTo) {
-      filter.date.$lte = new Date(dateTo);
-      filter.date.$lte.setUTCHours(23, 59, 59, 999);
-    }
+    // Joi converts ISO strings to Date objects — convert back to YYYY-MM-DD strings
+    // so MongoDB can compare them correctly against shiftDate (stored as a string).
+    const toDateStr = (d) => {
+      if (!d) return null;
+      if (typeof d === 'string') return d.slice(0, 10);
+      const iso = new Date(d).toISOString();
+      return iso.slice(0, 10);
+    };
+    filter.shiftDate = {};
+    if (dateFrom) filter.shiftDate.$gte = toDateStr(dateFrom);
+    if (dateTo) filter.shiftDate.$lte = toDateStr(dateTo);
   }
 
   return repository.findAll({ filter, page: Number(page), limit: Math.min(Number(limit), 2000), sort });

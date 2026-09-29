@@ -713,6 +713,7 @@ export default function AttendanceListPage() {
       workMode: user?.workMode || 'office',
     }, ...listRecords]
     : listRecords;
+
   useEffect(() => {
     if (!employeePickerOpen) return undefined;
     const closeOutside = (event) => {
