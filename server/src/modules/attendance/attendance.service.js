@@ -65,13 +65,15 @@ function calcLateMinutes(signInTime, timing) {
 
 function calcEarlyLeaveMinutes(signOutTime, timing) {
   const signOut = new Date(signOutTime);
+  const graceMinutes = Number(timing.graceMinutes || timing.shiftGraceMinutes || 0);
   if (timing.scheduledEnd) {
-    return calculateShiftEarlyLeave(signOut, { scheduledEnd: new Date(timing.scheduledEnd) });
+    return calculateShiftEarlyLeave(signOut, { scheduledEnd: new Date(timing.scheduledEnd) }, graceMinutes);
   }
   const officeEnd = new Date(signOut);
   const end = splitTime(timing.officeEnd, '18:00');
   officeEnd.setHours(end.hours, end.minutes, 0, 0);
-  if (signOut >= officeEnd) return 0;
+  const earliestOfficeEnd = new Date(officeEnd.getTime() - (graceMinutes * 60000));
+  if (signOut >= earliestOfficeEnd) return 0;
   return Math.round((officeEnd - signOut) / 60000);
 }
 
@@ -285,7 +287,7 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
   const isFlexible = (record.shiftType || shift.shiftType) === 'flexible';
   const earlyLeaveMinutes = attendanceExempt || isFlexible
     ? 0
-    : calcEarlyLeaveMinutes(now, { scheduledEnd: policy.effectiveEnd });
+    : calcEarlyLeaveMinutes(now, { scheduledEnd: policy.effectiveEnd, graceMinutes: record.shiftGraceMinutes || shift.graceMinutes || 0 });
   const totalHours = calcTotalHours(record.signInTime, now);
   const clockMinutes = Math.max(0, Math.round((now - new Date(record.signInTime)) / 60000));
   const workedMinutes = clockMinutes;
@@ -512,7 +514,9 @@ function attendanceStatus(
 function completedFixedShiftStatus(record, signOutTime, effectiveEnd, effectiveStart = record.scheduledStart) {
   if ((record.shiftType || 'fixed') === 'flexible') return null;
   if (!record.signInTime || !signOutTime || !effectiveEnd) return null;
-  if (new Date(signOutTime) < new Date(effectiveEnd)) return null;
+  const graceMs = Number(record.shiftGraceMinutes || 0) * 60000;
+  const earliestEnd = new Date(new Date(effectiveEnd).getTime() - graceMs);
+  if (new Date(signOutTime) < earliestEnd) return null;
   if (effectiveStart) {
     return calculateArrivalStatus(
       new Date(record.signInTime),
@@ -1266,7 +1270,7 @@ async function applyClosureToAttendance(closure) {
         false,
         completionToleranceMinutes(record, policy.effectiveRequiredMinutes),
       );
-      update.earlyLeaveMinutes = calcEarlyLeaveMinutes(record.signOutTime, { scheduledEnd: policy.effectiveEnd });
+      update.earlyLeaveMinutes = calcEarlyLeaveMinutes(record.signOutTime, { scheduledEnd: policy.effectiveEnd, graceMinutes: record.shiftGraceMinutes || 0 });
     }
     await repository.updateById(record._id, update);
     adjusted += 1;
@@ -1306,7 +1310,7 @@ async function removeClosureFromAttendance(closure) {
       const workedMinutes = clockMinutes;
       update.$set.workedMinutes = workedMinutes;
       update.$set.overtimeMinutes = Math.max(0, workedMinutes - policy.overtimeAfterMinutes);
-      update.$set.earlyLeaveMinutes = calcEarlyLeaveMinutes(record.signOutTime, { scheduledEnd: policy.effectiveEnd });
+      update.$set.earlyLeaveMinutes = calcEarlyLeaveMinutes(record.signOutTime, { scheduledEnd: policy.effectiveEnd, graceMinutes: record.shiftGraceMinutes || 0 });
       const lateMinutes = calcLateMinutes(record.signInTime, { scheduledStart: policy.effectiveStart, graceMinutes: record.shiftGraceMinutes || 0 });
       update.$set.lateMinutes = lateMinutes;
       update.$set.status = attendanceStatus(

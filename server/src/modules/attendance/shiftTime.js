@@ -103,8 +103,9 @@ function arrivalStatus(signInTime, schedule, shift = {}) {
   };
 }
 
-function earlyLeaveMinutes(signOutTime, schedule) {
-  return signOutTime >= schedule.scheduledEnd ? 0 : Math.round((schedule.scheduledEnd - signOutTime) / 60000);
+function earlyLeaveMinutes(signOutTime, schedule, graceMinutes = 0) {
+  const earliestEnd = new Date(schedule.scheduledEnd.getTime() - (graceMinutes * 60000));
+  return signOutTime >= earliestEnd ? 0 : Math.round((schedule.scheduledEnd - signOutTime) / 60000);
 }
 
 function boundaryForShiftDate(shiftDate, time, shift, schedule) {
