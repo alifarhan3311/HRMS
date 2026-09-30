@@ -744,6 +744,9 @@ async function reconcileAttendance(now = new Date()) {
           record.status = clockMinutes >= (reqMinutes - 149)
             ? 'present'
             : (clockMinutes >= (Number(record.shiftHalfDayMinutes) || 240) ? 'half_day' : 'absent');
+        } else if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) {
+          record.status = 'present';
+          record.lateMinutes = 0;
         } else {
           const isLateArrival = Number(record.lateMinutes) > 0;
           const isEarlyDeparture = Number(record.earlyLeaveMinutes) > 0;
