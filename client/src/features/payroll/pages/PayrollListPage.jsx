@@ -5,7 +5,7 @@
  *  - Admin: generate, approve, mark paid, lock
  *  - Payslip detail modal with full breakdown
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
@@ -547,6 +547,12 @@ function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
 // ─── Generate Payslip Form ────────────────────────────────────────────────────
 function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
   const now = new Date();
+  
+  const uniqueDepartments = useMemo(() => {
+    const deps = new Set(employees.map(r => r.department).filter(Boolean));
+    return Array.from(deps).sort();
+  }, [employees]);
+
   const [form, setForm, clearDraft] = useFormDraft(draftKey, {
     employeeId: '',
     month: now.getMonth() + 1,
@@ -590,6 +596,11 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
         <Select label="Employee" required value={form.employeeId} onChange={(e) => set('employeeId', e.target.value)}>
           <option value="">Select employee</option>
           <option value="ALL" className="font-bold text-primary">✅ Bulk Generate All Employees</option>
+          {uniqueDepartments.map(dep => (
+            <option key={`BULK_${dep}`} value={`BULK_${dep}`} className="font-bold text-emerald-600">
+              ✅ Bulk Generate {dep.charAt(0).toUpperCase() + dep.slice(1)}
+            </option>
+          ))}
           {employees.map(employee => (
             <option key={employee._id} value={employee._id}>
               {employee.fullName} · {employee.employeeCode} · {employee.department}
@@ -603,7 +614,7 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
           <Input label="Year" type="number" value={form.year} onChange={(e) => set('year', e.target.value)} />
         </div>
 
-        {form.employeeId !== 'ALL' && (
+        {String(form.employeeId) !== 'ALL' && !String(form.employeeId).startsWith('BULK_') && (
           <>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -633,7 +644,7 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
           </>
         )}
         
-        {form.employeeId === 'ALL' && (
+        {(String(form.employeeId) === 'ALL' || String(form.employeeId).startsWith('BULK_')) && (
           <div className="p-4 bg-primary/10 text-primary rounded-lg text-sm font-medium">
             Note: Custom allowances, bonuses, and deductions are disabled during bulk generation. Payslips will be generated using base salary and attendance records only. You can edit individual payslips after generation if needed.
           </div>
@@ -684,20 +695,30 @@ export default function PayrollListPage() {
 
   const isActioning = submitting || approving || paying || locking;
 
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+
   const payslips   = data?.items || [];
   const total      = data?.total || 0;
   const totalPages = data?.totalPages || 1;
   const employees = employeesData?.items || [];
   const liveRows = liveData?.items || [];
+  
+  const uniqueDepartments = useMemo(() => {
+    const deps = new Set(liveRows.map(r => r.department).filter(Boolean));
+    return Array.from(deps).sort();
+  }, [liveRows]);
+
   const normalizedLiveSearch = liveSearch.trim().toLowerCase();
-  const visibleLiveRows = normalizedLiveSearch
-    ? liveRows.filter(row => [
+  const visibleLiveRows = liveRows.filter(row => {
+    if (selectedDepartment && row.department !== selectedDepartment) return false;
+    if (!normalizedLiveSearch) return true;
+    return [
       row.employeeName,
       row.employeeCode,
       row.designation,
       row.department,
-    ].some(value => String(value || '').toLowerCase().includes(normalizedLiveSearch)))
-    : liveRows;
+    ].some(value => String(value || '').toLowerCase().includes(normalizedLiveSearch));
+  });
 
   function exportLiveCsv() {
     if (!liveRows.length) return toast.error('No live payroll data to export');
@@ -725,9 +746,13 @@ export default function PayrollListPage() {
   };
 
   async function handleGenerate(payload) {
-    if (payload.employeeId === 'ALL') {
+    if (String(payload.employeeId) === 'ALL' || String(payload.employeeId).startsWith('BULK_')) {
       try {
-        const res = await bulkGeneratePayroll({ month: payload.month, year: payload.year }).unwrap();
+        const bulkPayload = { month: payload.month, year: payload.year };
+        if (String(payload.employeeId).startsWith('BULK_')) {
+          bulkPayload.department = payload.employeeId.replace('BULK_', '');
+        }
+        const res = await bulkGeneratePayroll(bulkPayload).unwrap();
         toast.success(`Generated ${res.data?.generatedCount || 0} payslips in bulk`);
         setGenerateOpen(false);
         return true;
@@ -889,17 +914,29 @@ export default function PayrollListPage() {
                   {salaryVisible ? 'Hide salary' : 'Show salary'}
                 </button>
                 {user?.role === 'hr' && liveRows.length > 0 && (
-                  <label className="relative block w-full sm:w-72">
-                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      type="search"
-                      value={liveSearch}
-                      onChange={(event) => setLiveSearch(event.target.value)}
-                      placeholder="Search employee..."
-                      aria-label="Search payroll employees"
-                      className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
-                    />
-                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto mt-2 sm:mt-0">
+                    <select
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(e.target.value)}
+                      className="h-10 w-full sm:w-48 rounded-xl border border-border bg-background px-3 text-sm outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15"
+                    >
+                      <option value="">All Departments</option>
+                      {uniqueDepartments.map(dep => (
+                        <option key={dep} value={dep}>{dep.charAt(0).toUpperCase() + dep.slice(1)}</option>
+                      ))}
+                    </select>
+                    <label className="relative block w-full sm:w-64">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        type="search"
+                        value={liveSearch}
+                        onChange={(event) => setLiveSearch(event.target.value)}
+                        placeholder="Search employee..."
+                        aria-label="Search payroll employees"
+                        className="h-10 w-full rounded-xl border border-border bg-background pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15"
+                      />
+                    </label>
+                  </div>
                 )}
               </div>
             </div>

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * modules/employees/employees.service.js
  * Business logic for Employee management. All domain rules live here;
  * controllers call this and repository methods handle DB I/O.
@@ -237,7 +237,7 @@ function redactManagerPrivateFields(employee) {
 
 function enforceLeaveBalanceVisibility(employee, actor) {
   if (String(employee._id) === String(actor.id)) return employee;
-  if (['manager', 'hr', 'super_admin'].includes(actor.role)) return employee;
+  if (['manager', 'floor_head', 'team_lead', 'hr', 'super_admin'].includes(actor.role)) return employee;
   const visible = { ...employee };
   delete visible.leaveBalance;
   return visible;

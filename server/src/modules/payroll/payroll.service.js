@@ -386,8 +386,11 @@ async function generatePayslip(payload, actor) {
 }
 
 async function bulkGeneratePayslips(payload, actor) {
-  const { month, year } = payload;
-  const employees = await Employee.find({ companyId: actor.companyId, status: 'active' });
+  const { month, year, department } = payload;
+  const filter = { companyId: actor.companyId, status: 'active' };
+  if (department) filter.department = department;
+  
+  const employees = await Employee.find(filter);
   let generatedCount = 0;
   
   for (const employee of employees) {
