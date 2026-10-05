@@ -109,6 +109,8 @@ const updateSchema = Joi.object({
   contactNumber: Joi.string().trim().max(20).optional().allow(''),
   address: Joi.string().trim().max(500).optional().allow(''),
   emergencyContact: Joi.string().trim().max(200).optional().allow(''),
+
+  joiningDate: Joi.date().optional(),
   department: Joi.string().trim().min(2).max(100).optional(),
   workMode: Joi.string().valid('office', 'wfh').optional(),
   managedDepartments: Joi.array().items(Joi.string().trim().min(2).max(100)).unique().optional(),
