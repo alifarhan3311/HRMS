@@ -10,6 +10,7 @@ const Payslip = require('../payroll/payroll.model');
 const Expense = require('../expenses/expenses.model');
 const Project = require('../projects/projects.model');
 const Holiday = require('../holidays/holidays.model');
+const EmployeeExit = require('../exits/exits.model');
 const settingsService = require('../companySettings/companySettings.service');
 const { buildManagerEmployeeScope } = require('../employees/managerScope');
 const {
@@ -58,10 +59,38 @@ function upcomingBirthday(dateOfBirth, from = new Date(), windowDays = 30) {
   return { nextBirthday: next, daysUntil };
 }
 
-async function getUpcomingHolidays(companyId, limit = 5) {
+function upcomingProbation(employee, from = new Date(), windowDays = 30) {
+  if (!employee || employee.role === 'super_admin') return null;
+  if (employee.probationStatus === 'completed') return null;
+
+  let endDate = null;
+  if (employee.probationEndDate) {
+    endDate = new Date(employee.probationEndDate);
+  } else if (employee.joiningDate) {
+    endDate = new Date(employee.joiningDate);
+    endDate.setMonth(endDate.getMonth() + 3);
+  }
+
+  if (!endDate || Number.isNaN(endDate.getTime())) return null;
+
+  const today = startOfDay(from);
+  const targetDay = startOfDay(endDate);
+  const daysUntil = Math.round((targetDay.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+
+  if (daysUntil >= -30 && daysUntil <= windowDays) {
+    return {
+      probationEndDate: endDate,
+      daysUntil,
+      isOverdue: daysUntil < 0,
+    };
+  }
+  return null;
+}
+
+async function getUpcomingHolidays(companyId, limit = 5, includePendingHR = false) {
   return Holiday.find({
     companyId,
-    status: 'confirmed',
+    status: includePendingHR ? { $in: ['confirmed', 'pending_hr'] } : 'confirmed',
     date: { $gte: startOfDay() },
   })
     .sort({ date: 1 })
@@ -201,7 +230,9 @@ async function getHRDashboard(user) {
     pendingLeaveApprovals,
     pendingAttendanceRequests,
     birthdayAlerts,
+    probationAlerts,
     newJoinings,
+    resignationRequests,
     employeeStats,
     attendanceSummary,
     leaveSummary,
@@ -211,7 +242,13 @@ async function getHRDashboard(user) {
     settings,
     monthlyHourEmployees,
   ] = await Promise.all([
-    LeaveRequest.find({ companyId: user.companyId, employeeId: { $in: visibleEmployeeIds }, status: 'pending' })
+    LeaveRequest.find({
+      companyId: user.companyId,
+      employeeId: { $in: visibleEmployeeIds },
+      status: 'pending',
+      // HR handles stage 2; managers handle the team's stage 1 requests.
+      currentStage: user.role === 'manager' ? 1 : 2,
+    })
       .populate('employeeId', 'fullName employeeCode department')
       .sort({ createdAt: -1 })
       .limit(10)
@@ -243,12 +280,48 @@ async function getHRDashboard(user) {
         .sort((a, b) => a.daysUntil - b.daysUntil)),
     Employee.find({
       ...employeeFilter,
+      status: 'active',
+      $or: [
+        { probationEndDate: { $exists: true, $ne: null } },
+        { joiningDate: { $exists: true, $ne: null } },
+      ],
+    })
+      .select('fullName employeeCode joiningDate probationEndDate probationStatus department designation')
+      .lean()
+      .then((employees) => employees
+        .map((emp) => {
+          const upcoming = upcomingProbation(emp, today, 30);
+          return upcoming ? { ...emp, ...upcoming } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.daysUntil - b.daysUntil)),
+    Employee.find({
+      ...employeeFilter,
       joiningDate: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
     })
       .select('fullName joiningDate department designation')
       .sort({ joiningDate: -1 })
       .limit(10)
       .lean(),
+    EmployeeExit.find({
+      companyId: user.companyId,
+      employeeId: { $in: visibleEmployeeIds },
+      status: { $in: ['pending_approval', 'hr_review', 'accepted', 'clearance'] },
+    })
+      .populate('employeeId', 'fullName employeeCode department designation')
+      .sort({ proposedLastWorkingDay: 1, createdAt: -1 })
+      .limit(10)
+      .lean()
+      .then((records) => records.map((record) => {
+        const lastWorkingDay = record.finalLastWorkingDay || record.proposedLastWorkingDay;
+        const daysUntil = lastWorkingDay
+          ? Math.ceil((startOfDay(lastWorkingDay).getTime() - today.getTime()) / (24 * 60 * 60 * 1000))
+          : null;
+        const pendingClearance = record.status === 'clearance'
+          ? (record.checklist || []).filter((item) => !item.completed).length
+          : 0;
+        return { ...record, lastWorkingDay, daysUntil, pendingClearance };
+      })),
     Employee.aggregate([
       { $match: employeeFilter },
       { $group: { _id: '$department', count: { $sum: 1 } } },
@@ -274,7 +347,7 @@ async function getHRDashboard(user) {
       },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
-    getUpcomingHolidays(user.companyId, 8),
+    getUpcomingHolidays(user.companyId, 8, ['hr', 'super_admin'].includes(user.role)),
     Employee.countDocuments(employeeFilter),
     Employee.countDocuments({ ...employeeFilter, status: 'active' }),
     settingsService.getPolicy(user.companyId),
@@ -335,8 +408,16 @@ async function getHRDashboard(user) {
     pendingLeaveApprovals,
     pendingAttendanceRequests,
     birthdayAlerts,
+    probationAlerts,
     newJoinings,
-    resignationRequests: [],
+    resignationRequests,
+    resignationSummary: {
+      total: resignationRequests.length,
+      awaitingApproval: resignationRequests.filter((request) => request.status === 'pending_approval').length,
+      awaitingHR: resignationRequests.filter((request) => request.status === 'hr_review').length,
+      clearance: resignationRequests.filter((request) => request.status === 'clearance').length,
+      actionRequired: resignationRequests.filter((request) => ['pending_approval', 'hr_review', 'clearance'].includes(request.status)).length,
+    },
     employeeStatistics: {
       total: totalEmployees,
       active: activeEmployees,
@@ -475,7 +556,7 @@ async function getDashboardForUser(user) {
       getEmployeeDashboard(user),
       getHRDashboard(user),
     ]);
-    return { role: 'manager', ...employeeDash, teamOverview: hrDash.employeeStatistics };
+    return { role: 'manager', ...employeeDash, teamOverview: hrDash.employeeStatistics, birthdayAlerts: hrDash.birthdayAlerts, probationAlerts: hrDash.probationAlerts, resignationRequests: hrDash.resignationRequests, resignationSummary: hrDash.resignationSummary };
   }
 
   if (role === 'hr') {

@@ -38,11 +38,6 @@ const update = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: record });
 });
 
-const submit = asyncHandler(async (req, res) => {
-  const record = await service.submitForApproval(req.params.id, req.user);
-  res.status(200).json({ success: true, data: record });
-});
-
 const approve = asyncHandler(async (req, res) => {
   const record = await service.approvePayslip(req.params.id, req.user);
   res.status(200).json({ success: true, data: record });
@@ -53,9 +48,4 @@ const markPaid = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: record });
 });
 
-const lock = asyncHandler(async (req, res) => {
-  const record = await service.lockPayslip(req.params.id, req.user);
-  res.status(200).json({ success: true, data: record });
-});
-
-module.exports = { generate, bulkGenerate, list, live, getById, update, submit, approve, markPaid, lock };
+module.exports = { generate, bulkGenerate, list, live, getById, update, approve, markPaid };

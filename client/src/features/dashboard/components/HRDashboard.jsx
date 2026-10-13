@@ -6,11 +6,13 @@ import {
   UserCheck,
   Clock,
   Cake,
+  Hourglass,
   UserPlus,
   Users,
   CalendarDays,
   FileWarning,
   Target,
+  DoorOpen,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
@@ -42,7 +44,7 @@ export default function HRDashboard({ data }) {
         <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold tracking-tight">HR Dashboard</h1><p className="text-muted-foreground">Team overview, approvals & alerts</p></div><Link to="/action-center" className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm">Open HR Action Center</Link></div>
       </motion.div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           delay={0.00}
           title="Pending Leave Approvals"
@@ -64,10 +66,24 @@ export default function HRDashboard({ data }) {
         />
         <StatCard
           delay={0.18}
+          title="Probation Ending"
+          value={data.probationAlerts?.length ?? 0}
+          subtitle="Next 30 days"
+          icon={Hourglass}
+        />
+        <StatCard
+          delay={0.24}
           title="New Joinings"
           value={data.newJoinings?.length ?? 0}
           subtitle="Last 30 days"
           icon={UserPlus}
+        />
+        <StatCard
+          delay={0.30}
+          title="Resignations & Clearances"
+          value={data.resignationSummary?.actionRequired ?? data.resignationRequests?.length ?? 0}
+          subtitle="Action required"
+          icon={DoorOpen}
         />
       </div>
 
@@ -230,7 +246,12 @@ export default function HRDashboard({ data }) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <motion.div className="glass-card p-5">
-          <h3 className="mb-4 font-semibold">Pending Leave Approvals</h3>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <h3 className="font-semibold">Pending Leave Approvals</h3>
+            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+              {data.pendingLeaveApprovals?.length ?? 0}
+            </span>
+          </div>
           {(data.pendingLeaveApprovals || []).length > 0 ? (
             <ul className="space-y-2">
               {data.pendingLeaveApprovals.slice(0, 6).map((leave) => (
@@ -240,10 +261,16 @@ export default function HRDashboard({ data }) {
                 >
                   <div>
                     <p className="font-medium">{leave.employeeId?.fullName || 'Employee'}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{leave.leaveType} leave</p>
+                    <p className="text-xs capitalize text-muted-foreground">
+                      {leave.leaveType} leave · {new Date(leave.startDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })}
+                      {leave.endDate && new Date(leave.endDate).toDateString() !== new Date(leave.startDate).toDateString()
+                        ? ` – ${new Date(leave.endDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })}`
+                        : ''}
+                      {Number.isFinite(Number(leave.totalDays)) ? ` · ${leave.totalDays} day${Number(leave.totalDays) === 1 ? '' : 's'}` : ''}
+                    </p>
                   </div>
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                    Pending
+                  <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                    {leave.currentStage === 2 ? 'HR review' : 'Manager review'}
                   </span>
                 </li>
               ))}
@@ -254,31 +281,47 @@ export default function HRDashboard({ data }) {
         </motion.div>
 
         <motion.div className="glass-card p-5">
-          <h3 className="mb-4 font-semibold flex items-center gap-2">
-            <CalendarDays className="h-4 w-4" />
-            Upcoming Holidays
-          </h3>
+          <div className="mb-4 flex items-center justify-between gap-2">
+            <h3 className="font-semibold flex items-center gap-2">
+              <CalendarDays className="h-4 w-4" />
+              Upcoming Holidays
+            </h3>
+            <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
+              {(data.upcomingHolidays || data.holidays || []).length}
+            </span>
+          </div>
           {(data.upcomingHolidays || data.holidays || []).length > 0 ? (
             <ul className="space-y-2">
               {(data.upcomingHolidays || data.holidays).slice(0, 6).map((h) => (
                 <li
                   key={h._id}
-                  className="flex justify-between rounded-lg border border-border px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm"
                 >
-                  <span>{h.title}</span>
-                  <span className="text-muted-foreground">
-                    {new Date(h.date).toLocaleDateString('en-PK', { month: 'short', day: 'numeric' })}
-                  </span>
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{h.title}</p>
+                    <p className="text-xs capitalize text-muted-foreground">
+                      {(h.eventType || 'full_day').replaceAll('_', ' ')}
+                      {h.affectedScope && h.affectedScope !== 'all' ? ` · ${h.affectedDepartment || h.affectedScope}` : ''}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p>{new Date(h.date).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                    {h.status === 'pending_hr' && (
+                      <p className="text-xs font-medium text-amber-600 dark:text-amber-400">Pending HR confirmation</p>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">No holidays configured</p>
+            <p className="text-sm text-muted-foreground">No upcoming holidays are configured for this company.</p>
           )}
         </motion.div>
       </div>
 
-      {(data.birthdayAlerts || []).length > 0 && (
+      {((data.birthdayAlerts || []).length > 0 || (data.probationAlerts || []).length > 0 || (data.resignationRequests || []).length > 0) && (
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {(data.birthdayAlerts || []).length > 0 ? (
         <motion.div className="glass-card p-5">
           <h3 className="mb-3 font-semibold flex items-center gap-2">
             <Cake className="h-4 w-4 text-pink-500" />
@@ -300,6 +343,110 @@ export default function HRDashboard({ data }) {
             ))}
           </div>
         </motion.div>
+          ) : (
+            <motion.div className="glass-card p-5 flex flex-col justify-center">
+              <h3 className="mb-2 font-semibold flex items-center gap-2 text-muted-foreground">
+                <Cake className="h-4 w-4 text-pink-500/70" />
+                Upcoming Birthdays
+              </h3>
+              <p className="text-sm text-muted-foreground">No upcoming birthdays in the next 30 days.</p>
+            </motion.div>
+          )}
+
+          {(data.probationAlerts || []).length > 0 ? (
+            <motion.div className="glass-card p-5">
+              <h3 className="mb-3 font-semibold flex items-center gap-2">
+                <Hourglass className="h-4 w-4 text-amber-500" />
+                Probation Ending Alerts (Next 30 Days)
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {data.probationAlerts.map((emp) => (
+                  <div
+                    key={emp._id}
+                    className={`rounded-xl border px-3 py-2 text-sm ${
+                      emp.daysUntil <= 0
+                        ? 'border-amber-300 bg-amber-50 dark:border-amber-900/40 dark:bg-amber-900/20'
+                        : 'border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-900/20'
+                    }`}
+                  >
+                    <p className="font-medium">{emp.fullName}</p>
+                    <p className="text-xs text-muted-foreground">
+                      <span className={emp.daysUntil <= 3 ? 'font-semibold text-amber-600 dark:text-amber-400' : ''}>
+                        {emp.daysUntil === 0
+                          ? 'Ends Today'
+                          : emp.daysUntil === 1
+                          ? 'Ends Tomorrow'
+                          : emp.daysUntil < 0
+                          ? `Ended ${Math.abs(emp.daysUntil)}d ago`
+                          : `In ${emp.daysUntil} days`}
+                      </span>
+                      {' · '}{new Date(emp.probationEndDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })}
+                      {emp.department ? ` · ${emp.department}` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div className="glass-card p-5 flex flex-col justify-center">
+              <h3 className="mb-2 font-semibold flex items-center gap-2 text-muted-foreground">
+                <Hourglass className="h-4 w-4 text-amber-500/70" />
+                Probation Alerts
+              </h3>
+              <p className="text-sm text-muted-foreground">No employees with probation ending soon.</p>
+            </motion.div>
+          )}
+
+          {(data.resignationRequests || []).length > 0 ? (
+            <motion.div className="glass-card p-5">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <DoorOpen className="h-4 w-4 text-primary" />
+                  Resignations & Clearances
+                </h3>
+                <Link to="/exits" className="text-xs font-semibold text-primary hover:underline">Open</Link>
+              </div>
+              <div className="space-y-2">
+                {data.resignationRequests.slice(0, 6).map((request) => {
+                  const days = request.daysUntil;
+                  const dateLabel = request.lastWorkingDay
+                    ? new Date(request.lastWorkingDay).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })
+                    : 'Date pending';
+                  const statusLabel = request.status === 'pending_approval'
+                    ? 'Pending approval'
+                    : request.status === 'hr_review'
+                      ? 'Awaiting HR'
+                      : request.status === 'clearance'
+                        ? `Clearance${request.pendingClearance ? ` · ${request.pendingClearance} pending` : ''}`
+                        : request.status.replaceAll('_', ' ');
+                  return (
+                    <div key={request._id} className="rounded-xl border border-border px-3 py-2 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium">{request.employeeId?.fullName || 'Employee'}</p>
+                          <p className="text-xs text-muted-foreground">{statusLabel} · Last day: {dateLabel}</p>
+                        </div>
+                        {typeof days === 'number' && (
+                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${days <= 7 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-muted text-muted-foreground'}`}>
+                            {days < 0 ? `${Math.abs(days)}d overdue` : days === 0 ? 'Today' : `${days}d`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div className="glass-card p-5 flex flex-col justify-center">
+              <h3 className="mb-2 font-semibold flex items-center gap-2 text-muted-foreground">
+                <DoorOpen className="h-4 w-4 text-primary/70" />
+                Resignations & Clearances
+              </h3>
+              <p className="text-sm text-muted-foreground">No active resignation or clearance requests.</p>
+            </motion.div>
+          )}
+        </div>
       )}
 
       <motion.div className="glass-card p-5">

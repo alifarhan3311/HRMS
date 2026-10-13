@@ -6,7 +6,10 @@ const Payslip = require('./payroll.model');
 async function create(data) { return Payslip.create(data); }
 
 async function findById(id) {
-  return Payslip.findById(id).populate('employeeId', 'fullName employeeCode department designation');
+  return Payslip.findById(id).populate(
+    'employeeId',
+    'fullName employeeCode department designation joiningDate salaryPaymentMethod salaryAccountNumber salaryAccountTitle'
+  );
 }
 
 async function findByEmployeeAndPeriod(employeeId, month, year) {
@@ -17,7 +20,10 @@ async function findAll({ filter = {}, page = 1, limit = 20, sort = '-year -month
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
     Payslip.find(filter)
-      .populate('employeeId', 'fullName employeeCode department designation profilePicture')
+      .populate(
+        'employeeId',
+        'fullName employeeCode department designation profilePicture joiningDate salaryPaymentMethod salaryAccountNumber salaryAccountTitle'
+      )
       .sort(sort).skip(skip).limit(limit),
     Payslip.countDocuments(filter),
   ]);

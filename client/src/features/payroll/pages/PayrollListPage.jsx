@@ -2,14 +2,15 @@
  * features/payroll/pages/PayrollListPage.jsx
  * Full payroll management:
  *  - Employee: view own payslips + salary breakup
- *  - Admin: generate, approve, mark paid, lock
+ *  - Admin: generate, approve, and mark paid
  *  - Payslip detail modal with full breakdown
  */
 import { useEffect, useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
-  Wallet, Plus, CheckCircle2, Lock, CreditCard,
+  Wallet, Plus, CheckCircle2, CreditCard,
   RefreshCw, ChevronLeft, ChevronRight, Eye, EyeOff,
   TrendingUp, TrendingDown, Banknote, FileText, Target,
   Download, Printer, Search,
@@ -17,8 +18,7 @@ import {
 import {
   useListPayrollQuery, useGetLivePayrollQuery, useGeneratePayrollMutation,
   useBulkGeneratePayrollMutation,
-  useSubmitPayrollMutation, useApprovePayrollMutation,
-  useMarkPayrollPaidMutation, useLockPayrollMutation,
+  useApprovePayrollMutation, useMarkPayrollPaidMutation,
 } from '../api/payroll.api';
 import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import { toast } from '../../../utils/toast';
@@ -35,11 +35,14 @@ import SensitiveValue from '../../../components/ui/SensitiveValue';
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_STYLES = {
   draft:            { label: 'Draft',            variant: 'gray'   },
-  pending_approval: { label: 'Pending Approval', variant: 'yellow' },
   approved:         { label: 'Approved',         variant: 'blue'   },
   paid:             { label: 'Paid',             variant: 'green'  },
-  locked:           { label: 'Locked',           variant: 'purple' },
 };
+const LEGACY_STATUS_STYLE = {
+  pending_approval: STATUS_STYLES.draft,
+  locked: STATUS_STYLES.paid,
+};
+const getStatusStyle = (status) => STATUS_STYLES[status] || LEGACY_STATUS_STYLE[status] || STATUS_STYLES.draft;
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function fmtPKR(v) {
@@ -88,8 +91,13 @@ function PayrollPrintView({ payload }) {
     employeeCode,
     designation,
     department,
+    joiningDate,
     period,
+    payslipNumber,
+    location,
     monthlySalary,
+    month,
+    year,
     earnedSalary,
     netPayable,
     deductions,
@@ -97,157 +105,100 @@ function PayrollPrintView({ payload }) {
     salaryRows = [],
     bankName,
     accountNumber,
+    accountTitle,
+    paymentMode,
     attendanceSummaryRows = [],
   } = payload;
 
-  const earningRows = salaryRows.length
-    ? salaryRows.filter((row) => !row.group || row.group === 'earning')
-    : [
-      { label: 'Basic Salary', amount: monthlySalary },
-      ...(earnedSalary != null && earnedSalary !== monthlySalary ? [{ label: 'Earned Adjustments', amount: earnedSalary - monthlySalary }] : []),
-    ];
-  const deductionRows = salaryRows.length
-    ? salaryRows.filter((row) => row.group === 'deduction')
-    : [
-      { label: 'Deductions', amount: deductions, negative: true },
-    ];
-    
-  const netPay = netPayable != null ? netPayable : earnedSalary;
-  const grossPay = earnedSalary != null ? earnedSalary : monthlySalary;
-  const totalDeductions = deductions || 0;
-  
-  const workingDays = attendanceSummaryRows.find(r => r[0] === 'Working Days')?.[1] || 30;
-  const paidDays = attendanceSummaryRows.find(r => r[0] === 'Present')?.[1] || 30; // Using Present as Paid days approximation
+  const amount = (value) => Number(value || 0);
+  const money = (value) => `PKR ${amount(value).toLocaleString('en-PK')}`;
+  const earningRows = salaryRows.filter((row) => row.group !== 'deduction');
+  const grossPay = amount(earnedSalary ?? monthlySalary);
+  const totalDeductions = amount(deductions);
+  const listedDeductions = salaryRows.filter((row) => row.group === 'deduction');
+  const listedDeductionTotal = listedDeductions.reduce((sum, row) => sum + amount(row.amount), 0);
+  const deductionRows = listedDeductionTotal < totalDeductions
+    ? [...listedDeductions, { label: 'Other deductions', amount: totalDeductions - listedDeductionTotal }]
+    : listedDeductions;
+  const netPay = amount(netPayable ?? (grossPay - totalDeductions));
+  const daysWorked = attendanceSummaryRows.find((row) => row[0] === 'Working Days')?.[1] ?? '—';
+  const fiscalYear = Number(month) >= 7
+    ? `${year}-${Number(year) + 1}`
+    : `${Number(year) - 1}-${year}`;
+  const shortMonth = month && year ? `${MONTHS[Number(month) - 1]}-${String(year).slice(-2)}` : period || '—';
+  const printDate = (date) => date
+    ? new Date(date).toLocaleDateString('en-PK', { day: '2-digit', month: 'short', year: 'numeric' })
+    : '—';
 
-  return (
-    <div className="payroll-print-root hidden print:block print:fixed print:inset-0 print:z-[9999] print:bg-white print:text-slate-900 print:origin-top print:scale-[0.9] print:transform print:transform-gpu">
-      <div className="mx-auto max-w-5xl bg-white px-8 py-10 font-sans text-[13px]">
-        
-        {/* Header section */}
-        <div className="flex items-center gap-6 mb-6">
-          <div className="h-16 w-16 shrink-0 border border-slate-400 flex items-center justify-center text-xl font-bold text-slate-700">
-            MH
+  return createPortal(
+    <div className="payroll-print-root">
+      <article className="payroll-slip">
+        <header className="payroll-slip-header">
+          <img src="/payroll-logo.png" alt="MH Enterprises" className="payroll-slip-logo" />
+          <div className="payroll-slip-company">
+            <h1>MH Enterprises</h1>
+            <p>PAYROLL SLIP</p>
           </div>
-          <div className="flex-1 text-center">
-            <h1 className="text-2xl font-bold text-slate-800 tracking-wide">MH ENTERPRISES</h1>
-            <p className="text-slate-600 mt-1">Office #12, Corporate Tower, Business District</p>
-            <p className="text-slate-600">Phone: +92 123 4567890 | Email: hr@mhenterprises.com</p>
-            <p className="text-slate-600">NTN: 1234567-8</p>
+          <div className="payroll-slip-period">
+            <span>Pay period</span>
+            <strong>{period || '—'}</strong>
           </div>
-          <div className="h-16 w-16 shrink-0"></div> {/* Spacer for centering */}
-        </div>
+        </header>
+        <h2 className="payroll-slip-title">Pay Slip for the Month of: FY {year ? fiscalYear : '—'}</h2>
 
-        <div className="flex justify-center mb-6">
-          <div className="border border-slate-400 px-6 py-2 uppercase font-bold tracking-wider">
-            FOR {period}
-          </div>
-        </div>
+        <section className="payroll-slip-employee">
+          <div><span>Staff No</span><b>{employeeCode || '—'}</b></div>
+          <div><span>Location</span><b>{location || '—'}</b></div>
+          <div><span>Name</span><b>{employeeName || '—'}</b></div>
+          <div><span>Designation</span><b>{designation || '—'}</b></div>
+          <div><span>Date of Joining</span><b>{printDate(joiningDate)}</b></div>
+          <div><span>Department</span><b>{department || '—'}</b></div>
+          <div><span>Month</span><b>{shortMonth}</b></div>
+          <div><span>Salary Slip No</span><b>{payslipNumber || '—'}</b></div>
+          <div><span>Days Worked</span><b>{daysWorked}</b></div>
+        </section>
 
-        {/* Employee Details Grid */}
-        <div className="border border-slate-400 mb-6">
-          <div className="grid grid-cols-2 divide-x divide-slate-400">
-            <div className="grid grid-cols-[120px_auto] gap-x-2 gap-y-1 p-3">
-              <div className="font-bold">Employee ID</div><div>: {employeeCode || '—'}</div>
-              <div className="font-bold">Employee Name</div><div>: {employeeName || '—'}</div>
-              <div className="font-bold">Designation</div><div>: {designation || '—'}</div>
-              <div className="font-bold">Department</div><div>: {department || '—'}</div>
-              <div className="font-bold">Date of Joining</div><div>: —</div>
-              <div className="font-bold">Bank Name</div><div>: {bankName || '—'}</div>
-            </div>
-            <div className="grid grid-cols-[120px_auto] gap-x-2 gap-y-1 p-3">
-              <div className="font-bold">PAN/NTN</div><div>: {taxNumber || '—'}</div>
-              <div className="font-bold">PF Number</div><div>: —</div>
-              <div className="font-bold">ESI Number</div><div>: —</div>
-              <div className="font-bold">Account Number</div><div>: {accountNumber || '—'}</div>
-              <div className="font-bold">Pay Days</div><div>: {workingDays}</div>
-              <div className="font-bold">Paid Days</div><div>: {paidDays}</div>
-            </div>
-          </div>
-        </div>
+        <section className="payroll-slip-section">
+          <h3>Earnings / Allowances</h3>
+          <table>
+            <thead><tr><th>Description</th><th>Amount (PKR)</th></tr></thead>
+            <tbody>
+              {(earningRows.length ? earningRows : [{ label: 'Basic Salary', amount: monthlySalary }]).map((row, index) => (
+                <tr key={`${row.label}-${index}`}><td>{row.label}</td><td>{money(row.amount)}</td></tr>
+              ))}
+            </tbody>
+            <tfoot><tr><th>Gross Salary</th><th>{money(grossPay)}</th></tr></tfoot>
+          </table>
+        </section>
 
-        {/* Earnings & Deductions Table */}
-        <div className="border border-slate-400 mb-6">
-          <div className="grid grid-cols-4 border-b border-slate-400 font-bold bg-slate-50 divide-x divide-slate-400">
-            <div className="p-2 text-center uppercase text-blue-900">Earnings</div>
-            <div className="p-2 text-center uppercase text-blue-900">Amount</div>
-            <div className="p-2 text-center uppercase text-blue-900">Deductions</div>
-            <div className="p-2 text-center uppercase text-blue-900">Amount</div>
-          </div>
-          
-          <div className="grid grid-cols-4 divide-x divide-slate-400 min-h-[150px]">
-            <div className="p-2 space-y-1">
-              {earningRows.map((r, i) => <div key={i}>{r.label}</div>)}
-            </div>
-            <div className="p-2 space-y-1 text-right">
-              {earningRows.map((r, i) => <div key={i}>{r.amount.toLocaleString()}</div>)}
-            </div>
-            <div className="p-2 space-y-1">
-              {deductionRows.map((r, i) => <div key={i}>{r.label}</div>)}
-            </div>
-            <div className="p-2 space-y-1 text-right">
-              {deductionRows.map((r, i) => <div key={i}>{r.amount.toLocaleString()}</div>)}
-            </div>
-          </div>
+        <section className="payroll-slip-section">
+          <h3>Deductions</h3>
+          <table>
+            <thead><tr><th>Description</th><th>Amount (PKR)</th></tr></thead>
+            <tbody>
+              {deductionRows.length ? deductionRows.map((row, index) => (
+                <tr key={`${row.label}-${index}`}><td>{row.label}</td><td>{money(row.amount)}</td></tr>
+              )) : <tr><td>No deductions</td><td>{money(0)}</td></tr>}
+            </tbody>
+            <tfoot><tr><th>Total Deductions</th><th>{money(totalDeductions)}</th></tr></tfoot>
+          </table>
+        </section>
 
-          <div className="grid grid-cols-4 border-t border-slate-400 font-bold bg-slate-50 divide-x divide-slate-400">
-            <div className="p-2 uppercase">Total Earnings</div>
-            <div className="p-2 text-right">{grossPay.toLocaleString()}</div>
-            <div className="p-2 uppercase">Total Deductions</div>
-            <div className="p-2 text-right">{totalDeductions.toLocaleString()}</div>
-          </div>
-        </div>
+        <div className="payroll-slip-net"><span>Net Salary</span><strong>{money(netPay)}</strong></div>
 
-        {/* Net Salary Section */}
-        <div className="border border-slate-400 mb-4 divide-y divide-slate-400">
-          <div className="grid grid-cols-2 divide-x divide-slate-400">
-            <div className="p-3 font-bold uppercase">Gross Salary (A)</div>
-            <div className="p-3 text-right font-bold">{grossPay.toLocaleString()}</div>
-          </div>
-          <div className="grid grid-cols-2 divide-x divide-slate-400">
-            <div className="p-3 font-bold uppercase">Total Deductions (B)</div>
-            <div className="p-3 text-right font-bold">{totalDeductions.toLocaleString()}</div>
-          </div>
-          <div className="grid grid-cols-2 divide-x divide-slate-400 bg-slate-50">
-            <div className="p-3 font-bold uppercase text-[15px]">Net Salary (A - B)</div>
-            <div className="p-3 text-right font-bold text-[15px]">{netPay.toLocaleString()}</div>
-          </div>
-        </div>
-
-        <div className="mb-10 text-sm font-semibold italic">
-          Amount in Words: {numberToWords(netPay)} Rupees Only
-        </div>
-
-        {/* YTD Box */}
-        <div className="border border-slate-400 mb-20">
-          <div className="border-b border-slate-400 bg-slate-50 p-2 text-center font-bold uppercase">
-            Year To Date
-          </div>
-          <div className="grid grid-cols-4 divide-x divide-slate-400 text-center">
-            <div className="p-3">
-              <div className="text-xs font-bold text-slate-500 uppercase mb-1">YTD Gross Pay</div>
-              <div className="font-bold">{(grossPay * 3).toLocaleString()}</div>
-            </div>
-            <div className="p-3">
-              <div className="text-xs font-bold text-slate-500 uppercase mb-1">YTD Total Deductions</div>
-              <div className="font-bold">{(totalDeductions * 3).toLocaleString()}</div>
-            </div>
-            <div className="p-3">
-              <div className="text-xs font-bold text-slate-500 uppercase mb-1">YTD Taxable Pay</div>
-              <div className="font-bold">{(grossPay * 3).toLocaleString()}</div>
-            </div>
-            <div className="p-3">
-              <div className="text-xs font-bold text-slate-500 uppercase mb-1">YTD Income Tax</div>
-              <div className="font-bold">0.00</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-between items-center text-xs text-slate-500 pt-4 border-t border-slate-300">
-          <div>This is a computer generated payslip and does not require a signature.</div>
-          <div>Generated On: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-        </div>
-      </div>
-    </div>
+        <section className="payroll-slip-payment">
+          <div><span>Payment mode</span><b>{paymentMode || '—'}</b></div>
+          <div><span>Account #</span><b>{accountNumber || '—'}</b></div>
+          <div><span>Bank</span><b>{bankName || '—'}</b></div>
+          {accountTitle && <div><span>Account title</span><b>{accountTitle}</b></div>}
+        </section>
+        <footer className="payroll-slip-footer">
+          <span>Computer-generated payslip</span>
+          <span>MH Enterprises</span>
+        </footer>
+      </article>
+    </div>,
+    document.body
   );
 }
 
@@ -255,7 +206,7 @@ function PayrollPrintView({ payload }) {
 function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGenerate, canApprove, isActioning, revealSensitive = false, onToggleSensitive }) {
   if (!payslip) return null;
   const emp = payslip.employeeId;
-  const st = STATUS_STYLES[payslip.status] || STATUS_STYLES.draft;
+  const st = getStatusStyle(payslip.status);
 
   const rows = [
     { label: 'Basic Salary',   amount: Number(payslip.basicSalary),  type: 'base'  },
@@ -367,13 +318,7 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGe
         {/* Action buttons */}
         {(canGenerate || canApprove) && (
           <div className="flex gap-2 flex-wrap">
-            {canGenerate && payslip.status === 'draft' && (
-              <Button variant="primary" size="sm" className="gap-1.5"
-                onClick={() => onAction('submit', payslip._id)} disabled={isActioning}>
-                <FileText className="h-4 w-4" /> Submit for Approval
-              </Button>
-            )}
-            {canApprove && payslip.status === 'pending_approval' && (
+            {canApprove && ['draft', 'pending_approval'].includes(payslip.status) && (
               <Button variant="primary" size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700"
                 onClick={() => onAction('approve', payslip._id)} disabled={isActioning}>
                 <CheckCircle2 className="h-4 w-4" /> Approve
@@ -388,12 +333,6 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGe
             <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => onPrint?.(payslip)}>
               <Printer className="h-4 w-4" /> PDF / Print
             </Button>
-            {canApprove && payslip.status === 'paid' && (
-              <Button variant="secondary" size="sm" className="gap-1.5"
-                onClick={() => onAction('lock', payslip._id)} disabled={isActioning}>
-                <Lock className="h-4 w-4" /> Lock Payslip
-              </Button>
-            )}
           </div>
         )}
       </div>
@@ -688,12 +627,10 @@ export default function PayrollListPage() {
   );
   const [generatePayroll, { isLoading: generating }] = useGeneratePayrollMutation();
   const [bulkGeneratePayroll, { isLoading: bulkGenerating }] = useBulkGeneratePayrollMutation();
-  const [submitPayroll,   { isLoading: submitting }]  = useSubmitPayrollMutation();
   const [approvePayroll,  { isLoading: approving }]   = useApprovePayrollMutation();
   const [markPaid,        { isLoading: paying }]      = useMarkPayrollPaidMutation();
-  const [lockPayroll,     { isLoading: locking }]     = useLockPayrollMutation();
 
-  const isActioning = submitting || approving || paying || locking;
+  const isActioning = approving || paying;
 
   const [selectedDepartment, setSelectedDepartment] = useState('');
 
@@ -738,11 +675,9 @@ export default function PayrollListPage() {
 
   // Stats
   const stats = {
-    total,
-    draft:    payslips.filter(p => p.status === 'draft').length,
-    pending:  payslips.filter(p => p.status === 'pending_approval').length,
+    draft:    payslips.filter(p => ['draft', 'pending_approval'].includes(p.status)).length,
     approved: payslips.filter(p => p.status === 'approved').length,
-    paid:     payslips.filter(p => p.status === 'paid').length,
+    paid:     payslips.filter(p => ['paid', 'locked'].includes(p.status)).length,
   };
 
   async function handleGenerate(payload) {
@@ -767,8 +702,8 @@ export default function PayrollListPage() {
   }
 
   async function handleAction(action, id) {
-    const mutations = { submit: submitPayroll, approve: approvePayroll, paid: markPaid, lock: lockPayroll };
-    const labels    = { submit: 'Submitted', approve: 'Approved', paid: 'Marked as Paid', lock: 'Locked' };
+    const mutations = { approve: approvePayroll, paid: markPaid };
+    const labels    = { approve: 'Approved', paid: 'Marked as Paid' };
     try {
       await mutations[action](id).unwrap();
       toast.success(`Payslip ${labels[action]}`);
@@ -786,7 +721,12 @@ export default function PayrollListPage() {
         employeeCode: source.employeeCode,
         designation: source.designation,
         department: source.department,
+        joiningDate: source.joiningDate,
+        location: source.location,
         period: formatPeriodLabel(source.month, source.year),
+        month: source.month,
+        year: source.year,
+        payslipNumber: source.payslipNumber,
         bankName: source.bankName,
         accountNumber: source.accountNumber,
         accountTitle: source.accountTitle,
@@ -796,6 +736,10 @@ export default function PayrollListPage() {
         earnedSalary: source.earnedSalary,
         netPayable: source.netPayable,
         deductions: source.deductions,
+        salaryRows: [
+          { label: 'Basic Salary', amount: source.monthlySalary, group: 'earning' },
+          ...((source.attendanceRows || []).map((row) => ({ ...row, group: 'deduction' }))),
+        ],
         monthlyTargetHours: source.monthlyTargetHours,
         monthlyCompletedHours: source.monthlyCompletedHours,
         monthlyRemainingHours: source.monthlyRemainingHours,
@@ -825,8 +769,13 @@ export default function PayrollListPage() {
         employeeCode: source.employeeId?.employeeCode,
         designation: source.employeeId?.designation,
         department: source.employeeId?.department,
+        joiningDate: source.employeeId?.joiningDate,
+        location: source.employeeId?.location,
         period: formatPeriodLabel(source.month, source.year),
-        bankName: source.employeeId?.salaryPaymentMethod,
+        month: source.month,
+        year: source.year,
+        payslipNumber: source.payslipNumber || source._id?.slice(-8)?.toUpperCase(),
+        bankName: source.employeeId?.salaryBankName || source.employeeId?.bankName,
         accountNumber: source.employeeId?.salaryAccountNumber,
         accountTitle: source.employeeId?.salaryAccountTitle,
         paymentMode: source.employeeId?.salaryPaymentMethod,
@@ -835,13 +784,13 @@ export default function PayrollListPage() {
         earnedSalary: source.grossSalary,
         netPayable: source.netSalary,
         deductions: Number(source.deductions || 0) + Number(source.taxDeduction || 0),
-        attendanceRows: [
-          { label: 'Basic Salary', amount: source.basicSalary, accent: 'text-slate-900' },
-          ...(source.allowanceItems || []).map((item) => ({ label: item.label, amount: item.amount, accent: 'text-emerald-600' })),
-          ...(source.bonus ? [{ label: 'Bonus', amount: source.bonus, accent: 'text-emerald-600' }] : []),
-          ...(source.incentives ? [{ label: 'Incentives', amount: source.incentives, accent: 'text-emerald-600' }] : []),
-          ...(source.deductionItems || []).map((item) => ({ label: item.label, amount: item.amount, accent: 'text-red-500', negative: true })),
-          ...(source.taxDeduction ? [{ label: 'Income Tax', amount: source.taxDeduction, accent: 'text-red-500', negative: true }] : []),
+        salaryRows: [
+          { label: 'Basic Salary', amount: source.basicSalary, group: 'earning' },
+          ...(source.allowanceItems || []).map((item) => ({ label: item.label, amount: item.amount, group: 'earning' })),
+          ...(source.bonus ? [{ label: 'Bonus', amount: source.bonus, group: 'earning' }] : []),
+          ...(source.incentives ? [{ label: 'Incentives', amount: source.incentives, group: 'earning' }] : []),
+          ...(source.deductionItems || []).map((item) => ({ label: item.label, amount: item.amount, group: 'deduction' })),
+          ...(source.taxDeduction ? [{ label: 'Income Tax', amount: source.taxDeduction, group: 'deduction' }] : []),
         ],
         attendanceSummaryRows: [
           ['Working Days', source.workingDays ?? 0, 'text-slate-900'],
@@ -852,8 +801,21 @@ export default function PayrollListPage() {
       };
 
     setPrintPayload(payload);
-    setTimeout(() => window.print(), 50);
   }
+
+  useEffect(() => {
+    if (!printPayload) return undefined;
+    let cancelled = false;
+    const printWhenReady = async () => {
+      await document.fonts.ready;
+      await Promise.all(Array.from(document.querySelectorAll('.payroll-print-root img')).map(
+        (img) => img.decode().catch(() => undefined)
+      ));
+      if (!cancelled) window.print();
+    };
+    const frame = requestAnimationFrame(printWhenReady);
+    return () => { cancelled = true; cancelAnimationFrame(frame); };
+  }, [printPayload]);
 
   useEffect(() => {
     const handleAfterPrint = () => setPrintPayload(null);
@@ -1027,10 +989,9 @@ export default function PayrollListPage() {
 
         {/* Stats */}
         {canViewTeamPayroll && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard title="Total Payslips" value={total} icon={Wallet} />
-            <StatCard title="Pending Approval" value={stats.pending} icon={FileText}
-              trend={{ label: 'Needs review', positive: false }} />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <StatCard title="Draft" value={stats.draft} icon={FileText}
+              trend={{ label: 'Needs approval', positive: false }} />
             <StatCard title="Approved" value={stats.approved} icon={CheckCircle2}
               trend={{ label: 'Ready to disburse', positive: true }} />
             <StatCard title="Paid" value={stats.paid} icon={CreditCard}
@@ -1090,7 +1051,7 @@ export default function PayrollListPage() {
 
               <div className="divide-y divide-border">
                 {payslips.map((p, i) => {
-                  const st = STATUS_STYLES[p.status] || STATUS_STYLES.draft;
+                  const st = getStatusStyle(p.status);
                   return (
                     <motion.div key={p._id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.025 }}

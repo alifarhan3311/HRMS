@@ -29,10 +29,6 @@ router.put('/:id',  authorize(...PAYROLL_ADMINS),
   controller.update);
 
 // Workflow
-router.patch('/:id/submit',   authorize(...PAYROLL_ADMINS),
-  enforceTenantScope(async (req) => repository.findById(req.params.id)),
-  controller.submit);
-
 router.patch('/:id/approve',  authorize(...ADMIN_HR),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.approve);
@@ -40,9 +36,5 @@ router.patch('/:id/approve',  authorize(...ADMIN_HR),
 router.patch('/:id/paid',     authorize(...PAYROLL_ADMINS),
   enforceTenantScope(async (req) => repository.findById(req.params.id)),
   controller.markPaid);
-
-router.patch('/:id/lock',     authorize(...ADMIN_HR),
-  enforceTenantScope(async (req) => repository.findById(req.params.id)),
-  controller.lock);
 
 module.exports = router;

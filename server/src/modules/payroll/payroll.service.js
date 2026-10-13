@@ -4,7 +4,7 @@
  *  - Generate payslip from employee salary + attendance data
  *  - Salary breakdown: basic + allowances - deductions + bonus + incentives
  *  - Deductions: absence penalty, late deductions, loan, advance, tax
- *  - Approval workflow: draft → pending_approval → approved → paid → locked
+ *  - Approval workflow: draft → approved → paid
  */
 const createHttpError = require('http-errors');
 const repository = require('./payroll.repository');
@@ -432,18 +432,12 @@ async function updatePayslip(id, payload, actor) {
 }
 
 // ─── Workflow ─────────────────────────────────────────────────────────────────
-async function submitForApproval(id, actor) {
-  const record = await repository.findById(id);
-  if (!record) throw createHttpError(404, 'Payslip not found.');
-  if (record.status !== 'draft') throw createHttpError(400, 'Only draft payslips can be submitted.');
-  const updated = await repository.updateById(id, { status: 'pending_approval' });
-  return updated.toObject({ getters: true });
-}
-
 async function approvePayslip(id, actor) {
   const record = await repository.findById(id);
   if (!record) throw createHttpError(404, 'Payslip not found.');
-  if (record.status !== 'pending_approval') throw createHttpError(400, 'Payslip is not pending approval.');
+  if (!['draft', 'pending_approval'].includes(record.status)) {
+    throw createHttpError(400, 'Only draft payslips can be approved.');
+  }
   const updated = await repository.updateById(id, {
     status: 'approved', approvedBy: actor.id, approvedAt: new Date(),
   });
@@ -462,16 +456,6 @@ async function markPaid(id, actor) {
   return updated.toObject({ getters: true });
 }
 
-async function lockPayslip(id, actor) {
-  const record = await repository.findById(id);
-  if (!record) throw createHttpError(404, 'Payslip not found.');
-  if (record.status !== 'paid') throw createHttpError(400, 'Only paid payslips can be locked.');
-  const updated = await repository.updateById(id, { status: 'locked' });
-  await notifyEmployee(updated, 'payslip_locked', 'Payslip finalized',
-    `Your payslip for ${updated.month}/${updated.year} has been finalized.`, 'locked');
-  return updated.toObject({ getters: true });
-}
-
 // ─── List ────────────────────────────────────────────────────────────────────
 async function listPayslips(query, actor) {
   const { page = 1, limit = 20, month, year, status, employeeId, sort = '-year -month' } = query;
@@ -482,7 +466,9 @@ async function listPayslips(query, actor) {
   } else if (employeeId) {
     filter.employeeId = employeeId;
   }
-  if (status) filter.status = status;
+  if (status === 'draft') filter.status = { $in: ['draft', 'pending_approval'] };
+  else if (status === 'paid') filter.status = { $in: ['paid', 'locked'] };
+  else if (status) filter.status = status;
   if (month) filter.month = Number(month);
   if (year) filter.year = Number(year);
 
@@ -562,6 +548,7 @@ async function getLivePayroll(query, actor) {
       employeeCode: employee.employeeCode,
       designation: employee.designation,
       department: employee.department,
+      joiningDate: employee.joiningDate,
       monthlySalary: basicSalary,
       dailySalary: Math.round(calculation.perDaySalary),
       earnedSalary,
@@ -580,7 +567,7 @@ async function getLivePayroll(query, actor) {
 
 module.exports = {
   generatePayslip, bulkGeneratePayslips, updatePayslip, listPayslips, getPayslipById,
-  submitForApproval, approvePayslip, markPaid, lockPayslip,
+  approvePayslip, markPaid,
   calculateAttendancePayroll, calculateSandwichDates,
   isPayrollAbsentRecord, isPayrollLateRecord, getLivePayroll,
 };
