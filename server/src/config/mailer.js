@@ -41,12 +41,13 @@ async function sendMail({ to, subject, html }) {
 async function sendCompanyMail(companyId, { to, subject, html }) {
   const settings = await CompanySettings.findOne({ companyId });
   const smtp = settings?.smtp;
-  const companyTransporter = smtp?.host && smtp?.user && smtp?.password
+  const password = smtp?.password || (smtp?.user === process.env.SMTP_USER ? process.env.SMTP_PASS : undefined);
+  const companyTransporter = smtp?.host && smtp?.user && password
     ? nodemailer.createTransport({
       host: smtp.host,
       port: Number(smtp.port) || 587,
       secure: smtpSecure(smtp.port, smtp.secure),
-      auth: { user: smtp.user, pass: smtp.password },
+      auth: { user: smtp.user, pass: password },
     })
     : transporter;
 
