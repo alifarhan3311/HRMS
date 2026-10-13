@@ -136,15 +136,7 @@ async function decideHoliday(id, payload, actor) {
   const subject = `Office Schedule Update: ${holiday.title} - ${dateKey(holiday.date)}`;
   const detail = holiday.description || payload.note || '';
   const deliveredIds = new Set((existing.emailDeliveredTo || []).map(String));
-  // TEMPORARY DEBUG MODE: Only send to maazanis98@gmail.com; nobody else
-  const DEBUG_RECIPIENT_EMAIL = 'maazanis98@gmail.com';
-  let emailTargets = employees.filter(employee => employee.email && employee.email.trim().toLowerCase() === DEBUG_RECIPIENT_EMAIL.toLowerCase());
-  if (!emailTargets.length) {
-    const maazEmp = await Employee.findOne({ companyId: actor.companyId, email: new RegExp(`^${DEBUG_RECIPIENT_EMAIL}$`, 'i') }).select('_id fullName email');
-    emailTargets = [maazEmp || { _id: 'debug-target', fullName: 'Maaz Bin Anis', email: DEBUG_RECIPIENT_EMAIL }];
-  }
-  logger.info(`[holiday-debug] DEBUG MODE: Sending holiday email ONLY to: ${emailTargets.map(e => e.email).join(', ')}`);
-  console.log(`[holiday-debug] DEBUG MODE: Sending holiday email ONLY to: ${emailTargets.map(e => e.email).join(', ')}`);
+  const emailTargets = employees.filter(employee => employee.email && !deliveredIds.has(String(employee._id)));
   const emailResults = await Promise.allSettled(emailTargets.map(employee => sendCompanyMail(actor.companyId, {
     to: employee.email,
     subject,
@@ -153,24 +145,17 @@ async function decideHoliday(id, payload, actor) {
   const emailed = emailResults.filter(result => result.status === 'fulfilled').length;
   emailResults.forEach((result, index) => {
     if (result.status === 'fulfilled') {
-      logger.info(`[holiday-debug] Email sent successfully to ${emailTargets[index]?.email}`);
-      console.log(`[holiday-debug] Email sent successfully to ${emailTargets[index]?.email}`);
-      if (emailTargets[index]._id !== 'debug-target') deliveredIds.add(String(emailTargets[index]._id));
+      deliveredIds.add(String(emailTargets[index]._id));
     } else {
-      const err = result.reason;
-      logger.error(`[holiday-debug] Email FAILED to ${emailTargets[index]?.email}:`, {
-        error: err?.message || String(err),
-        code: err?.code,
-        response: err?.response,
+      logger.error(`[holiday-email] Failed to send email to ${emailTargets[index]?.email}:`, {
+        error: result.reason?.message || String(result.reason),
       });
-      console.error(`[holiday-debug] Email FAILED to ${emailTargets[index]?.email}:`, err?.message || err);
     }
   });
   holiday.emailDeliveredTo = [...deliveredIds];
   holiday.employeeEmailFailedCount = emailResults.length - emailed;
   const emailRecipientCount = employees.filter(employee => employee.email).length;
-  // In debug mode, keep employeeEmailSentAt undefined so Retry button stays available for repeated testing
-  holiday.employeeEmailSentAt = undefined;
+  holiday.employeeEmailSentAt = deliveredIds.size >= emailRecipientCount ? new Date() : undefined;
   // Persist accepted recipients before attendance reconciliation. If a later
   // attendance adjustment fails, Retry Emails must not resend messages that
   // the SMTP provider already accepted.
