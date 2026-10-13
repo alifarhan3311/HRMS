@@ -14,10 +14,12 @@ import {
   X,
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
+import { useSearchParams } from 'react-router-dom';
 import { toast } from '../../../utils/toast';
 
 import {
   useListEmployeesQuery,
+  useGetEmployeeByIdQuery,
   useCreateEmployeeMutation,
   useUpdateEmployeeMutation,
   useInitializeEmployeeLeaveBalanceMutation,
@@ -376,6 +378,20 @@ export default function EmployeesListPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editEmployee, setEditEmployee] = useState(null);
   const [detailEmployee, setDetailEmployee] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const linkedEmployeeId = searchParams.get('employeeId');
+  const { currentData: linkedEmployee, isFetching: loadingLinkedEmployee, isError: linkedEmployeeError } = useGetEmployeeByIdQuery(linkedEmployeeId, { skip: !linkedEmployeeId });
+  useEffect(() => {
+    if (linkedEmployeeId && linkedEmployee?.data) setDetailEmployee(linkedEmployee.data);
+  }, [linkedEmployeeId, linkedEmployee]);
+  function closeEmployeeDetails() {
+    setDetailEmployee(null);
+    if (linkedEmployeeId) {
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('employeeId');
+      setSearchParams(nextParams, { replace: true });
+    }
+  }
   const [promoteEmployee, setPromoteEmployee] = useState(null);
   const [resetPasswordTarget, setResetPasswordTarget] = useState(null);
   const [leaveBalanceTarget, setLeaveBalanceTarget] = useState(null);
@@ -549,6 +565,8 @@ export default function EmployeesListPage() {
   return (
     <div className="space-y-6">
       {/* Page Header */}
+      {linkedEmployeeId && loadingLinkedEmployee && <p role="status" className="text-sm text-muted-foreground">Loading employee details...</p>}
+      {linkedEmployeeId && linkedEmployeeError && <p role="alert" className="text-sm text-destructive">Unable to open this employee. The record may be unavailable or outside your access.</p>}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -911,12 +929,12 @@ export default function EmployeesListPage() {
       <EmployeeDetailPanel
         employee={detailEmployee}
         isOpen={!!detailEmployee}
-        onClose={() => setDetailEmployee(null)}
-        onEdit={(emp) => { openEdit(emp); setDetailEmployee(null); }}
-        onStatusChange={(emp, status) => { setStatusTarget({ employee: emp, newStatus: status }); setDetailEmployee(null); }}
-        onPromote={(emp) => { setPromoteEmployee(emp); setDetailEmployee(null); }}
-        onResetPassword={(emp) => { setResetPasswordTarget(emp); setDetailEmployee(null); }}
-        onLeaveBalance={(emp) => { setLeaveBalanceTarget(emp); setDetailEmployee(null); }}
+        onClose={closeEmployeeDetails}
+        onEdit={(emp) => { openEdit(emp); closeEmployeeDetails(); }}
+        onStatusChange={(emp, status) => { setStatusTarget({ employee: emp, newStatus: status }); closeEmployeeDetails(); }}
+        onPromote={(emp) => { setPromoteEmployee(emp); closeEmployeeDetails(); }}
+        onResetPassword={(emp) => { setResetPasswordTarget(emp); closeEmployeeDetails(); }}
+        onLeaveBalance={(emp) => { setLeaveBalanceTarget(emp); closeEmployeeDetails(); }}
         canManage={canManageEmployee(detailEmployee)}
         canInitializeLeaveBalance={user?.role === 'hr'}
       />

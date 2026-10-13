@@ -8,6 +8,7 @@
  *  - Cancel with confirm
  */
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
@@ -241,7 +242,8 @@ export default function LeavesListPage() {
   const [reviewTarget, setReviewTarget] = useState(null); // { leave, action }
   const [remarkText, setRemarkText] = useState('');
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({ status: '', leaveType: '' });
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = useState({ status: searchParams.get('status') === 'pending' ? 'pending' : '', leaveType: '' });
 
   const { data: empData } = useGetEmployeeByIdQuery(user?.id, { skip: !user?.id });
   const balance = empData?.data?.leaveBalance;

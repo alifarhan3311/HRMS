@@ -20,10 +20,14 @@ import {
 } from 'recharts';
 import StatCard from '../../../components/ui/StatCard';
 import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import DashboardDetailsLink from './DashboardDetailsLink';
 
 const CHART_COLORS = ['#C9971F', '#22c55e', '#f59e0b', '#ef4444', '#8B5E34'];
 
 export default function HRDashboard({ data }) {
+  const role = useSelector((state) => state.auth.user?.role);
+  const canManageSettings = ['hr', 'super_admin'].includes(role);
   const attendanceData = Object.entries(data.attendanceSummary || {}).map(([name, value]) => ({
     name,
     value,
@@ -48,18 +52,21 @@ export default function HRDashboard({ data }) {
         <StatCard
           delay={0.00}
           title="Pending Leave Approvals"
+          to="/leaves?status=pending"
           value={data.pendingLeaveApprovals?.length ?? 0}
           icon={UserCheck}
         />
         <StatCard
           delay={0.06}
           title="Attendance Requests"
+          to="/attendance/approvals"
           value={data.pendingAttendanceRequests?.length ?? 0}
           icon={Clock}
         />
         <StatCard
           delay={0.12}
           title="Birthday Alerts"
+          to="/dashboard/alerts/birthdays"
           value={data.birthdayAlerts?.length ?? 0}
           subtitle="Next 30 days"
           icon={Cake}
@@ -67,13 +74,15 @@ export default function HRDashboard({ data }) {
         <StatCard
           delay={0.18}
           title="Probation Ending"
+          to="/dashboard/alerts/probation"
           value={data.probationAlerts?.length ?? 0}
-          subtitle="Next 30 days"
+          subtitle="Upcoming & recently ended"
           icon={Hourglass}
         />
         <StatCard
           delay={0.24}
           title="New Joinings"
+          to="/dashboard/alerts/joinings"
           value={data.newJoinings?.length ?? 0}
           subtitle="Last 30 days"
           icon={UserPlus}
@@ -81,6 +90,7 @@ export default function HRDashboard({ data }) {
         <StatCard
           delay={0.30}
           title="Resignations & Clearances"
+          to="/exits"
           value={data.resignationSummary?.actionRequired ?? data.resignationRequests?.length ?? 0}
           subtitle="Action required"
           icon={DoorOpen}
@@ -93,6 +103,7 @@ export default function HRDashboard({ data }) {
             <Users className="h-4 w-4" />
             Employee Statistics
           </h3>
+          <div className="mb-4"><DashboardDetailsLink to="/employees" /></div>
           <div className="space-y-3">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Total</span>
@@ -124,6 +135,7 @@ export default function HRDashboard({ data }) {
 
         <motion.div className="glass-card p-5">
           <h3 className="mb-2 font-semibold">Attendance Summary</h3>
+          <DashboardDetailsLink to="/attendance" />
           {attendanceData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -143,6 +155,7 @@ export default function HRDashboard({ data }) {
 
         <motion.div className="glass-card p-5">
           <h3 className="mb-2 font-semibold">Leave Requests This Month</h3>
+          <DashboardDetailsLink to="/leaves" />
           {leaveData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -162,6 +175,7 @@ export default function HRDashboard({ data }) {
 
         <motion.div className="glass-card p-5">
           <h3 className="mb-2 font-semibold">Configured Leave Entitlements</h3>
+          {canManageSettings && <DashboardDetailsLink to="/settings?tab=leave" />}
           {entitlementData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={entitlementData}>
@@ -207,7 +221,7 @@ export default function HRDashboard({ data }) {
                 {data.monthlyHoursSummary.map((row) => (
                   <tr key={row.employeeId} className="hover:bg-accent/20">
                     <td className="px-4 py-3">
-                      <p className="font-medium">{row.employeeName}</p>
+                      <Link to={`/employees?employeeId=${encodeURIComponent(row.employeeId)}`} className="font-medium hover:text-primary hover:underline">{row.employeeName}</Link>
                       <p className="text-xs text-muted-foreground">{row.employeeCode}</p>
                     </td>
                     <td className="px-4 py-3">{row.department}</td>
@@ -246,8 +260,9 @@ export default function HRDashboard({ data }) {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <motion.div className="glass-card p-5">
-          <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold">Pending Leave Approvals</h3>
+            <DashboardDetailsLink to="/leaves?status=pending" />
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
               {data.pendingLeaveApprovals?.length ?? 0}
             </span>
@@ -260,7 +275,7 @@ export default function HRDashboard({ data }) {
                   className="flex items-center justify-between rounded-lg border border-border px-3 py-2 text-sm"
                 >
                   <div>
-                    <p className="font-medium">{leave.employeeId?.fullName || 'Employee'}</p>
+                    <Link to="/leaves?status=pending" className="font-medium hover:text-primary hover:underline">{leave.employeeId?.fullName || 'Employee'}</Link>
                     <p className="text-xs capitalize text-muted-foreground">
                       {leave.leaveType} leave · {new Date(leave.startDate).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })}
                       {leave.endDate && new Date(leave.endDate).toDateString() !== new Date(leave.startDate).toDateString()
@@ -281,11 +296,12 @@ export default function HRDashboard({ data }) {
         </motion.div>
 
         <motion.div className="glass-card p-5">
-          <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-semibold flex items-center gap-2">
               <CalendarDays className="h-4 w-4" />
               Upcoming Holidays
             </h3>
+            {canManageSettings && <DashboardDetailsLink to="/settings?tab=holidays" />}
             <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
               {(data.upcomingHolidays || data.holidays || []).length}
             </span>
@@ -327,13 +343,14 @@ export default function HRDashboard({ data }) {
             <Cake className="h-4 w-4 text-pink-500" />
             Upcoming Birthdays (Next 30 Days)
           </h3>
+          <div className="mb-4"><DashboardDetailsLink to="/dashboard/alerts/birthdays" /></div>
           <div className="flex flex-wrap gap-2">
             {data.birthdayAlerts.map((emp) => (
               <div
                 key={emp._id}
                 className="rounded-xl border border-pink-200 bg-pink-50 px-3 py-2 text-sm dark:border-pink-900/40 dark:bg-pink-900/20"
               >
-                <p className="font-medium">{emp.fullName}</p>
+                <Link to={`/employees?employeeId=${encodeURIComponent(emp._id)}`} className="font-medium hover:text-primary hover:underline">{emp.fullName}</Link>
                 <p className="text-xs text-muted-foreground">
                   {emp.daysUntil === 0 ? 'Today' : emp.daysUntil === 1 ? 'Tomorrow' : `In ${emp.daysUntil} days`}
                   {' · '}{new Date(emp.nextBirthday).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })}
@@ -350,6 +367,7 @@ export default function HRDashboard({ data }) {
                 Upcoming Birthdays
               </h3>
               <p className="text-sm text-muted-foreground">No upcoming birthdays in the next 30 days.</p>
+              <div className="mt-3"><DashboardDetailsLink to="/dashboard/alerts/birthdays" /></div>
             </motion.div>
           )}
 
@@ -357,8 +375,10 @@ export default function HRDashboard({ data }) {
             <motion.div className="glass-card p-5">
               <h3 className="mb-3 font-semibold flex items-center gap-2">
                 <Hourglass className="h-4 w-4 text-amber-500" />
-                Probation Ending Alerts (Next 30 Days)
+                Probation Ending Alerts
               </h3>
+              <p className="mb-3 text-xs text-muted-foreground">Next 30 days & recently ended</p>
+              <div className="mb-4"><DashboardDetailsLink to="/dashboard/alerts/probation" /></div>
               <div className="flex flex-wrap gap-2">
                 {data.probationAlerts.map((emp) => (
                   <div
@@ -369,7 +389,7 @@ export default function HRDashboard({ data }) {
                         : 'border-blue-200 bg-blue-50 dark:border-blue-900/40 dark:bg-blue-900/20'
                     }`}
                   >
-                    <p className="font-medium">{emp.fullName}</p>
+                    <Link to={`/employees?employeeId=${encodeURIComponent(emp._id)}`} className="font-medium hover:text-primary hover:underline">{emp.fullName}</Link>
                     <p className="text-xs text-muted-foreground">
                       <span className={emp.daysUntil <= 3 ? 'font-semibold text-amber-600 dark:text-amber-400' : ''}>
                         {emp.daysUntil === 0
@@ -394,17 +414,18 @@ export default function HRDashboard({ data }) {
                 Probation Alerts
               </h3>
               <p className="text-sm text-muted-foreground">No employees with probation ending soon.</p>
+              <div className="mt-3"><DashboardDetailsLink to="/dashboard/alerts/probation" /></div>
             </motion.div>
           )}
 
           {(data.resignationRequests || []).length > 0 ? (
             <motion.div className="glass-card p-5">
-              <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-semibold flex items-center gap-2">
                   <DoorOpen className="h-4 w-4 text-primary" />
                   Resignations & Clearances
                 </h3>
-                <Link to="/exits" className="text-xs font-semibold text-primary hover:underline">Open</Link>
+                <DashboardDetailsLink to="/exits" />
               </div>
               <div className="space-y-2">
                 {data.resignationRequests.slice(0, 6).map((request) => {
@@ -423,7 +444,7 @@ export default function HRDashboard({ data }) {
                     <div key={request._id} className="rounded-xl border border-border px-3 py-2 text-sm">
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="font-medium">{request.employeeId?.fullName || 'Employee'}</p>
+                          <Link to={`/employees?employeeId=${encodeURIComponent(request.employeeId?._id || request.employeeId)}`} className="font-medium hover:text-primary hover:underline">{request.employeeId?.fullName || 'Employee'}</Link>
                           <p className="text-xs text-muted-foreground">{statusLabel} · Last day: {dateLabel}</p>
                         </div>
                         {typeof days === 'number' && (
@@ -444,6 +465,7 @@ export default function HRDashboard({ data }) {
                 Resignations & Clearances
               </h3>
               <p className="text-sm text-muted-foreground">No active resignation or clearance requests.</p>
+              <div className="mt-3"><DashboardDetailsLink to="/exits" /></div>
             </motion.div>
           )}
         </div>

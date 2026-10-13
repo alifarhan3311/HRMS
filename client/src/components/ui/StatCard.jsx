@@ -5,6 +5,7 @@
  */
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 function AnimatedNumber({ value }) {
   const numeric = typeof value === 'number' ? value : parseFloat(String(value).replace(/[^0-9.-]/g, ''));
@@ -27,18 +28,18 @@ function AnimatedNumber({ value }) {
   return <>{prefix}{display.toLocaleString()}{suffix}</>;
 }
 
-export default function StatCard({ title, value, subtitle, icon: Icon, trend, delay = 0, className = '' }) {
+export default function StatCard({ title, value, subtitle, icon: Icon, trend, delay = 0, className = '', to }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.4, delay, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -4, transition: { duration: 0.2 } }}
-      className={`stat-card group cursor-default ${className}`}
+      className={`stat-card group relative ${to ? 'cursor-pointer' : 'cursor-default'} ${className}`}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <p className="text-sm font-medium text-muted-foreground">{to ? <Link to={to} className="after:absolute after:inset-0 after:rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">{title}</Link> : title}</p>
           <p className="text-2xl font-bold tracking-tight">
             <AnimatedNumber value={value} />
           </p>
