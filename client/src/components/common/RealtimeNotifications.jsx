@@ -23,7 +23,7 @@ const ALL_LIVE_TAGS = [
   'Dashboard', 'Employees', 'Attendance', 'Leaves', 'Payroll', 'Expenses',
   'ExpenseCategories', 'Projects', 'Holidays', 'Shifts', 'Notifications',
   'AccountingTasks',
-  'Settings', 'Reports',
+  'Settings', 'Reports', 'Rules',
 ];
 
 export default function RealtimeNotifications() {

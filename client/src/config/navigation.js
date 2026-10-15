@@ -8,7 +8,7 @@ import {
   Receipt, FolderKanban, Settings, FileText, UserPlus,
   GraduationCap, Package, BarChart3, MessageSquare,
   TrendingUp, Bell, Building2, Shield, DoorOpen, ListChecks, ClipboardCheck,
-  BadgeDollarSign,
+  BadgeDollarSign, BookOpen,
 } from 'lucide-react';
 
 export const ROLES = {
@@ -62,6 +62,10 @@ export const NAV_GROUPS = [
       {
         id: 'exits', label: 'Resignation & Exit', path: '/exits',
         icon: DoorOpen, roles: 'all',
+      },
+      {
+        id: 'rules', label: 'Rules & Regulations', path: '/rules',
+        icon: BookOpen, roles: 'all',
       },
     ],
   },

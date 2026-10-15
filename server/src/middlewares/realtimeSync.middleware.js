@@ -1,6 +1,7 @@
 const { emitToCompany } = require('../config/socket');
 
 const RESOURCE_TAGS = {
+  rules: ['Rules'],
   employees: ['Employees', 'Auth', 'Attendance', 'Leaves', 'Payroll', 'Dashboard', 'Projects', 'Reports'],
   attendance: ['Attendance', 'Payroll', 'Dashboard', 'Reports'],
   leaves: ['Leaves', 'Employees', 'Attendance', 'Payroll', 'Dashboard', 'Reports'],

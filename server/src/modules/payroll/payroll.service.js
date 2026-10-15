@@ -247,7 +247,21 @@ async function getAttendanceData(employee, month, year) {
 }
 
 // ─── Generate / Create ────────────────────────────────────────────────────────
+function validateGenerationOptions(payload, actor) {
+  if (!Number.isInteger(payload.month) || payload.month < 1 || payload.month > 12
+    || !Number.isInteger(payload.year) || payload.year < 2000 || payload.year > 2100) {
+    throw createHttpError(400, 'Select a valid payroll month and year.');
+  }
+  if (payload.approveImmediately !== undefined && typeof payload.approveImmediately !== 'boolean') {
+    throw createHttpError(400, 'approveImmediately must be a boolean.');
+  }
+  if (payload.approveImmediately && !['admin', 'super_admin', 'hr'].includes(actor.role)) {
+    throw createHttpError(403, 'You cannot approve payroll.');
+  }
+}
+
 async function generatePayslip(payload, actor) {
+  validateGenerationOptions(payload, actor);
   const { employeeId, month, year, allowanceItems = [], bonus = 0, incentives = 0,
     loanDeduction = 0, advanceSalary = 0, notes } = payload;
 
@@ -377,30 +391,47 @@ async function generatePayslip(payload, actor) {
     halfDayDeduction,
     lateDeduction,
     unpaidLeaveDeduction,
-    status: 'draft',
+    // Save approval together with generation; the shortcut never marks salary paid.
+    status: payload.approveImmediately ? 'approved' : 'draft',
+    ...(payload.approveImmediately ? { approvedBy: actor.id, approvedAt: new Date() } : {}),
     notes: notes || '',
     companyId: actor.companyId,
   });
 
-  return payslip.toObject({ getters: true });
+  const result = payslip.toObject({ getters: true });
+  if (payload.approveImmediately) {
+    try {
+      await notifyEmployee(payslip, 'payslip_approved', 'Payslip approved',
+        `Your payslip for ${month}/${year} has been approved.`, 'approved');
+    } catch {
+      // The saved approval remains successful even if notification delivery fails.
+      result.notificationWarning = true;
+    }
+  }
+  return result;
 }
 
 async function bulkGeneratePayslips(payload, actor) {
+  validateGenerationOptions(payload, actor);
   const { month, year, department } = payload;
   const filter = { companyId: actor.companyId, status: 'active' };
   if (department) filter.department = department;
   
   const employees = await Employee.find(filter);
   let generatedCount = 0;
+  let skippedCount = 0;
+  let notificationWarningCount = 0;
+  const failures = [];
   
   for (const employee of employees) {
-    if (!employee.currentSalary || Number(employee.currentSalary) <= 0) continue;
-    
-    const existing = await repository.findByEmployeeAndPeriod(employee._id, month, year);
-    if (existing) continue; // Skip if already generated
-
     try {
-      await generatePayslip({
+      if (!employee.currentSalary || Number(employee.currentSalary) <= 0) {
+        failures.push({ employeeId: employee._id, name: employee.fullName, reason: 'Salary is not configured.' });
+        continue;
+      }
+      const existing = await repository.findByEmployeeAndPeriod(employee._id, month, year);
+      if (existing) { skippedCount++; continue; }
+      const result = await generatePayslip({
         employeeId: employee._id,
         month,
         year,
@@ -409,15 +440,18 @@ async function bulkGeneratePayslips(payload, actor) {
         incentives: 0,
         loanDeduction: 0,
         advanceSalary: 0,
-        notes: 'Bulk generated'
+        notes: 'Bulk generated',
+        approveImmediately: payload.approveImmediately,
       }, actor);
       generatedCount++;
+      if (result.notificationWarning) notificationWarningCount++;
     } catch (err) {
-      // Ignore errors for individual employees during bulk generation
+      if (err.status === 409 || err.code === 11000) skippedCount++;
+      else failures.push({ employeeId: employee._id, name: employee.fullName, reason: err.expose ? err.message : 'Could not generate payslip.' });
     }
   }
   
-  return { generatedCount };
+  return { generatedCount, skippedCount, failedCount: failures.length, failures, notificationWarningCount };
 }
 
 // ─── Update payslip (before approval) ────────────────────────────────────────

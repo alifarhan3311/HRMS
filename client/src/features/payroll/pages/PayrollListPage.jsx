@@ -513,9 +513,11 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (isLoading) return;
     if (!form.employeeId) { toast.error('Please select an employee'); return; }
     const saved = await onSubmit({
       ...form,
+      approveImmediately: e.nativeEvent.submitter?.value !== 'draft',
       month: Number(form.month),
       year: Number(form.year),
       bonus: Number(form.bonus) || 0,
@@ -532,6 +534,7 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
   return (
     <form onSubmit={handleSubmit}>
       <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
+        <p className="rounded-lg bg-primary/10 p-3 text-sm">Select employees and a month, then Generate &amp; Approve. Mark Paid separately after payment. Use Save Draft only if you want to review first.</p>
         <Select label="Employee" required value={form.employeeId} onChange={(e) => set('employeeId', e.target.value)}>
           <option value="">Select employee</option>
           <option value="ALL" className="font-bold text-primary">✅ Bulk Generate All Employees</option>
@@ -550,11 +553,13 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
           <Select label="Month" value={form.month} onChange={(e) => set('month', e.target.value)}>
             {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
           </Select>
-          <Input label="Year" type="number" value={form.year} onChange={(e) => set('year', e.target.value)} />
+          <Input label="Year" type="number" required min="2000" max="2100" value={form.year} onChange={(e) => set('year', e.target.value)} />
         </div>
 
         {String(form.employeeId) !== 'ALL' && !String(form.employeeId).startsWith('BULK_') && (
-          <>
+          <details className="rounded-lg border border-border p-3" open={Boolean(form.bonus || form.incentives || form.loanDeduction || form.advanceSalary || form.notes || form.allowanceItems.some(a => a.amount)) || undefined}>
+            <summary className="cursor-pointer text-sm font-medium">Optional adjustments — allowances, bonus &amp; deductions</summary>
+            <div className="mt-4 space-y-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-sm font-medium">Allowances</label>
@@ -580,20 +585,22 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
               <Input label="Advance Salary (PKR)" type="number" sensitive placeholder="0" value={form.advanceSalary} onChange={(e) => set('advanceSalary', e.target.value)} />
             </div>
             <Input label="Notes" placeholder="Optional notes..." value={form.notes} onChange={(e) => set('notes', e.target.value)} />
-          </>
+            </div>
+          </details>
         )}
         
         {(String(form.employeeId) === 'ALL' || String(form.employeeId).startsWith('BULK_')) && (
           <div className="p-4 bg-primary/10 text-primary rounded-lg text-sm font-medium">
-            Note: Custom allowances, bonuses, and deductions are disabled during bulk generation. Payslips will be generated using base salary and attendance records only. You can edit individual payslips after generation if needed.
+            Generates payroll for the selected group using saved salary, attendance and fines. Existing payslips are skipped, not overwritten. For custom allowances or deductions, select an individual employee.
           </div>
         )}
       </div>
       <ModalFooter>
-        <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-        <Button type="submit" variant="primary" size="sm" disabled={isLoading} className="gap-1.5">
-          <Wallet className="h-4 w-4" /> {isLoading ? 'Generating...' : 'Generate Payslip'}
+        <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={isLoading}>Cancel</Button>
+        <Button type="submit" name="generationAction" value="approve" variant="primary" size="sm" disabled={isLoading} className="gap-1.5">
+          <CheckCircle2 className="h-4 w-4" /> {isLoading ? 'Generating...' : 'Generate & Approve'}
         </Button>
+        <Button type="submit" name="generationAction" value="draft" variant="secondary" size="sm" disabled={isLoading}>Save Draft</Button>
       </ModalFooter>
     </form>
   );
@@ -683,12 +690,18 @@ export default function PayrollListPage() {
   async function handleGenerate(payload) {
     if (String(payload.employeeId) === 'ALL' || String(payload.employeeId).startsWith('BULK_')) {
       try {
-        const bulkPayload = { month: payload.month, year: payload.year };
+        const bulkPayload = { month: payload.month, year: payload.year, approveImmediately: payload.approveImmediately };
         if (String(payload.employeeId).startsWith('BULK_')) {
           bulkPayload.department = payload.employeeId.replace('BULK_', '');
         }
         const res = await bulkGeneratePayroll(bulkPayload).unwrap();
-        toast.success(`Generated ${res.data?.generatedCount || 0} payslips in bulk`);
+        const result = res.data || {};
+        const message = `${result.generatedCount || 0} ${payload.approveImmediately ? 'generated & approved' : 'drafts saved'} · ${result.skippedCount || 0} already exist · ${result.failedCount || 0} failed`;
+        if (result.failedCount) toast.error(`${message}. ${result.failures?.map(item => `${item.name}: ${item.reason}`).join('; ') || ''}`);
+        else toast.success(message);
+        if (result.notificationWarningCount) toast.error(`${result.notificationWarningCount} payslip(s) saved, but employee notifications could not be delivered.`);
+        setFilters(previous => ({ ...previous, month: String(payload.month), year: String(payload.year), status: payload.approveImmediately ? 'approved' : 'draft' }));
+        setPage(1);
         setGenerateOpen(false);
         return true;
       } catch (err) {
@@ -697,7 +710,15 @@ export default function PayrollListPage() {
       }
     }
 
-    try { await generatePayroll(payload).unwrap(); toast.success('Payslip generated'); setGenerateOpen(false); return true; }
+    try {
+      const result = await generatePayroll(payload).unwrap();
+      toast.success(payload.approveImmediately ? 'Payslip generated & approved. Mark Paid after payment.' : 'Draft saved');
+      if (result.data?.notificationWarning) toast.error('Payslip saved, but the employee notification could not be delivered.');
+      setFilters(previous => ({ ...previous, month: String(payload.month), year: String(payload.year), status: payload.approveImmediately ? 'approved' : 'draft' }));
+      setPage(1);
+      setGenerateOpen(false);
+      return true;
+    }
     catch (err) { toast.error(err?.data?.error?.message || 'Failed to generate payslip'); return false; }
   }
 
@@ -1043,8 +1064,8 @@ export default function PayrollListPage() {
           ) : (
             <>
               {/* Header row */}
-              <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_1fr_60px] gap-3 px-5 py-2.5 border-b border-border bg-muted/30">
-                {['Employee','Period','Gross','Deductions','Net Salary','Status','Generated',''].map(h => (
+              <div className="hidden md:grid grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_1fr_130px] gap-3 px-5 py-2.5 border-b border-border bg-muted/30">
+                {['Employee','Period','Gross','Deductions','Net Salary','Status','Generated','Actions'].map(h => (
                   <span key={h} className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{h}</span>
                 ))}
               </div>
@@ -1055,7 +1076,7 @@ export default function PayrollListPage() {
                   return (
                     <motion.div key={p._id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.025 }}
-                      className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_1fr_60px] gap-3 px-5 py-3.5 hover:bg-accent/30 transition-colors cursor-pointer group"
+                      className="grid grid-cols-1 md:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_1fr_130px] gap-3 px-5 py-3.5 hover:bg-accent/30 transition-colors cursor-pointer group"
                       onClick={() => setDetailPayslip(p)}>
                       <div className="flex items-center gap-3 min-w-0">
                         <Avatar name={p.employeeId?.fullName} size="sm" />
@@ -1082,8 +1103,10 @@ export default function PayrollListPage() {
                       <div className="flex items-center">
                         <span className="text-xs text-muted-foreground">{fmtDate(p.createdAt)}</span>
                       </div>
-                      <div className="flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground"
+                      <div className="flex flex-wrap items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                        {canApprove && ['draft', 'pending_approval'].includes(p.status) && <Button size="sm" variant="secondary" disabled={isActioning} onClick={() => handleAction('approve', p._id)}>Approve</Button>}
+                        {canGenerate && p.status === 'approved' && <Button size="sm" disabled={isActioning} onClick={() => handleAction('paid', p._id)}>Mark Paid</Button>}
+                        <button aria-label={`View payslip for ${p.employeeId?.fullName || 'employee'}`} className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground"
                           onClick={(e) => { e.stopPropagation(); setDetailPayslip(p); }}>
                           <FileText className="h-4 w-4" />
                         </button>
