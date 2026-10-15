@@ -7,8 +7,8 @@ import RuleContent from './RuleContent';
 const TYPES = { heading: 'Heading', paragraph: 'Text', bullets: 'Bullet list', numbered: 'Numbered list' };
 const fieldClass = 'w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15';
 
-export default function RuleEditor({ rule, onSave, onClose, saving }) {
-  const [form, setForm] = useState({ title: rule?.title || '', summary: rule?.summary || '', blocks: rule?.blocks?.map(block => ({ ...block })) || [{ type: 'paragraph', text: '' }] });
+export default function RuleEditor({ rule, departments = [], onSave, onClose, saving }) {
+  const [form, setForm] = useState({ title: rule?.title || '', summary: rule?.summary || '', audience: rule?.audience || 'all', department: rule?.department || '', blocks: rule?.blocks?.map(block => ({ ...block })) || [{ type: 'paragraph', text: '' }] });
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
   const [error, setError] = useState('');
@@ -25,18 +25,26 @@ export default function RuleEditor({ rule, onSave, onClose, saving }) {
     if (!form.title.trim() || form.blocks.some(block => !block.text.trim())) {
       setError('Add a title and fill every content block, or remove empty blocks.'); return;
     }
+    if (form.audience === 'department' && !form.department) {
+      setError('Select the department this regulation applies to.'); return;
+    }
     setError('');
     try { await onSave({ ...form, ...(rule ? { revision: rule.revision } : {}) }); }
     catch (err) { setError(err?.data?.error?.message || 'Unable to save. Your changes are still here; please try again.'); }
   }
   return <div className="space-y-5">
     <button type="button" disabled={saving} onClick={() => dirty ? setDiscard(true) : onClose()} className="inline-flex items-center gap-2 text-sm text-primary"><ArrowLeft className="h-4 w-4" />Back to handbook</button>
-    <div><p className="text-xs font-semibold uppercase tracking-widest text-primary">HR EDITOR</p><h1 className="mt-1 text-2xl font-bold">{rule ? 'Edit regulation' : 'Create a regulation'}</h1><p className="mt-1 text-sm text-muted-foreground">Build your document with headings, text and lists. Saving makes it visible to everyone in your company.</p></div>
+    <div><p className="text-xs font-semibold uppercase tracking-widest text-primary">HR EDITOR</p><h1 className="mt-1 text-2xl font-bold">{rule ? 'Edit regulation' : 'Create a regulation'}</h1><p className="mt-1 text-sm text-muted-foreground">Choose who can see it, then build it with headings, text and lists.</p></div>
     <form onSubmit={submit} className="grid items-start gap-6 xl:grid-cols-2">
       <fieldset disabled={saving} className="min-w-0 space-y-4">
         <div className="glass-card space-y-4 p-5">
           <label className="block space-y-2 text-sm font-medium"><span>Title *</span><input required maxLength={160} className={fieldClass} value={form.title} onChange={e => update({ title: e.target.value })} placeholder="e.g. Workplace guidelines" /></label>
           <label className="block space-y-2 text-sm font-medium"><span>Short introduction <span className="font-normal text-muted-foreground">(optional)</span></span><textarea rows={2} maxLength={300} className={fieldClass} value={form.summary} onChange={e => update({ summary: e.target.value })} placeholder="A short overview of this regulation" /></label>
+          <fieldset className="space-y-3 rounded-xl border border-border bg-muted/20 p-4"><legend className="px-1 text-sm font-semibold">Who can see this regulation? *</legend>
+            <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${form.audience === 'all' ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}><input type="radio" name="audience" value="all" checked={form.audience === 'all'} onChange={() => update({ audience: 'all', department: '' })} /><span><span className="block text-sm font-medium">All Departments</span><span className="text-xs text-muted-foreground">Every employee can see this rule.</span></span></label>
+            <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${form.audience === 'department' ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}><input type="radio" name="audience" value="department" checked={form.audience === 'department'} onChange={() => update({ audience: 'department' })} /><span><span className="block text-sm font-medium">Specific Department</span><span className="text-xs text-muted-foreground">Only employees in the selected department can see it.</span></span></label>
+            {form.audience === 'department' && <label className="block space-y-2 text-sm font-medium"><span>Department *</span><select required className={fieldClass} value={form.department} onChange={e => update({ department: e.target.value })}><option value="">Select department</option>{departments.map(department => <option key={department} value={department}>{department}</option>)}</select>{!departments.length && <span className="block text-xs font-normal text-destructive">No departments are available. Create a department first in Employees.</span>}</label>}
+          </fieldset>
         </div>
         {form.blocks.map((block, index) => <div key={index} className="glass-card p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -56,7 +64,7 @@ export default function RuleEditor({ rule, onSave, onClose, saving }) {
       </fieldset>
       <aside className="glass-card min-w-0 overflow-hidden xl:sticky xl:top-4">
         <div className="flex items-center gap-2 border-b border-border bg-primary/5 px-6 py-3 text-xs font-semibold uppercase tracking-widest text-primary"><Eye className="h-4 w-4" />Live preview</div>
-        <div className="max-h-[75vh] space-y-6 overflow-y-auto p-6 sm:p-8"><div><h2 className="break-words text-2xl font-bold">{form.title || 'Your regulation title'}</h2>{form.summary && <p className="mt-3 whitespace-pre-wrap break-words text-muted-foreground">{form.summary}</p>}</div><RuleContent blocks={form.blocks} /></div>
+        <div className="max-h-[75vh] space-y-6 overflow-y-auto p-6 sm:p-8"><div><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{form.audience === 'all' ? 'All Departments' : form.department ? `Department: ${form.department}` : 'Specific Department'}</span><h2 className="mt-3 break-words text-2xl font-bold">{form.title || 'Your regulation title'}</h2>{form.summary && <p className="mt-3 whitespace-pre-wrap break-words text-muted-foreground">{form.summary}</p>}</div><RuleContent blocks={form.blocks} /></div>
       </aside>
     </form>
     <ConfirmDialog isOpen={discard} title="Discard unsaved changes?" message="Your unsaved edits will be lost. Published regulations will not be changed." confirmLabel="Discard Changes" onCancel={() => setDiscard(false)} onConfirm={onClose} />

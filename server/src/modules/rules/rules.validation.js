@@ -4,6 +4,10 @@ const createHttpError = require('http-errors');
 const content = {
   title: Joi.string().trim().max(160).required(),
   summary: Joi.string().trim().allow('').max(300).default(''),
+  audience: Joi.string().valid('all', 'department').default('all'),
+  department: Joi.when('audience', {
+    is: 'department', then: Joi.string().trim().max(100).required(), otherwise: Joi.valid(null, '').default(null),
+  }),
   blocks: Joi.array().min(1).max(40).items(Joi.object({
     type: Joi.string().valid('heading', 'paragraph', 'bullets', 'numbered').required(),
     text: Joi.string().trim().max(10000).required(),
@@ -18,6 +22,9 @@ const schemas = {
 function validatePayload(input, action) {
   const { error, value } = schemas[action].required().validate(input, { abortEarly: true, convert: true });
   if (error) throw createHttpError(400, error.details[0].message);
+  value.department = value.audience === 'department'
+    ? String(value.department).trim().replace(/\s+/g, ' ').toLowerCase()
+    : null;
   for (const block of value.blocks || []) {
     if (block.type === 'heading' && block.text.length > 200) throw createHttpError(400, 'Headings can contain up to 200 characters.');
     if (['bullets', 'numbered'].includes(block.type)) {
