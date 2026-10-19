@@ -29,15 +29,15 @@ async function list(actor) {
     $or: [
       { audience: 'all' },
       { audience: { $exists: false } }, // Rules created before audience targeting are company-wide.
-      ...(department ? [{ audience: 'department', department }] : []),
+      ...(department ? [{ audience: 'department', department }, { audience: 'department', departments: department }] : []),
     ],
   }).sort({ createdAt: -1, _id: -1 }).lean();
 }
 async function validateAudience(data, actor) {
   if (data.audience !== 'department') return data;
   const departments = await employeeService.getDepartmentList(actor.companyId);
-  if (!departments.includes(data.department)) {
-    throw createHttpError(422, 'Select a valid department for this regulation.');
+  if (!data.departments.length || data.departments.some(department => !departments.includes(department))) {
+    throw createHttpError(422, 'Select one or more valid departments for this regulation.');
   }
   return data;
 }

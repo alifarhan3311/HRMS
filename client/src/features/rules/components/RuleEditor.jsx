@@ -8,7 +8,7 @@ const TYPES = { heading: 'Heading', paragraph: 'Text', bullets: 'Bullet list', n
 const fieldClass = 'w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15';
 
 export default function RuleEditor({ rule, departments = [], onSave, onClose, saving }) {
-  const [form, setForm] = useState({ title: rule?.title || '', summary: rule?.summary || '', audience: rule?.audience || 'all', department: rule?.department || '', blocks: rule?.blocks?.map(block => ({ ...block })) || [{ type: 'paragraph', text: '' }] });
+  const [form, setForm] = useState({ title: rule?.title || '', summary: rule?.summary || '', audience: rule?.audience || 'all', departments: rule?.departments?.length ? rule.departments : rule?.department ? [rule.department] : [], blocks: rule?.blocks?.map(block => ({ ...block })) || [{ type: 'paragraph', text: '' }] });
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
   const [error, setError] = useState('');
@@ -25,8 +25,8 @@ export default function RuleEditor({ rule, departments = [], onSave, onClose, sa
     if (!form.title.trim() || form.blocks.some(block => !block.text.trim())) {
       setError('Add a title and fill every content block, or remove empty blocks.'); return;
     }
-    if (form.audience === 'department' && !form.department) {
-      setError('Select the department this regulation applies to.'); return;
+    if (form.audience === 'department' && !form.departments.length) {
+      setError('Select at least one department this regulation applies to.'); return;
     }
     setError('');
     try { await onSave({ ...form, ...(rule ? { revision: rule.revision } : {}) }); }
@@ -41,9 +41,9 @@ export default function RuleEditor({ rule, departments = [], onSave, onClose, sa
           <label className="block space-y-2 text-sm font-medium"><span>Title *</span><input required maxLength={160} className={fieldClass} value={form.title} onChange={e => update({ title: e.target.value })} placeholder="e.g. Workplace guidelines" /></label>
           <label className="block space-y-2 text-sm font-medium"><span>Short introduction <span className="font-normal text-muted-foreground">(optional)</span></span><textarea rows={2} maxLength={300} className={fieldClass} value={form.summary} onChange={e => update({ summary: e.target.value })} placeholder="A short overview of this regulation" /></label>
           <fieldset className="space-y-3 rounded-xl border border-border bg-muted/20 p-4"><legend className="px-1 text-sm font-semibold">Who can see this regulation? *</legend>
-            <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${form.audience === 'all' ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}><input type="radio" name="audience" value="all" checked={form.audience === 'all'} onChange={() => update({ audience: 'all', department: '' })} /><span><span className="block text-sm font-medium">All Departments</span><span className="text-xs text-muted-foreground">Every employee can see this rule.</span></span></label>
-            <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${form.audience === 'department' ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}><input type="radio" name="audience" value="department" checked={form.audience === 'department'} onChange={() => update({ audience: 'department' })} /><span><span className="block text-sm font-medium">Specific Department</span><span className="text-xs text-muted-foreground">Only employees in the selected department can see it.</span></span></label>
-            {form.audience === 'department' && <label className="block space-y-2 text-sm font-medium"><span>Department *</span><select required className={fieldClass} value={form.department} onChange={e => update({ department: e.target.value })}><option value="">Select department</option>{departments.map(department => <option key={department} value={department}>{department}</option>)}</select>{!departments.length && <span className="block text-xs font-normal text-destructive">No departments are available. Create a department first in Employees.</span>}</label>}
+            <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${form.audience === 'all' ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}><input type="radio" name="audience" value="all" checked={form.audience === 'all'} onChange={() => update({ audience: 'all', departments: [] })} /><span><span className="block text-sm font-medium">All Departments</span><span className="text-xs text-muted-foreground">Every employee can see this rule.</span></span></label>
+            <label className={`flex cursor-pointer gap-3 rounded-lg border p-3 ${form.audience === 'department' ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}><input type="radio" name="audience" value="department" checked={form.audience === 'department'} onChange={() => update({ audience: 'department' })} /><span><span className="block text-sm font-medium">Specific Departments</span><span className="text-xs text-muted-foreground">Choose one or more departments that can see this rule.</span></span></label>
+            {form.audience === 'department' && <div className="space-y-2"><p className="text-sm font-medium">Select departments *</p><div className="grid max-h-48 gap-2 overflow-y-auto rounded-xl border border-border bg-background p-3 sm:grid-cols-2">{departments.map(department => <label key={department} className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-muted"><input type="checkbox" checked={form.departments.includes(department)} onChange={event => update({ departments: event.target.checked ? [...form.departments, department] : form.departments.filter(item => item !== department) })} />{department}</label>)}</div>{!departments.length && <span className="block text-xs font-normal text-destructive">No departments are available. Create a department first in Employees.</span>}</div>}
           </fieldset>
         </div>
         {form.blocks.map((block, index) => <div key={index} className="glass-card p-4">
@@ -64,7 +64,7 @@ export default function RuleEditor({ rule, departments = [], onSave, onClose, sa
       </fieldset>
       <aside className="glass-card min-w-0 overflow-hidden xl:sticky xl:top-4">
         <div className="flex items-center gap-2 border-b border-border bg-primary/5 px-6 py-3 text-xs font-semibold uppercase tracking-widest text-primary"><Eye className="h-4 w-4" />Live preview</div>
-        <div className="max-h-[75vh] space-y-6 overflow-y-auto p-6 sm:p-8"><div><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{form.audience === 'all' ? 'All Departments' : form.department ? `Department: ${form.department}` : 'Specific Department'}</span><h2 className="mt-3 break-words text-2xl font-bold">{form.title || 'Your regulation title'}</h2>{form.summary && <p className="mt-3 whitespace-pre-wrap break-words text-muted-foreground">{form.summary}</p>}</div><RuleContent blocks={form.blocks} /></div>
+        <div className="max-h-[75vh] space-y-6 overflow-y-auto p-6 sm:p-8"><div><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{form.audience === 'all' ? 'All Departments' : form.departments.length ? form.departments.join(' · ') : 'Select Departments'}</span><h2 className="mt-3 break-words text-2xl font-bold">{form.title || 'Your regulation title'}</h2>{form.summary && <p className="mt-3 whitespace-pre-wrap break-words text-muted-foreground">{form.summary}</p>}</div><RuleContent blocks={form.blocks} /></div>
       </aside>
     </form>
     <ConfirmDialog isOpen={discard} title="Discard unsaved changes?" message="Your unsaved edits will be lost. Published regulations will not be changed." confirmLabel="Discard Changes" onCancel={() => setDiscard(false)} onConfirm={onClose} />

@@ -15,17 +15,18 @@ test('validates structured content and normalizes list items', () => {
   assert.equal(result.blocks[2].text, 'Item one\nItem two');
   assert.equal(result.blocks[3].type, 'numbered');
   assert.equal(result.audience, 'all');
-  assert.equal(result.department, null);
+  assert.deepEqual(result.departments, []);
 });
-test('requires a valid department only for department-specific regulations', async t => {
-  const departmentPayload = { ...payload, audience: 'department', department: ' Accounting ' };
-  assert.equal(validatePayload(departmentPayload, 'create').department, 'accounting');
+test('requires valid selected departments for department-specific regulations', async t => {
+  const departmentPayload = { ...payload, audience: 'department', departments: [' Accounting ', 'OPERATIONS'] };
+  assert.deepEqual(validatePayload(departmentPayload, 'create').departments, ['accounting', 'operations']);
   t.mock.method(employeeService, 'getDepartmentList', async () => ['accounting', 'operations']);
   t.mock.method(Rule, 'create', async data => data);
   const created = await service.create(departmentPayload, hr);
   assert.equal(created.audience, 'department');
-  assert.equal(created.department, 'accounting');
-  await assert.rejects(service.create({ ...departmentPayload, department: 'unknown' }, hr), { status: 422 });
+  assert.deepEqual(created.departments, ['accounting', 'operations']);
+  await assert.rejects(service.create({ ...departmentPayload, departments: ['accounting', 'unknown'] }, hr), { status: 422 });
+  assert.throws(() => validatePayload({ ...payload, audience: 'department', departments: [] }, 'create'), { status: 400 });
 });
 test('rejects empty, oversized, unknown block types and unauthorized fields', () => {
   for (const data of [
@@ -96,7 +97,8 @@ test('non-HR users receive company-wide rules plus only their department rules',
   await service.list({ role: 'employee', id: 'employee-one', companyId: hr.companyId });
   assert.equal(filter.companyId, hr.companyId);
   assert.deepEqual(filter.$or, [
-    { audience: 'all' }, { audience: { $exists: false } }, { audience: 'department', department: 'accounting' },
+    { audience: 'all' }, { audience: { $exists: false } },
+    { audience: 'department', department: 'accounting' }, { audience: 'department', departments: 'accounting' },
   ]);
 });
 test('HR sees all department rules without an employee department lookup', async t => {
