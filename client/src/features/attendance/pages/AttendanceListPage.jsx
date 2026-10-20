@@ -318,7 +318,8 @@ function MonthlyCalendar({ year, month, records = [] }) {
 
 // ─── Correction Modal ────────────────────────────────────────────────────────
 function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
-  const [form, setForm] = useState({ signInDate: '', signInTime: '', signOutDate: '', signOutTime: '', notes: '' });
+  const [form, setForm] = useState({ signInDate: '', signInTime: '', signOutDate: '', signOutTime: '', status: '', reason: '' });
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (!isOpen || !record) return;
@@ -335,13 +336,23 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
         ? addIsoDateDays(fixedWorkDate, overnight ? 1 : 0)
         : (signOutParts.date || fixedWorkDate),
       signOutTime: record.signOutTime ? (signOutParts.time || '') : '',
-      notes: '',
+      status: record.manualStatusOverride?.status || '',
+      reason: '',
     });
+    setError('');
   }, [isOpen, record]);
 
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
   function handleSubmit(e) {
     e.preventDefault();
+    if (!form.status && !form.signInTime && !form.signOutTime) {
+      setError('Choose a status or correct at least one punch time.');
+      return;
+    }
+    if (form.reason.trim().length < 5) {
+      setError('Enter a reason with at least 5 characters.');
+      return;
+    }
     const fixedShift = (record.shiftType || 'fixed') === 'fixed';
     const crossesMidnight = form.signInTime && form.signOutTime
       && form.signOutTime <= form.signInTime;
@@ -351,7 +362,8 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
     onSubmit({
       signInTime: form.signInTime ? zonedDateTimeToIso(form.signInDate, form.signInTime, record.shiftTimezone) : undefined,
       signOutTime: form.signOutTime ? zonedDateTimeToIso(resolvedSignOutDate, form.signOutTime, record.shiftTimezone) : undefined,
-      notes: form.notes,
+      status: form.status,
+      reason: form.reason.trim(),
     });
   }
 
@@ -370,13 +382,25 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
             onChange={(e) => set('signInTime', e.target.value)} />
           <Input label="Sign Out Time" type="time" value={form.signOutTime}
             onChange={(e) => set('signOutTime', e.target.value)} />
+          <label className="block space-y-1.5 text-sm font-medium">Attendance Status
+            <select value={form.status} onChange={e => set('status', e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+              <option value="">Automatic from punches</option>
+              <option value="present">Present</option>
+              <option value="absent">Absent</option>
+              <option value="late">Late</option>
+              <option value="half_day">Half Day</option>
+            </select>
+            <span className="block text-xs font-normal text-muted-foreground">Choose Automatic to calculate the status from punch times and shift rules.</span>
+          </label>
           {form.signOutDate && form.signOutDate !== form.signInDate && (
             <p className="rounded-lg bg-primary/10 px-3 py-2 text-xs text-primary">
               Overnight shift: sign-out date is automatically fixed to the next day.
             </p>
           )}
-          <Textarea label="Notes / Reason" value={form.notes}
-            onChange={(e) => set('notes', e.target.value)} placeholder="Reason for correction..." />
+          <Textarea required minLength={5} maxLength={500} label="Correction Reason" value={form.reason}
+            onChange={(e) => set('reason', e.target.value)} placeholder="Explain why this attendance is being corrected..." />
+          {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          {!!record?.correctionHistory?.length && <div className="space-y-2 rounded-xl border border-border bg-muted/20 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Correction History</p><div className="max-h-36 space-y-2 overflow-y-auto">{[...record.correctionHistory].reverse().map((entry, index) => <div key={`${entry.changedAt}-${index}`} className="border-t border-border pt-2 text-xs"><p className="font-medium">{entry.changedBy?.fullName || 'HR'} · {fmtDate(entry.changedAt, true)}</p><p className="text-muted-foreground">{entry.previous?.status || '—'} → {entry.updated?.status || '—'} · {entry.reason}</p></div>)}</div></div>}
         </div>
         <ModalFooter>
           <Button type="button" variant="ghost" size="sm" onClick={onClose}>Cancel</Button>

@@ -13,7 +13,8 @@ async function findById(id) {
     .populate('employeeId', 'fullName employeeCode department designation managerId floorHeadId teamLeadId')
     .populate('regularization.assignedApprover', 'fullName employeeCode designation role')
     .populate('regularization.reportingReviewedBy', 'fullName employeeCode designation role')
-    .populate('regularization.reviewedBy', 'fullName employeeCode designation role');
+    .populate('regularization.reviewedBy', 'fullName employeeCode designation role')
+    .populate('correctionHistory.changedBy', 'fullName employeeCode');
 }
 
 async function findByEmployeeAndDate(employeeId, date) {
@@ -55,6 +56,7 @@ async function findAll({ filter = {}, page = 1, limit = 30, sort = '-shiftDate' 
   const [items, total] = await Promise.all([
     Attendance.find(filter)
       .populate('employeeId', 'fullName employeeCode department designation profilePicture')
+      .populate('correctionHistory.changedBy', 'fullName employeeCode')
       .sort(sort)
       .skip(skip)
       .limit(limit),

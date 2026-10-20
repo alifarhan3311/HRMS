@@ -636,6 +636,7 @@ async function reconcileAttendance(now = new Date()) {
       autoClosedAt: { $exists: false },
     });
     for (const record of invalidClosedRecords) {
+      if (record.manualStatusOverride?.status) continue;
       record.signOutTime = undefined;
       record.autoClosedAt = now;
       record.totalHours = 0;
@@ -679,6 +680,7 @@ async function reconcileAttendance(now = new Date()) {
       status: { $nin: ['on_leave', 'holiday', 'weekend'] },
     });
     for (const record of expiredOpenRecords) {
+      if (record.manualStatusOverride?.status) continue;
       if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) {
         Object.assign(record, saturdayMissedSignOutClosure(now));
         record.missedPunchType = undefined;
@@ -702,6 +704,7 @@ async function reconcileAttendance(now = new Date()) {
       status: { $nin: ['on_leave', 'holiday', 'weekend'] },
     });
     for (const record of missingSignInRecords) {
+      if (record.manualStatusOverride?.status) continue;
       if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) continue;
       record.status = missingPunchStatus(record, 'sign_in');
       record.missedPunchType = 'sign_in';
@@ -722,6 +725,7 @@ async function reconcileAttendance(now = new Date()) {
       status: { $nin: ['on_leave', 'holiday', 'weekend'] },
     });
     for (const record of existingMissingPunchRecords) {
+      if (record.manualStatusOverride?.status) continue;
       if (isSaturdayShiftDate(record.shiftDate || zonedDateKey(record.date))) continue;
       // If both punches are now present, heal the record and do not treat as missed
       if (record.signInTime && record.signOutTime && new Date(record.signOutTime) > new Date(record.signInTime)) {
@@ -797,6 +801,7 @@ async function reconcileAttendance(now = new Date()) {
       missedPunchType: { $in: ['sign_in', 'sign_out'] },
       status: 'late',
       lateCountAppliedAt: { $exists: false },
+      'manualStatusOverride.status': { $exists: false },
     }).select('_id employeeId companyId missedPunchType date');
     for (const violation of violations) {
       const claimed = await Attendance.findOneAndUpdate(

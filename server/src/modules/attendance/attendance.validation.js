@@ -68,15 +68,21 @@ const manualCorrectionSchema = Joi.object({
   // when the displayed clock time is lower. The service validates the fully
   // resolved fixed dates and returns a clear business error when needed.
   signOutTime: Joi.date().iso().optional(),
-  status: Joi.string().valid(...statuses).optional(),
+  status: Joi.string().valid('present', 'absent', 'half_day', 'late').allow('').default(''),
+  reason: Joi.string().trim().min(5).max(500).required(),
   notes: Joi.string().trim().max(500).allow('').optional(),
+}).custom((value, helpers) => {
+  if (!value.status && !value.signInTime && !value.signOutTime) {
+    return helpers.message({ custom: 'Choose an attendance status or correct at least one punch time.' });
+  }
+  return value;
 }).custom((value, helpers) => {
   if (value.signInTime && value.signOutTime
       && new Date(value.signOutTime) <= new Date(value.signInTime)) {
     return helpers.message({ custom: 'Sign-out must be after sign-in. Overnight shifts use the next fixed calendar day automatically.' });
   }
   return value;
-}).min(1);
+});
 
 const regularizationRequestSchema = Joi.object({
   requestType: Joi.string().valid('late_waiver', 'time_correction').required(),

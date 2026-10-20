@@ -153,7 +153,7 @@ async function signIn({
     ? { status: 'present', lateMinutes: 0 }
     : calculateArrivalStatus(now, { scheduledStart: policy.effectiveStart }, shift);
   const lateMinutes = arrival.lateMinutes;
-  const status = arrival.status;
+  const status = existing?.manualStatusOverride?.status || arrival.status;
 
   const record = existing
     ? await repository.updateById(existing._id, {
@@ -213,7 +213,7 @@ async function signIn({
   // Update employee's lateCount if late
   if (attendanceExempt) {
     await Employee.updateOne({ _id: employeeId }, { $set: { lateCount: 0 } });
-  } else if (lateMinutes > 0) {
+  } else if (!existing?.manualStatusOverride && lateMinutes > 0) {
     await Employee.findByIdAndUpdate(employeeId, { $inc: { lateCount: 1 } });
     // Every complete group of three is only made available for an optional
     // employee leave request. Attendance never deducts leave or salary itself.
@@ -299,7 +299,7 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
   if (earlyLeaveMinutes > 0 && baseArrivalStatus === 'present') {
     baseArrivalStatus = 'late';
   }
-  const status = attendanceExempt
+  const calculatedStatus = attendanceExempt
     ? 'present'
     : saturdayStatus({
       shiftDate: record.shiftDate,
@@ -313,6 +313,7 @@ async function signOut({ employeeId, notes, punchTime, recordId }, actor) {
       fullDayClosure,
       completionToleranceMinutes(record, policy.effectiveRequiredMinutes),
     );
+  const status = record.manualStatusOverride?.status || calculatedStatus;
 
   const cleanNotes = notes || (record.notes && record.notes.includes('Missing sign-out')
     ? record.notes.replace(/Missing sign-out:[^.]*\.?/gi, '').trim()
@@ -728,9 +729,19 @@ async function manualCorrection(id, payload, actor) {
   if (!record) throw createHttpError(404, 'Attendance record not found.');
   await assertCanViewEmployeeAttendance(actor, record.employeeId?._id || record.employeeId);
 
-  const { signInTime, signOutTime, status, notes } = payload;
+  const { signInTime, signOutTime, status, notes, reason } = payload;
   const settings = await settingsService.getPolicy(record.companyId);
-  const update = { notes };
+  const update = { attendanceAdjustmentReason: reason };
+  if (notes !== undefined) update.notes = notes;
+  const previous = {
+    status: record.status,
+    signInTime: record.signInTime,
+    signOutTime: record.signOutTime,
+    lateMinutes: record.lateMinutes,
+    earlyLeaveMinutes: record.earlyLeaveMinutes,
+    workedMinutes: record.workedMinutes,
+    totalHours: record.totalHours,
+  };
   const correctedSignIn = signInTime ? new Date(signInTime) : record.signInTime;
   const correctedSignOut = signOutTime ? new Date(signOutTime) : record.signOutTime;
   const timeZone = record.shiftTimezone || settings.company?.timezone || 'Asia/Karachi';
@@ -800,16 +811,60 @@ async function manualCorrection(id, payload, actor) {
     }
   }
   if (status) update.status = status;
-  if (isSaturdayShiftDate(record.shiftDate) && correctedSignIn) {
+  if (!status && isSaturdayShiftDate(record.shiftDate) && correctedSignIn) {
     update.status = 'present';
     update.lateMinutes = 0;
   }
 
-  const updated = await repository.updateById(id, update);
-  const penaltyCleared = await clearRecoveredMissedPunchPenalty(record, {
+  const updatedValues = Object.fromEntries(Object.keys(previous).map((key) => [
+    key,
+    Object.prototype.hasOwnProperty.call(update, key) ? update[key] : record[key],
+  ]));
+  const changedAt = new Date();
+  const recoveredPunches = {
     signInTime: signInTime ? correctedSignIn : null,
     signOutTime: signOutTime ? correctedSignOut : null,
-  });
+  };
+  const recoveredLatePenalty = isRecoveredMissedPunchPenalty(record, recoveredPunches);
+  if (status) {
+    update.manualStatusOverride = { status, reason, changedBy: actor.id, changedAt };
+  } else {
+    update.$unset = { ...(update.$unset || {}), manualStatusOverride: '' };
+  }
+  if (previous.status === 'late' && updatedValues.status !== 'late') {
+    update.$unset = { ...(update.$unset || {}), lateCountAppliedAt: '' };
+  } else if (previous.status !== 'late' && updatedValues.status === 'late' && record.missedPunchType) {
+    update.lateCountAppliedAt = changedAt;
+  }
+  const databaseUpdate = {
+    $set: update,
+    $push: {
+      correctionHistory: {
+        changedBy: actor.id,
+        changedAt,
+        reason,
+        previous,
+        updated: updatedValues,
+      },
+    },
+  };
+  if (update.$unset) {
+    databaseUpdate.$unset = update.$unset;
+    delete update.$unset;
+  }
+  const updated = await repository.updateById(id, databaseUpdate);
+  if (previous.status !== updatedValues.status) {
+    const lateCountChange = updatedValues.status === 'late' ? 1 : (previous.status === 'late' ? -1 : 0);
+    if (lateCountChange > 0) {
+      await Employee.updateOne({ _id: record.employeeId?._id || record.employeeId }, { $inc: { lateCount: 1 } });
+    } else if (lateCountChange < 0 && !recoveredLatePenalty) {
+      await Employee.updateOne(
+        { _id: record.employeeId?._id || record.employeeId, lateCount: { $gt: 0 } },
+        { $inc: { lateCount: -1 } },
+      );
+    }
+  }
+  const penaltyCleared = await clearRecoveredMissedPunchPenalty(record, recoveredPunches);
   return penaltyCleared ? repository.findById(id) : updated;
 }
 

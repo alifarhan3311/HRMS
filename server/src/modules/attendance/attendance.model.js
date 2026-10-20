@@ -25,6 +25,31 @@ const regularizationSchema = new mongoose.Schema({
   remarks: { type: String },
 }, { _id: false });
 
+const correctionSnapshotSchema = new mongoose.Schema({
+  status: String,
+  signInTime: Date,
+  signOutTime: Date,
+  lateMinutes: Number,
+  earlyLeaveMinutes: Number,
+  workedMinutes: Number,
+  totalHours: Number,
+}, { _id: false });
+
+const correctionHistorySchema = new mongoose.Schema({
+  changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+  changedAt: { type: Date, required: true },
+  reason: { type: String, required: true, maxlength: 500 },
+  previous: { type: correctionSnapshotSchema, required: true },
+  updated: { type: correctionSnapshotSchema, required: true },
+}, { _id: false });
+
+const manualStatusOverrideSchema = new mongoose.Schema({
+  status: { type: String, enum: ['present', 'absent', 'half_day', 'late'], required: true },
+  reason: { type: String, required: true, maxlength: 500 },
+  changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+  changedAt: { type: Date, required: true },
+}, { _id: false });
+
 const attendanceSchema = new mongoose.Schema(
   {
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
@@ -70,6 +95,8 @@ const attendanceSchema = new mongoose.Schema(
     closureId: { type: mongoose.Schema.Types.ObjectId, ref: 'Holiday' },
     closureType: { type: String, enum: ['full_day', 'half_day', 'early_closure', 'late_opening'] },
     attendanceAdjustmentReason: { type: String },
+    correctionHistory: { type: [correctionHistorySchema], default: [] },
+    manualStatusOverride: { type: manualStatusOverrideSchema, default: undefined },
     method: {
       type: String,
       enum: ['manual', 'qr', 'face', 'biometric'],
