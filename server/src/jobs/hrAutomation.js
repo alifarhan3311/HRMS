@@ -1,4 +1,5 @@
 const Employee = require('../modules/employees/employees.model');
+const { isOnProbation } = require('../modules/employees/probation');
 const Attendance = require('../modules/attendance/attendance.model');
 const LeaveRequest = require('../modules/leaves/leaves.model');
 const Holiday = require('../modules/holidays/holidays.model');
@@ -168,12 +169,13 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
       companyId,
       status: 'active',
       dateOfBirth: { $exists: true, $ne: null },
-    }).select('_id fullName email dateOfBirth');
-    const todaysBirthdays = employees.filter((employee) => {
+    }).select('_id fullName email dateOfBirth probationStatus probationEndDate joiningDate');
+    const eligibleEmployees = employees.filter((employee) => !isOnProbation(employee, now));
+    const todaysBirthdays = eligibleEmployees.filter((employee) => {
       const dob = birthMonthDay(employee.dateOfBirth);
       return dob.month === context.today.month && dob.day === context.today.day;
     });
-    const tomorrowsBirthdays = employees.filter((employee) => {
+    const tomorrowsBirthdays = eligibleEmployees.filter((employee) => {
       const dob = birthMonthDay(employee.dateOfBirth);
       return dob.month === context.tomorrow.month && dob.day === context.tomorrow.day;
     });

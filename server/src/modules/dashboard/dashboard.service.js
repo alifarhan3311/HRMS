@@ -11,6 +11,7 @@ const Expense = require('../expenses/expenses.model');
 const Project = require('../projects/projects.model');
 const Holiday = require('../holidays/holidays.model');
 const EmployeeExit = require('../exits/exits.model');
+const { isOnProbation } = require('../employees/probation');
 const settingsService = require('../companySettings/companySettings.service');
 const { buildManagerEmployeeScope } = require('../employees/managerScope');
 const {
@@ -269,14 +270,14 @@ async function getHRDashboard(user) {
         $ne: null,
       },
     })
-      .select('fullName dateOfBirth department')
+      .select('fullName dateOfBirth department probationStatus probationEndDate joiningDate')
       .lean()
       .then((employees) => employees
         .map((emp) => {
           const upcoming = upcomingBirthday(emp.dateOfBirth, today, 30);
           return upcoming ? { ...emp, ...upcoming } : null;
         })
-        .filter(Boolean)
+        .filter((emp) => emp && !isOnProbation(emp, today))
         .sort((a, b) => a.daysUntil - b.daysUntil)),
     Employee.find({
       ...employeeFilter,
