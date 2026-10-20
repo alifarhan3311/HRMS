@@ -25,6 +25,7 @@
 const jwt = require('jsonwebtoken');
 const createHttpError = require('http-errors');
 const logger = require('../utils/logger');
+const Session = require('../modules/auth/auth.model');
 
 const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
@@ -57,7 +58,7 @@ const ROLE_RANK = Object.freeze({
  * handlers. Never trusts an Authorization header for browser sessions —
  * cookies only, to keep the token out of JS-accessible storage.
  */
-function authenticate(req, res, next) {
+async function authenticate(req, res, next) {
   try {
     const token = req.cookies?.accessToken;
 
@@ -81,13 +82,48 @@ function authenticate(req, res, next) {
       throw createHttpError(401, 'Invalid access token.');
     }
 
-    // Shape persisted in the JWT payload at sign-time (see auth service).
+    // New access tokens are bound to a persisted refresh session. Ask the
+    // client to refresh legacy tokens once so active sessions survive this
+    // upgrade, then enforce immediate logout/session revocation server-side.
+    if (!decoded.sid) {
+      throw createHttpError(401, 'Access token must be refreshed.', {
+        code: 'ACCESS_TOKEN_MISSING',
+      });
+    }
+
+    // Re-check session and account state on every protected request. This
+    // makes logout/session revocation, account disablement, role changes,
+    // and tokenVersion increments effective before the JWT expires.
+    const session = await Session.findOne({
+      _id: decoded.sid,
+      employeeId: decoded.sub,
+      revoked: false,
+      expiresAt: { $gt: new Date() },
+    })
+      .populate('employeeId', 'status role companyId branchId tokenVersion')
+      .lean();
+    const employee = session?.employeeId;
+
+    if (!employee || employee.status !== 'active') {
+      throw createHttpError(401, 'Account is no longer active.', {
+        code: 'ACCESS_TOKEN_INVALIDATED',
+      });
+    }
+
+    if (Number(decoded.tokenVersion || 0) !== Number(employee.tokenVersion || 0)) {
+      throw createHttpError(401, 'Session was invalidated. Please sign in again.', {
+        code: 'ACCESS_TOKEN_INVALIDATED',
+      });
+    }
+
+    // Use current DB role and tenant attributes, not stale JWT claims, so
+    // permission/department changes take effect without waiting for expiry.
     req.user = {
-      id: decoded.sub,
-      role: decoded.role,
-      companyId: decoded.companyId,
-      branchId: decoded.branchId,
-      tokenVersion: decoded.tokenVersion, // used to invalidate all sessions on password change
+      id: employee._id,
+      role: employee.role,
+      companyId: employee.companyId,
+      branchId: employee.branchId,
+      tokenVersion: employee.tokenVersion || 0,
     };
 
     next();

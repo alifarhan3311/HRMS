@@ -3,13 +3,18 @@
  * Login renders outside the main AppLayout shell (no sidebar/header).
  */
 import { lazy } from 'react';
+import GuestRoute from '../../../components/common/GuestRoute';
 
 const LoginPage = lazy(() => import('../pages/LoginPage'));
 
 const authRoutes = [
   {
     path: '/login',
-    element: <LoginPage />,
+    element: (
+      <GuestRoute>
+        <LoginPage />
+      </GuestRoute>
+    ),
   },
 ];
 

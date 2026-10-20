@@ -24,10 +24,11 @@ const REFRESH_TOKEN_TTL_DAYS = Math.max(
 );
 const REFRESH_TOKEN_TTL_MS = REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000;
 
-function signAccessToken(employee) {
+function signAccessToken(employee, sessionId) {
   return jwt.sign(
     {
       sub: employee._id,
+      sid: sessionId,
       role: employee.role,
       companyId: employee.companyId,
       branchId: employee.branchId,
@@ -54,7 +55,7 @@ async function login({ email, password, userAgent, ipAddress }) {
   const rawRefreshToken = generateSecureToken(48);
   const refreshTokenHash = await bcrypt.hash(rawRefreshToken, 10);
 
-  await Session.create({
+  const session = await Session.create({
     employeeId: employee._id,
     refreshTokenHash,
     userAgent,
@@ -62,7 +63,7 @@ async function login({ email, password, userAgent, ipAddress }) {
     expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
   });
 
-  const accessToken = signAccessToken(employee);
+  const accessToken = signAccessToken(employee, session._id);
 
   return {
     accessToken,
@@ -108,7 +109,7 @@ async function refresh({ rawRefreshToken }) {
     throw createHttpError(401, 'Account no longer active.');
   }
 
-  const accessToken = signAccessToken(employee);
+  const accessToken = signAccessToken(employee, matchedSession._id);
   return { accessToken };
 }
 
