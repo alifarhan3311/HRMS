@@ -103,7 +103,7 @@ export const NAV_GROUPS = [
       },
       {
         id: 'training', label: 'Training', path: '/training',
-        icon: GraduationCap, roles: ['hr', 'super_admin'], comingSoon: true,
+        icon: GraduationCap, roles: 'all',
       },
       {
         id: 'assets', label: 'Assets', path: '/assets',

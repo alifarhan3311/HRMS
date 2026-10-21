@@ -25,6 +25,7 @@ import actionCenterRoutes  from './features/actionCenter/routes/actionCenter.rou
 import assetsRoutes        from './features/assets/routes/assets.routes';
 import auditLogsRoutes     from './features/auditLogs/routes/auditLogs.routes';
 import rulesRoutes         from './features/rules/routes/rules.routes';
+import trainingRoutes      from './features/training/routes/training.routes';
 
 const withRoles = (routes, roles) => routes.map((route) => ({
   ...route,
@@ -50,6 +51,7 @@ const router = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       ...dashboardRoutes,
       ...rulesRoutes,
+      ...trainingRoutes,
       ...withRoles(employeesRoutes, ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin']),
       ...withDeclaredRoles(attendanceRoutes),
       ...leavesRoutes,

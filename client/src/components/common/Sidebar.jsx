@@ -67,7 +67,7 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
             <div className="space-y-0.5">
               {group.items.map((item, idx) => {
                 const Icon    = item.icon;
-                const isActive = location.pathname === item.path;
+                const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
                 const disabled = item.comingSoon;
 
                 return (
