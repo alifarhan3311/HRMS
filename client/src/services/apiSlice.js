@@ -20,10 +20,11 @@ const axiosBaseQuery =
       method = 'GET',
       body,
       params,
+      skipAuthRefresh = false,
     } = typeof request === 'string' ? { url: request } : request;
 
     try {
-      const result = await axiosInstance({ url, method, data: body, params });
+      const result = await axiosInstance({ url, method, data: body, params, skipAuthRefresh });
       return { data: result.data };
     } catch (axiosError) {
       return {

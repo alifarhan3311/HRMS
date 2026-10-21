@@ -12,7 +12,7 @@ import { useGetMeQuery } from '../../features/auth/api/auth.api';
 export default function GuestRoute({ children }) {
   const dispatch = useDispatch();
   const location = useLocation();
-  const { data, error, isLoading, isFetching, isError, refetch } = useGetMeQuery(undefined, {
+  const { data, error, isLoading, isFetching, isError, refetch } = useGetMeQuery({ skipAuthRefresh: true }, {
     // Revalidate on every visit so logout/revocation in another tab is honored.
     refetchOnMountOrArgChange: true,
   });

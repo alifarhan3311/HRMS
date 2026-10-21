@@ -9,7 +9,10 @@ export const authApi = api.injectEndpoints({
   endpoints: (builder) => ({
     login: builder.mutation({
       query: (credentials) => ({ url: '/auth/login', method: 'POST', body: credentials }),
-      invalidatesTags: ['Auth'],
+      // A rejected login must not invalidate/refetch cached /auth/me queries.
+      // Doing so can kick off a noisy refresh cycle while the user is just
+      // trying credentials. Successful login still refreshes auth consumers.
+      invalidatesTags: (result) => (result ? ['Auth'] : []),
     }),
     logout: builder.mutation({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
@@ -20,7 +23,12 @@ export const authApi = api.injectEndpoints({
       providesTags: ['Auth'],
     }),
     getMe: builder.query({
-      query: () => '/auth/me',
+      query: (options = {}) => ({
+        url: '/auth/me',
+        // GuestRoute only needs to learn whether a session exists; do not
+        // attempt refresh when the login page is opened without credentials.
+        skipAuthRefresh: options.skipAuthRefresh === true,
+      }),
       providesTags: ['Auth'],
     }),
     updateProfile: builder.mutation({

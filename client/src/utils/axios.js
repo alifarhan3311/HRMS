@@ -117,7 +117,13 @@ axiosInstance.interceptors.response.use(
     );
     const alreadyRetried = originalRequest?._retry;
 
-    if (isRefreshableAuthFailure && !isRefreshCallItself && !isPublicAuthCall && !alreadyRetried) {
+    if (
+      isRefreshableAuthFailure
+      && !originalRequest?.skipAuthRefresh
+      && !isRefreshCallItself
+      && !isPublicAuthCall
+      && !alreadyRetried
+    ) {
       originalRequest._retry = true;
 
       if (isRefreshing) {

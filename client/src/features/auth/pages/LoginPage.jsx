@@ -4,8 +4,8 @@
 import { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { AlertCircle, Building2, Mail, Lock, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { useLoginMutation } from '../api/auth.api';
 import { setCredentials } from '../store/auth.slice';
 import Button from '../../../components/ui/Button';
@@ -14,6 +14,22 @@ const fieldVariants = {
   hidden: { opacity: 0, y: 14 },
   show: (i) => ({ opacity: 1, y: 0, transition: { delay: 0.15 + i * 0.08, duration: 0.4, ease: [0.16, 1, 0.3, 1] } }),
 };
+
+function getLoginErrorMessage(error) {
+  const candidates = [
+    error?.data?.error?.message,
+    error?.data?.message,
+    typeof error?.data?.error === 'string' ? error.data.error : null,
+    error?.error?.message,
+    error?.message,
+  ];
+  const message = candidates.find((candidate) => typeof candidate === 'string' && candidate.trim());
+
+  // Keep authentication failures intentionally generic: the UI should not
+  // reveal whether an email exists, but must still explain why sign-in failed.
+  if (error?.status === 401) return 'Email or password is incorrect. Please try again.';
+  return message || 'Unable to sign in right now. Please try again.';
+}
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -31,13 +47,7 @@ export default function LoginPage() {
       dispatch(setCredentials(response.data.user));
       navigate('/dashboard');
     } catch (err) {
-      setError(
-        err?.data?.error?.message
-          || err?.data?.message
-          || (typeof err?.data?.error === 'string' ? err.data.error : null)
-          || err?.message
-          || 'Login failed. Check your credentials.',
-      );
+      setError(getLoginErrorMessage(err));
     }
   };
 
@@ -85,18 +95,16 @@ export default function LoginPage() {
           </motion.div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <AnimatePresence>
-              {error && (
-                <motion.p
-                  initial={{ opacity: 0, height: 0, y: -8 }}
-                  animate={{ opacity: 1, height: 'auto', y: 0 }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive overflow-hidden"
-                >
-                  {error}
-                </motion.p>
-              )}
-            </AnimatePresence>
+            {error && (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm font-medium text-red-700 dark:text-red-300"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{error}</span>
+              </div>
+            )}
 
             <motion.div custom={0} variants={fieldVariants} initial="hidden" animate="show" className="space-y-1.5">
               <label htmlFor="email" className="text-sm font-medium">
@@ -111,7 +119,10 @@ export default function LoginPage() {
                   placeholder="you@company.com"
                   className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-4 text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:scale-[1.01]"
                   value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  onChange={(e) => {
+                    setError(null);
+                    setForm({ ...form, email: e.target.value });
+                  }}
                 />
               </div>
             </motion.div>
@@ -129,7 +140,10 @@ export default function LoginPage() {
                   placeholder="••••••••"
                   className="w-full rounded-lg border border-border bg-background py-2.5 pl-10 pr-11 text-sm outline-none transition-all duration-200 focus:border-primary focus:ring-2 focus:ring-primary/20 focus:scale-[1.01]"
                   value={form.password}
-                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  onChange={(e) => {
+                    setError(null);
+                    setForm({ ...form, password: e.target.value });
+                  }}
                 />
                 <button
                   type="button"
