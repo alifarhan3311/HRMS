@@ -5,8 +5,8 @@
  */
 import {
   LayoutDashboard, Users, Clock, CalendarDays, Wallet,
-  Receipt, FolderKanban, Settings, FileText, UserPlus,
-  GraduationCap, Package, BarChart3, MessageSquare,
+  Receipt, FolderKanban, Settings,
+  GraduationCap, Package, BarChart3, Coins,
   TrendingUp, Bell, Building2, Shield, DoorOpen, ListChecks, ClipboardCheck,
   BadgeDollarSign, BookOpen,
 } from 'lucide-react';
@@ -83,6 +83,10 @@ export const NAV_GROUPS = [
         roles: ['hr', 'super_admin'],
       },
       {
+        id: 'commissions', label: 'Commission', path: '/commissions',
+        icon: Coins, roles: ['hr'],
+      },
+      {
         id: 'fines', label: 'Fines & Penalties', path: '/fines',
         icon: BadgeDollarSign,
         roles: 'all',
@@ -96,10 +100,6 @@ export const NAV_GROUPS = [
         id: 'projects', label: 'Projects', path: '/projects',
         icon: FolderKanban,
         roles: ['employee', 'team_lead', 'floor_head', 'manager'],
-      },
-      {
-        id: 'recruitment', label: 'Recruitment', path: '/recruitment',
-        icon: UserPlus, roles: ['hr', 'super_admin'], comingSoon: true,
       },
       {
         id: 'training', label: 'Training', path: '/training',
@@ -121,14 +121,6 @@ export const NAV_GROUPS = [
       {
         id: 'reports', label: 'Reports', path: '/reports',
         icon: BarChart3, roles: ['hr', 'admin', 'super_admin'],
-      },
-      {
-        id: 'engagement', label: 'Engagement', path: '/engagement',
-        icon: MessageSquare, roles: 'all', comingSoon: true,
-      },
-      {
-        id: 'documents', label: 'Documents', path: '/documents',
-        icon: FileText, roles: 'all', comingSoon: true,
       },
     ],
   },

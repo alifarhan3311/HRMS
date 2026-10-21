@@ -16,7 +16,13 @@ export default function Sidebar({ mobileOpen = false, onMobileClose = () => {} }
   const { user }    = useSelector(s => s.auth);
   const location    = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const groups      = getNavGroupsForRole(user?.role || 'employee');
+  const canManageTraining = ['admin', 'hr', 'super_admin'].includes(user?.role);
+  const employeeDepartment = String(user?.department || '').toLowerCase().replace(/[^a-z]/g, '');
+  const isCallCenterEmployee = ['callcenter', 'callcentre'].includes(employeeDepartment);
+  const groups = getNavGroupsForRole(user?.role || 'employee').map(group => ({
+    ...group,
+    items: group.items.filter(item => item.id !== 'training' || canManageTraining || isCallCenterEmployee),
+  })).filter(group => group.items.length > 0);
 
   // Auto-close the mobile drawer whenever the route changes
   useEffect(() => { onMobileClose(); }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps

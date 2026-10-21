@@ -5,12 +5,11 @@ import { Modal, ModalFooter } from '../../../components/ui/Modal';
 
 const fieldClass = 'w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15';
 
-export default function TrainingEditor({ category, departments, onSave, onClose, saving }) {
+export default function TrainingEditor({ category, onSave, onClose, saving }) {
   const [form, setForm] = useState({
     name: category?.name || '',
     summary: category?.summary || '',
-    audience: category?.audience || 'all',
-    departments: category?.departments || [],
+    atmCompany: category?.atmCompany || (category?.slug === 'atm' ? 'Hyosung' : ''),
     blocks: category?.blocks?.map(block => ({ ...block })) || [{ type: 'paragraph', text: '' }],
   });
   const [error, setError] = useState('');
@@ -24,9 +23,6 @@ export default function TrainingEditor({ category, departments, onSave, onClose,
     if (!form.name.trim() || !form.blocks.length || form.blocks.some(block => !block.text.trim())) {
       setError('Add a category name and fill in every content block.'); return;
     }
-    if (form.audience === 'department' && !form.departments.length) {
-      setError('Choose at least one department for this training.'); return;
-    }
     setError('');
     try { await onSave({ ...form, ...(category ? { revision: category.revision } : {}) }); }
     catch (err) { setError(err?.data?.error?.message || 'Could not save this training page. Please try again.'); }
@@ -38,13 +34,8 @@ export default function TrainingEditor({ category, departments, onSave, onClose,
         <label className="space-y-2 text-sm font-medium"><span>Tab name *</span><input required maxLength={100} className={fieldClass} value={form.name} onChange={event => change({ name: event.target.value })} placeholder="e.g. Customer Service" /></label>
         <label className="space-y-2 text-sm font-medium"><span>Short description</span><input maxLength={400} className={fieldClass} value={form.summary} onChange={event => change({ summary: event.target.value })} placeholder="What this training covers" /></label>
       </div>
-      <fieldset className="space-y-3 rounded-2xl border border-border p-4">
-        <legend className="px-1 text-sm font-semibold">Who can access this training?</legend>
-        <div className="flex flex-wrap gap-3">
-          {[['all', 'All departments'], ['department', 'Selected departments']].map(([value, label]) => <label key={value} className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm ${form.audience === value ? 'border-primary bg-primary/10' : 'border-border'}`}><input type="radio" name="training-audience" checked={form.audience === value} onChange={() => change({ audience: value, departments: value === 'all' ? [] : form.departments })} />{label}</label>)}
-        </div>
-        {form.audience === 'department' && <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-border p-3 sm:grid-cols-2">{departments.map(department => <label key={department} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-muted"><input type="checkbox" checked={form.departments.includes(department.toLowerCase())} onChange={event => change({ departments: event.target.checked ? [...form.departments, department.toLowerCase()] : form.departments.filter(name => name !== department.toLowerCase()) })} />{department}</label>)}{!departments.length && <p className="text-xs text-muted-foreground">No departments found yet. Add a department in Employee settings first.</p>}</div>}
-      </fieldset>
+      <label className="space-y-2 text-sm font-medium"><span>ATM Company</span><input maxLength={100} className={fieldClass} value={form.atmCompany} onChange={event => change({ atmCompany: event.target.value })} placeholder="e.g. Hyosung" /></label>
+      <div className="flex items-start gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 text-sm"><span className="font-semibold text-primary">Audience locked</span><span className="text-muted-foreground">This entire training library is only visible to Call Center employees. HR and Admin can manage its tabs and content.</span></div>
       <div className="space-y-3">
         <div><h3 className="font-semibold">Training details</h3><p className="text-xs text-muted-foreground">Build the page with headings, text, or lists. HTML is not rendered.</p></div>
         {form.blocks.map((block, index) => <div key={index} className="rounded-2xl border border-border bg-background/60 p-3">

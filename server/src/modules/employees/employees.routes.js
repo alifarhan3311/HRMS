@@ -9,7 +9,6 @@ const { authenticate, authorize, enforceTenantScope } = require('../../middlewar
 
 const router = express.Router();
 const HR_MANAGEMENT = ['hr', 'super_admin'];
-const DEPARTMENT_VIEW = ['hr', 'admin', 'super_admin'];
 const MANAGER_UP = ['team_lead', 'floor_head', 'manager', 'hr', 'super_admin'];
 const SELF_SERVICE_AND_MANAGEMENT = ['employee', 'team_lead', 'floor_head', 'manager', 'hr', 'admin', 'super_admin'];
 
@@ -17,7 +16,7 @@ router.use(authenticate);
 
 // List & stats
 router.get('/', authorize(...MANAGER_UP), controller.list);
-router.get('/departments', authorize(...DEPARTMENT_VIEW), controller.departments);
+router.get('/departments', authorize(...HR_MANAGEMENT), controller.departments);
 router.post('/departments', authorize(...HR_MANAGEMENT), controller.createDepartment);
 router.delete('/departments/:name', authorize(...HR_MANAGEMENT), controller.deleteDepartment);
 router.get('/stats', authorize(...MANAGER_UP), controller.stats);

@@ -10,6 +10,8 @@ const schema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 100 },
   slug: { type: String, required: true, trim: true, lowercase: true },
   summary: { type: String, default: '', maxlength: 400 },
+  agentCommission: { type: Number, min: 0, default: null },
+  atmCompany: { type: String, trim: true, default: '', maxlength: 100 },
   audience: { type: String, enum: ['all', 'department'], default: 'all', required: true },
   departments: { type: [String], default: [] },
   blocks: { type: [blockSchema], default: [] },
