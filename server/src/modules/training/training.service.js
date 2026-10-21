@@ -49,12 +49,31 @@ const ATM_BUY_BLOCKS = [
 const POS_TRAINING_BLOCKS = [
   { type: 'heading', text: 'POS Types' },
   { type: 'paragraph', text: 'POS means Point of Sale. There are three types: POS Terminal, POS System, and POS Software.' },
-  { type: 'heading', text: '1. POS Terminal Types' },
+  { type: 'heading', text: '1. POS Terminal' },
   { type: 'bullets', text: [
     'Wired: Connected by cable.',
     'Wireless: Works without a cable.',
     'SIM-Based: Uses a SIM card.',
   ].join('\n') },
+  { type: 'heading', text: '2. POS System' },
+  { type: 'paragraph', text: 'A complete checkout system used in stores. It includes a screen, barcode scanner, cash drawer, and other devices.' },
+  { type: 'paragraph', text: 'Example: At Imtiaz Supermarket, the cashier scans items, the system calculates the bill, and the customer pays.' },
+  { type: 'heading', text: '3. POS Software' },
+  { type: 'paragraph', text: 'Software used to manage payments through websites and apps.' },
+  { type: 'paragraph', text: 'Example: Paying online with a Visa or Mastercard.' },
+  { type: 'heading', text: '4. Interchange Rate' },
+  { type: 'bullets', text: 'Debit Card: 4 cents per transaction.\nCredit Card: 0.29% per transaction.' },
+  { type: 'heading', text: '5. Service Providers' },
+  { type: 'heading', text: 'Our Connected Service Providers (Agents)' },
+  { type: 'bullets', text: 'Global Payments\nMoneris\nElavon (NRS)\nClover (First Data)\nNovia' },
+  { type: 'heading', text: 'Competitors (Not Connected With Us)' },
+  { type: 'paragraph', text: 'TD, Chase, and Square are competitors. We are not connected with them.' },
+];
+const POS_PREVIOUS_BLOCKS = [
+  { type: 'heading', text: 'POS Types' },
+  { type: 'paragraph', text: 'POS means Point of Sale. There are three types: POS Terminal, POS System, and POS Software.' },
+  { type: 'heading', text: '1. POS Terminal Types' },
+  { type: 'bullets', text: 'Wired: Connected by cable.\nWireless: Works without a cable.\nSIM-Based: Uses a SIM card.' },
   { type: 'heading', text: '2. POS System' },
   { type: 'paragraph', text: 'A complete checkout system used in stores. It includes a screen, barcode scanner, cash drawer, and other devices. It helps scan products, calculate bills, and process payments.' },
   { type: 'paragraph', text: 'Example: At Imtiaz Supermarket, the cashier scans the items, the system calculates the total bill, and the customer pays at the checkout counter. This setup is called a POS System.' },
@@ -180,8 +199,9 @@ async function list(actor) {
       if (block.type === 'paragraph' && (block.text === placeholder || block.text === posCategory.summary)) return false;
       return true;
     });
-    const authoredBlocks = existingBlocks.filter(block => !(block.type === 'heading' && POS_TRAINING_BLOCKS.some(posBlock => posBlock.type === 'heading' && posBlock.text === block.text))
-      && !POS_TRAINING_BLOCKS.some(posBlock => posBlock.type === block.type && posBlock.text === block.text));
+    const managedPosBlocks = [...POS_PREVIOUS_BLOCKS, ...POS_TRAINING_BLOCKS];
+    const authoredBlocks = existingBlocks.filter(block => !(block.type === 'heading' && managedPosBlocks.some(posBlock => posBlock.type === 'heading' && posBlock.text === block.text))
+      && !managedPosBlocks.some(posBlock => posBlock.type === block.type && posBlock.text === block.text));
     const nextBlocks = [...authoredBlocks, ...POS_TRAINING_BLOCKS];
     const changed = nextBlocks.length !== (posCategory.blocks || []).length
       || nextBlocks.some((block, index) => block.type !== posCategory.blocks[index]?.type || block.text !== posCategory.blocks[index]?.text);
