@@ -4,6 +4,9 @@ export const trainingApi = api.injectEndpoints({
   endpoints: (builder) => ({
     listTrainingCategories: builder.query({ query: () => '/training', providesTags: ['Training'] }),
     listTrainingCommissions: builder.query({ query: () => '/training/commissions', providesTags: ['TrainingCommission'] }),
+    getSalesCommissionPeriod: builder.query({ query: (params) => ({ url: '/training/sales-commissions/period', params }), providesTags: ['SalesCommission'] }),
+    saveSalesCommissionPeriod: builder.mutation({ query: (body) => ({ url: '/training/sales-commissions/period', method: 'PUT', body }), invalidatesTags: ['SalesCommission', 'Payroll'] }),
+    getMySalesCommissionPeriods: builder.query({ query: (params) => ({ url: '/training/sales-commissions/mine', params }), providesTags: ['SalesCommission'] }),
     createTrainingCommission: builder.mutation({
       query: (body) => ({ url: '/training/commissions', method: 'POST', body }),
       invalidatesTags: ['TrainingCommission'],
@@ -34,6 +37,9 @@ export const trainingApi = api.injectEndpoints({
 export const {
   useListTrainingCategoriesQuery,
   useListTrainingCommissionsQuery,
+  useGetSalesCommissionPeriodQuery,
+  useSaveSalesCommissionPeriodMutation,
+  useGetMySalesCommissionPeriodsQuery,
   useCreateTrainingCommissionMutation,
   useUpdateTrainingCommissionRecordMutation,
   useDeleteTrainingCommissionMutation,

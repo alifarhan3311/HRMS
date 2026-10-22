@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { BookOpen, GraduationCap, Plus, Pencil, Trash2, UsersRound, Sparkles } from 'lucide-react';
+import { BookOpen, GraduationCap, Plus, Pencil, Trash2, UsersRound, Sparkles, Coins } from 'lucide-react';
 import Button from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { toast } from '../../../utils/toast';
@@ -9,6 +9,7 @@ import RuleContent from '../../rules/components/RuleContent';
 import TrainingEditor from '../components/TrainingEditor';
 import {
   useListTrainingCommissionsQuery,
+  useGetMySalesCommissionPeriodsQuery,
   useCreateTrainingCategoryMutation,
   useDeleteTrainingCategoryMutation,
   useListTrainingCategoriesQuery,
@@ -22,9 +23,12 @@ export default function TrainingPage() {
   const role = user?.role;
   const canManage = ['admin', 'hr', 'super_admin'].includes(role);
   const employeeDepartment = String(user?.department || '').toLowerCase().replace(/[^a-z]/g, '');
+  const isCallCenterEmployee = ['employee', 'team_lead', 'floor_head', 'manager'].includes(role) && ['callcenter', 'callcentre'].includes(employeeDepartment);
   const canView = canManage || ['callcenter', 'callcentre'].includes(employeeDepartment);
   const { data, isLoading, isError, refetch } = useListTrainingCategoriesQuery(undefined, { skip: !canView, refetchOnMountOrArgChange: true });
   const { data: commissionData } = useListTrainingCommissionsQuery(undefined, { skip: !canView });
+  const today = new Date();
+  const { data: mySalesData, isLoading: mySalesLoading } = useGetMySalesCommissionPeriodsQuery({ month: today.getMonth() + 1, year: today.getFullYear() }, { skip: !isCallCenterEmployee });
   const [createCategory, { isLoading: creating }] = useCreateTrainingCategoryMutation();
   const [updateCategory, { isLoading: updating }] = useUpdateTrainingCategoryMutation();
   const [deleteCategory, { isLoading: deleting }] = useDeleteTrainingCategoryMutation();
@@ -83,6 +87,14 @@ export default function TrainingPage() {
     </header>
 
     {!canView && <div role="note" className="glass-card flex items-start gap-3 p-6"><UsersRound className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><div><h2 className="font-semibold">Call Center training</h2><p className="mt-1 text-sm text-muted-foreground">This training library is available only to Call Center employees. HR and Admin can manage its tabs and content.</p></div></div>}
+
+    {isCallCenterEmployee && <section className="glass-card overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-border px-5 py-4 sm:px-7"><Coins className="h-5 w-5 text-primary" /><div><h2 className="font-semibold">My sales commission</h2><p className="mt-1 text-xs text-muted-foreground">Your current and previous month sales record · read-only</p></div></div>
+      {mySalesLoading ? <p role="status" className="p-6 text-sm text-muted-foreground">Loading your monthly statement…</p> : <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-6">{(mySalesData?.items || []).map(period => <article key={`${period.year}-${period.month}`} className="rounded-2xl border border-border bg-background/40 p-4">
+        <div className="flex items-center justify-between gap-3"><h3 className="font-semibold">{new Date(period.year, period.month - 1, 1).toLocaleString('en', { month: 'long', year: 'numeric' })}</h3><p className="font-bold text-primary">Rs. {Number(period.totalCommission || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 })}</p></div>
+        {period.items.length ? <div className="mt-3 divide-y divide-border">{period.items.map(item => <div key={item.slug} className="flex items-center justify-between gap-3 py-2 text-sm"><span>{item.name}<span className="ml-2 text-xs text-muted-foreground">{item.quantity} sold{item.unit === 'percent' ? ` · sales Rs. ${Number(item.salesAmount || 0).toLocaleString('en-PK')}` : ''}</span></span><span className="font-medium">Rs. {Number(item.commissionAmount || 0).toLocaleString('en-PK', { maximumFractionDigits: 2 })}</span></div>)}</div> : <p className="mt-3 text-sm text-muted-foreground">No sales recorded for this month yet.</p>}
+      </article>)}</div>}
+    </section>}
 
     {canView && !isLoading && !isError && categories.length > 0 && <nav aria-label="Training categories" className="glass-card flex gap-2 overflow-x-auto p-3">
       {categories.map(category => <button key={category._id} type="button" aria-current={category._id === categoryId ? 'page' : undefined} onClick={() => navigate(`/training/${category._id}`)} className={`shrink-0 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-colors ${category._id === categoryId ? 'border-primary bg-primary/10 text-primary' : 'border-transparent text-muted-foreground hover:border-border hover:bg-accent hover:text-foreground'}`}>{category.name}</button>)}

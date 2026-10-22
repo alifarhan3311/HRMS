@@ -13,6 +13,12 @@ const deductionItemSchema = new mongoose.Schema({
   label: { type: String }, amount: { type: Number, default: 0 },
 }, { _id: false });
 
+const commissionItemSchema = new mongoose.Schema({
+  label: String, name: String, amount: { type: Number, default: 0 },
+  quantity: { type: Number, default: 0 }, salesAmount: { type: Number, default: 0 },
+  rate: { type: Number, default: 0 }, unit: { type: String, enum: ['PKR', 'percent'] },
+}, { _id: false });
+
 const payrollSchema = new mongoose.Schema(
   {
     employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
@@ -24,6 +30,8 @@ const payrollSchema = new mongoose.Schema(
     grossSalary:  { type: String, set: encryptField, get: decryptFieldSafe },
     // Breakdown (plain numbers, not individually sensitive when isolated)
     allowanceItems:  { type: [allowanceItemSchema], default: [] },
+    commissionItems: { type: [commissionItemSchema], default: [] },
+    commissionTotal: { type: Number, default: 0 },
     deductionItems:  { type: [deductionItemSchema], default: [] },
     allowances:  { type: Number, default: 0 },
     deductions:  { type: Number, default: 0 },

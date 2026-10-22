@@ -2,12 +2,16 @@ const router = require('express').Router();
 const { authenticate, authorize } = require('../../middlewares/auth.middleware');
 const service = require('./training.service');
 const commissionService = require('./commission.service');
+const salesCommissionService = require('./salesCommission.service');
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 const VIEW_ROLES = ['employee', 'team_lead', 'floor_head', 'manager', 'admin', 'hr', 'super_admin'];
 const MANAGE_ROLES = ['admin', 'hr', 'super_admin'];
 const COMMISSION_VIEW_ROLES = ['employee', 'team_lead', 'floor_head', 'manager', 'hr'];
 
 router.use(authenticate);
+router.get('/sales-commissions/mine', authorize(...COMMISSION_VIEW_ROLES), wrap(async (req, res) => res.json({ success: true, items: await salesCommissionService.getMine(req.query, req.user) })));
+router.get('/sales-commissions/period', authorize('hr'), wrap(async (req, res) => res.json({ success: true, data: await salesCommissionService.listPeriod(req.query, req.user) })));
+router.put('/sales-commissions/period', authorize('hr'), wrap(async (req, res) => res.json({ success: true, data: await salesCommissionService.savePeriod(req.body, req.user) })));
 router.get('/commissions', authorize(...COMMISSION_VIEW_ROLES), wrap(async (req, res) => res.json({ success: true, items: await commissionService.list(req.user) })));
 router.post('/commissions', authorize('hr'), wrap(async (req, res) => res.status(201).json({ success: true, data: await commissionService.create(req.body, req.user) })));
 router.put('/commissions/:id', authorize('hr'), wrap(async (req, res) => res.json({ success: true, data: await commissionService.update(req.params.id, req.body, req.user) })));

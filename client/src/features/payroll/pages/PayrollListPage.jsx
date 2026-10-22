@@ -211,6 +211,7 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGe
   const rows = [
     { label: 'Basic Salary',   amount: Number(payslip.basicSalary),  type: 'base'  },
     ...(payslip.allowanceItems||[]).map(a => ({ label: a.label, amount: a.amount, type: 'add' })),
+    ...(payslip.commissionItems||[]).map(item => ({ label: item.label || `${item.name} Commission`, amount: item.amount, type: 'add' })),
     ...(payslip.bonus     ? [{ label: 'Bonus',       amount: payslip.bonus,      type: 'add' }] : []),
     ...(payslip.incentives? [{ label: 'Incentives',  amount: payslip.incentives, type: 'add' }] : []),
     ...(payslip.deductionItems||[]).map(d => ({ label: d.label, amount: d.amount, type: 'deduct' })),
@@ -808,6 +809,7 @@ export default function PayrollListPage() {
         salaryRows: [
           { label: 'Basic Salary', amount: source.basicSalary, group: 'earning' },
           ...(source.allowanceItems || []).map((item) => ({ label: item.label, amount: item.amount, group: 'earning' })),
+          ...(source.commissionItems || []).map((item) => ({ label: item.label || `${item.name} Commission`, amount: item.amount, group: 'earning' })),
           ...(source.bonus ? [{ label: 'Bonus', amount: source.bonus, group: 'earning' }] : []),
           ...(source.incentives ? [{ label: 'Incentives', amount: source.incentives, group: 'earning' }] : []),
           ...(source.deductionItems || []).map((item) => ({ label: item.label, amount: item.amount, group: 'deduction' })),
@@ -978,7 +980,7 @@ export default function PayrollListPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1150px] text-sm">
                 <thead className="bg-muted/30 text-xs uppercase text-muted-foreground"><tr>
-                  {['Employee','Monthly','Daily','Earned','Present','Absent','Half Day','Paid Leave','Unpaid Leave','Sandwich','Late','Attendance Deduction','Fines','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
+                  {['Employee','Monthly','Daily','Earned','Commission','Present','Absent','Half Day','Paid Leave','Unpaid Leave','Sandwich','Late','Attendance Deduction','Fines','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-border">{liveRows.map(row => (
                   <tr key={row.employeeId} className="hover:bg-accent/30">
@@ -986,6 +988,7 @@ export default function PayrollListPage() {
                     <td className="px-4 py-3"><SensitiveValue value={row.monthlySalary} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3"><SensitiveValue value={row.dailySalary} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 font-medium text-emerald-600"><SensitiveValue value={row.earnedSalary} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
+                    <td className="px-4 py-3 text-emerald-600"><SensitiveValue value={row.commissionTotal || 0} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 text-emerald-600">{row.present}</td>
                     <td className="px-4 py-3 text-red-500">{row.absent}</td>
                     <td className="px-4 py-3 text-orange-500">{row.halfDay}</td>

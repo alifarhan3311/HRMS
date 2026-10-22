@@ -12,6 +12,7 @@ const Employee = require('../employees/employees.model');
 const Attendance = require('../attendance/attendance.model');
 const LeaveRequest = require('../leaves/leaves.model');
 const Fine = require('../fines/fine.model');
+const salesCommissionService = require('../training/salesCommission.service');
 const settingsService = require('../companySettings/companySettings.service');
 const notificationService = require('../notifications/notifications.service');
 const {
@@ -274,6 +275,8 @@ async function generatePayslip(payload, actor) {
 
   const basicSalary = Number(employee.currentSalary) || 0;
   if (basicSalary <= 0) throw createHttpError(422, 'Employee salary must be configured before generating payroll.');
+  const commissionItems = await salesCommissionService.getPayrollCommissionItems(employee, month, year);
+  const commissionTotal = commissionItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const attendance = await getAttendanceData(employee, month, year);
   const {
     present, absent, late, deductibleLate, lateMinutes, halfDay, paidLeave, unpaidLeave, sandwichLeave, holiday, weekend,
@@ -344,7 +347,7 @@ async function generatePayslip(payload, actor) {
     ].filter(d => d.amount > 0);
 
   const deductionTotal = deductionItems.reduce((s, d) => s + d.amount, 0);
-  const grossSalary = basicSalary + allowanceTotal + Number(bonus) + Number(incentives);
+  const grossSalary = basicSalary + allowanceTotal + Number(bonus) + Number(incentives) + commissionTotal;
   const taxDeduction = calcTaxDeduction(grossSalary);
   const netSalary = Math.max(0, grossSalary - deductionTotal - taxDeduction);
 
@@ -356,6 +359,8 @@ async function generatePayslip(payload, actor) {
     grossSalary: String(grossSalary),
     netSalary: String(netSalary),
     allowanceItems,
+    commissionItems,
+    commissionTotal,
     allowances: allowanceTotal,
     deductionItems,
     deductions: deductionTotal,
@@ -546,6 +551,8 @@ async function getLivePayroll(query, actor) {
     const totalFines = fineRecords.reduce((sum, f) => sum + f.amount, 0);
 
     const basicSalary = Number(employee.currentSalary) || 0;
+    const commissionItems = await salesCommissionService.getPayrollCommissionItems(employee, month, year);
+    const commissionTotal = commissionItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const monthlyMode = isMonthlyHourDepartment(employee.department);
     const calculation = monthlyMode
       ? calculateMonthlyHoursDeduction({
@@ -574,8 +581,8 @@ async function getLivePayroll(query, actor) {
       : attendance.present + (attendance.halfDay * 0.5)
         + attendance.paidLeave + attendance.holiday;
     const earnedSalary = monthlyMode
-      ? Math.max(0, basicSalary - deductions)
-      : Math.min(basicSalary, Math.round(calculation.perDaySalary * creditedDays));
+      ? Math.max(0, basicSalary - deductions) + commissionTotal
+      : Math.min(basicSalary, Math.round(calculation.perDaySalary * creditedDays)) + commissionTotal;
     return {
       employeeId: employee._id,
       employeeName: employee.fullName,
@@ -588,7 +595,9 @@ async function getLivePayroll(query, actor) {
       earnedSalary,
       totalFines,
       deductions,
-      netPayable: Math.max(0, basicSalary - deductions),
+      netPayable: Math.max(0, basicSalary - deductions) + commissionTotal,
+      commissionItems,
+      commissionTotal,
       month,
       year,
       ...attendance,
