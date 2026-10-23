@@ -729,7 +729,9 @@ async function manualCorrection(id, payload, actor) {
   if (!record) throw createHttpError(404, 'Attendance record not found.');
   await assertCanViewEmployeeAttendance(actor, record.employeeId?._id || record.employeeId);
 
-  const { signInTime, signOutTime, status, notes, reason } = payload;
+  const { signInTime, signOutTime, status, notes } = payload;
+  const reason = String(payload.reason || '').trim();
+  const auditReason = reason || 'Status set to Present by HR.';
   const settings = await settingsService.getPolicy(record.companyId);
   const update = { attendanceAdjustmentReason: reason };
   if (notes !== undefined) update.notes = notes;
@@ -827,7 +829,7 @@ async function manualCorrection(id, payload, actor) {
   };
   const recoveredLatePenalty = isRecoveredMissedPunchPenalty(record, recoveredPunches);
   if (status) {
-    update.manualStatusOverride = { status, reason, changedBy: actor.id, changedAt };
+    update.manualStatusOverride = { status, ...(reason ? { reason } : {}), changedBy: actor.id, changedAt };
   } else {
     update.$unset = { ...(update.$unset || {}), manualStatusOverride: '' };
   }
@@ -842,7 +844,7 @@ async function manualCorrection(id, payload, actor) {
       correctionHistory: {
         changedBy: actor.id,
         changedAt,
-        reason,
+        reason: auditReason,
         previous,
         updated: updatedValues,
       },

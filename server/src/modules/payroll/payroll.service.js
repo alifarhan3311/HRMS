@@ -64,12 +64,7 @@ function calculateAttendancePayroll({
 
 function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, year) {
   const targetHours = employee.monthlyTargetHours || MONTHLY_HOUR_TARGET;
-  const monthlyHours = buildMonthlyHoursSummary(records, { month, year, targetHours });
-  const monthlyDeduction = calculateMonthlyHoursDeduction({
-    monthlySalary: Number(employee.currentSalary) || 0,
-    completedHours: monthlyHours.totalEffectiveHours,
-    targetHours,
-  });
+  let monthlyHours = buildMonthlyHoursSummary(records, { month, year, targetHours });
 
   const paidLeaveDates = new Set();
   const unpaidLeaveDates = new Set();
@@ -80,6 +75,53 @@ function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, 
     }
   }
   for (const date of unpaidLeaveDates) paidLeaveDates.delete(date);
+
+  // Unpaid leave is represented as absence in payroll. Exclude its approved
+  // leave hours from the monthly-hours credit as well, so it cannot be paid.
+  const unpaidLeaveHours = Math.min(monthlyHours.leaveHours, unpaidLeaveDates.size * 8);
+  const leaveHours = Math.max(0, monthlyHours.leaveHours - unpaidLeaveHours);
+  const totalEffectiveHours = Number((monthlyHours.completedHours + leaveHours).toFixed(2));
+  const remainingHours = Math.max(0, Number((targetHours - totalEffectiveHours).toFixed(2)));
+  const extraHours = Math.max(0, Number((totalEffectiveHours - targetHours).toFixed(2)));
+  const completionPercentage = targetHours > 0
+    ? Number(Math.min(100, totalEffectiveHours / targetHours * 100).toFixed(1))
+    : 0;
+  const averageHoursPerDay = monthlyHours.daysElapsed
+    ? Number((totalEffectiveHours / monthlyHours.daysElapsed).toFixed(2))
+    : 0;
+  const projectedMonthlyTotal = monthlyHours.daysElapsed
+    ? Number((averageHoursPerDay * monthlyHours.daysInMonth).toFixed(2))
+    : totalEffectiveHours;
+  const status = totalEffectiveHours >= targetHours
+    ? 'target_completed'
+    : extraHours > 0 ? 'ahead' : projectedMonthlyTotal >= targetHours ? 'on_track' : 'behind';
+  monthlyHours = {
+    ...monthlyHours,
+    leaveHours,
+    totalEffectiveHours,
+    remainingHours,
+    shortHours: remainingHours,
+    extraHours,
+    completionPercentage,
+    averageHoursPerDay,
+    requiredAverageHoursPerRemainingDay: monthlyHours.daysRemaining
+      ? Number((remainingHours / monthlyHours.daysRemaining).toFixed(2))
+      : 0,
+    projectedMonthlyTotal,
+    status,
+    statusLabel: {
+      target_completed: 'Target Completed', ahead: 'Ahead', on_track: 'On Track', behind: 'Behind',
+    }[status],
+  };
+  const monthlyDeduction = calculateMonthlyHoursDeduction({
+    monthlySalary: Number(employee.currentSalary) || 0,
+    completedHours: monthlyHours.totalEffectiveHours,
+    targetHours,
+  });
+  const absentDates = new Set([
+    ...records.filter(isPayrollAbsentRecord).map(record => record.shiftDate || dateKey(record.date)),
+    ...unpaidLeaveDates,
+  ]);
 
   const workingDayNumbers = employee.shiftId?.workingDays?.length
     ? employee.shiftId.workingDays
@@ -94,13 +136,13 @@ function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, 
 
   return {
     present: monthlyHours.present,
-    absent: monthlyHours.absent,
+    absent: absentDates.size,
     late: monthlyHours.late,
     deductibleLate: monthlyHours.late,
     lateMinutes: records.reduce((sum, record) => sum + Number(record.lateMinutes || 0), 0),
     halfDay: monthlyHours.half_day,
     paidLeave: paidLeaveDates.size,
-    unpaidLeave: unpaidLeaveDates.size,
+    unpaidLeave: 0,
     sandwichLeave: sandwichDates.size,
     holiday: monthlyHours.holiday,
     weekend: monthlyHours.weekend,
@@ -199,7 +241,9 @@ async function getAttendanceData(employee, month, year) {
   const present = records.filter(r => r.status === 'present' || r.status === 'late').length;
   // Missing sign-out is a half day. Only final late-status records participate
   // in the three-lates payroll deduction rule.
-  const absent = records.filter(isPayrollAbsentRecord).length;
+  const attendanceAbsentDates = new Set(records
+    .filter(isPayrollAbsentRecord)
+    .map(record => record.shiftDate || dateKey(record.date)));
   const lateRecords = records.filter(isPayrollLateRecord);
   const late = lateRecords.length;
   const waivedLateIds = new Set(approvedLeaves
@@ -222,6 +266,7 @@ async function getAttendanceData(employee, month, year) {
     }
   }
   for (const date of unpaidLeaveDates) paidLeaveDates.delete(date);
+  const absentDates = new Set([...attendanceAbsentDates, ...unpaidLeaveDates]);
 
   const workingDayNumbers = employee.shiftId?.workingDays?.length
     ? employee.shiftId.workingDays
@@ -236,10 +281,10 @@ async function getAttendanceData(employee, month, year) {
     cur.setUTCDate(cur.getUTCDate() + 1);
   }
   return {
-    present, absent, late, deductibleLate, waivedLate: late - deductibleLate,
+    present, absent: absentDates.size, late, deductibleLate, waivedLate: late - deductibleLate,
     lateMinutes, halfDay, holiday, weekend, workingDays,
     paidLeave: paidLeaveDates.size,
-    unpaidLeave: unpaidLeaveDates.size,
+    unpaidLeave: 0,
     sandwichLeave: sandwichDates.size,
     workedMinutes,
     monthlyHours: null,
@@ -299,13 +344,7 @@ async function generatePayslip(payload, actor) {
   });
   const totalFines = fineRecords.reduce((sum, f) => sum + f.amount, 0);
   const monthlyMode = isMonthlyHourDepartment(employee.department);
-  const monthlyHours = monthlyMode
-    ? buildMonthlyHoursSummary(await Attendance.find({ employeeId, date: { $gte: monthBounds(month, year).start, $lte: monthBounds(month, year).end } }), {
-      month,
-      year,
-      targetHours: employee.monthlyTargetHours || MONTHLY_HOUR_TARGET,
-    })
-    : null;
+  const monthlyHours = monthlyMode ? attendance.monthlyHours : null;
   const calculation = monthlyMode
     ? calculateMonthlyHoursDeduction({
       monthlySalary: basicSalary,
@@ -340,7 +379,7 @@ async function generatePayslip(payload, actor) {
       { label: 'Absence Deduction', amount: absenceDeduction },
       { label: 'Half Day Deduction', amount: halfDayDeduction },
       { label: `Late Deduction (${lateDeductionDays} day)`, amount: lateDeduction },
-      { label: 'Unpaid Leave Deduction', amount: unpaidLeaveDeduction },
+      { label: 'Sandwich Leave Deduction', amount: unpaidLeaveDeduction },
       { label: 'Loan', amount: Number(loanDeduction) || 0 },
       { label: 'Advance Salary', amount: Number(advanceSalary) || 0 },
       { label: 'Fines', amount: totalFines },
@@ -374,7 +413,7 @@ async function generatePayslip(payload, actor) {
     lateDays: late,
     halfDays: halfDay,
     paidLeaveDays: paidLeave,
-    unpaidLeaveDays: unpaidLeave,
+    unpaidLeaveDays: 0,
     sandwichLeaveDays: sandwichLeave,
     holidayDays: holiday,
     weekendDays: weekend,

@@ -59,6 +59,15 @@ function formatPeriodLabel(month, year) {
   return `${MONTHS[Number(month) - 1] || '—'} ${year || ''}`.trim();
 }
 
+function normalizeDeductionItems(items = []) {
+  const totals = new Map();
+  for (const item of items) {
+    const label = item.label === 'Unpaid Leave Deduction' ? 'Absence Deduction' : item.label;
+    totals.set(label, (totals.get(label) || 0) + Number(item.amount || 0));
+  }
+  return [...totals].map(([label, amount]) => ({ label, amount }));
+}
+
 function titleCase(value) {
   return String(value || '')
     .replaceAll('_', ' ')
@@ -214,7 +223,7 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGe
     ...(payslip.commissionItems||[]).map(item => ({ label: item.label || `${item.name} Commission`, amount: item.amount, type: 'add' })),
     ...(payslip.bonus     ? [{ label: 'Bonus',       amount: payslip.bonus,      type: 'add' }] : []),
     ...(payslip.incentives? [{ label: 'Incentives',  amount: payslip.incentives, type: 'add' }] : []),
-    ...(payslip.deductionItems||[]).map(d => ({ label: d.label, amount: d.amount, type: 'deduct' })),
+    ...normalizeDeductionItems(payslip.deductionItems).map(d => ({ label: d.label, amount: d.amount, type: 'deduct' })),
     ...(payslip.taxDeduction ? [{ label: 'Income Tax', amount: payslip.taxDeduction, type: 'deduct' }] : []),
   ];
   const totalDeductions = Number(payslip.deductions || 0) + Number(payslip.taxDeduction || 0);
@@ -242,11 +251,10 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGe
           {[
             { label: 'Working Days', val: payslip.workingDays },
             { label: 'Present', val: payslip.presentDays, cls: 'text-emerald-600' },
-            { label: 'Absent',  val: payslip.absentDays,  cls: 'text-red-500' },
+            { label: 'Absent',  val: Number(payslip.absentDays || 0) + Number(payslip.unpaidLeaveDays || 0),  cls: 'text-red-500' },
             { label: 'Late',    val: payslip.lateDays,    cls: 'text-amber-500' },
             { label: 'Half Days', val: payslip.halfDays, cls: 'text-orange-500' },
             { label: 'Paid Leave', val: payslip.paidLeaveDays, cls: 'text-blue-500' },
-            { label: 'Unpaid Leave', val: payslip.unpaidLeaveDays, cls: 'text-red-500' },
             { label: 'Holidays', val: payslip.holidayDays, cls: 'text-violet-500' },
           ].map(({ label, val, cls }) => (
             <div key={label} className="glass-card p-3 text-center">
@@ -346,10 +354,9 @@ function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
   const monthlyMode = employee.monthlyTargetHours != null;
   const attendance = [
     ['Present', employee.present, 'text-emerald-600'],
-    ['Absent', employee.absent, 'text-red-500'],
+    ['Absent', Number(employee.absent || 0) + Number(employee.unpaidLeave || 0), 'text-red-500'],
     ['Half Days', employee.halfDay, 'text-orange-500'],
     ['Paid Leave', employee.paidLeave, 'text-blue-500'],
-    ['Unpaid Leave', employee.unpaidLeave, 'text-red-500'],
     ['Sandwich Leave', employee.sandwichLeave, 'text-red-600'],
     ['Late', employee.late, 'text-amber-500'],
     ['Holidays', employee.holiday, 'text-violet-500'],
@@ -358,7 +365,7 @@ function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
   const deductions = [
     ['Absence deduction', employee.absenceDeduction],
     ['Half-day deduction', employee.halfDayDeduction],
-    ['Unpaid leave deduction', employee.unpaidLeaveDeduction],
+    ['Sandwich leave deduction', employee.unpaidLeaveDeduction],
     ['Late deduction', employee.lateDeduction],
     ['Fines', employee.totalFines],
   ];
@@ -667,10 +674,10 @@ export default function PayrollListPage() {
 
   function exportLiveCsv() {
     if (!liveRows.length) return toast.error('No live payroll data to export');
-    const headers = ['Employee','Code','Monthly Salary','Daily Salary','Earned Salary','Present','Absent','Half Days','Paid Leave','Unpaid Leave','Sandwich Leave','Late','Deductions','Net Payable'];
+    const headers = ['Employee','Code','Monthly Salary','Daily Salary','Earned Salary','Present','Absent','Half Days','Paid Leave','Sandwich Leave','Late','Deductions','Net Payable'];
     const rows = liveRows.map(row => [
       row.employeeName, row.employeeCode, row.monthlySalary, row.dailySalary, row.earnedSalary, row.present,
-      row.absent, row.halfDay, row.paidLeave, row.unpaidLeave, row.sandwichLeave, row.late, row.deductions, row.netPayable,
+      Number(row.absent || 0) + Number(row.unpaidLeave || 0), row.halfDay, row.paidLeave, row.sandwichLeave, row.late, row.deductions, row.netPayable,
     ]);
     const csv = [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' }));
@@ -775,7 +782,7 @@ export default function PayrollListPage() {
         attendanceRows: [
           { label: 'Absence Deduction', amount: source.absenceDeduction, negative: true },
           { label: 'Half Day Deduction', amount: source.halfDayDeduction, negative: true },
-          { label: 'Unpaid Leave Deduction', amount: source.unpaidLeaveDeduction, negative: true },
+          { label: 'Sandwich Leave Deduction', amount: source.unpaidLeaveDeduction, negative: true },
           { label: 'Late Deduction', amount: source.lateDeduction, negative: true },
         ],
         attendanceSummaryRows: [
@@ -812,13 +819,13 @@ export default function PayrollListPage() {
           ...(source.commissionItems || []).map((item) => ({ label: item.label || `${item.name} Commission`, amount: item.amount, group: 'earning' })),
           ...(source.bonus ? [{ label: 'Bonus', amount: source.bonus, group: 'earning' }] : []),
           ...(source.incentives ? [{ label: 'Incentives', amount: source.incentives, group: 'earning' }] : []),
-          ...(source.deductionItems || []).map((item) => ({ label: item.label, amount: item.amount, group: 'deduction' })),
+          ...normalizeDeductionItems(source.deductionItems).map((item) => ({ label: item.label, amount: item.amount, group: 'deduction' })),
           ...(source.taxDeduction ? [{ label: 'Income Tax', amount: source.taxDeduction, group: 'deduction' }] : []),
         ],
         attendanceSummaryRows: [
           ['Working Days', source.workingDays ?? 0, 'text-slate-900'],
           ['Present', source.presentDays ?? 0, 'text-emerald-600'],
-          ['Absent', source.absentDays ?? 0, 'text-red-500'],
+          ['Absent', Number(source.absentDays || 0) + Number(source.unpaidLeaveDays || 0), 'text-red-500'],
           ['Late', source.lateDays ?? 0, 'text-amber-500'],
         ],
       };
@@ -980,7 +987,7 @@ export default function PayrollListPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1150px] text-sm">
                 <thead className="bg-muted/30 text-xs uppercase text-muted-foreground"><tr>
-                  {['Employee','Monthly','Daily','Earned','Commission','Present','Absent','Half Day','Paid Leave','Unpaid Leave','Sandwich','Late','Attendance Deduction','Fines','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
+                  {['Employee','Monthly','Daily','Earned','Commission','Present','Absent','Half Day','Paid Leave','Sandwich','Late','Attendance Deduction','Fines','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-border">{liveRows.map(row => (
                   <tr key={row.employeeId} className="hover:bg-accent/30">
@@ -990,10 +997,9 @@ export default function PayrollListPage() {
                     <td className="px-4 py-3 font-medium text-emerald-600"><SensitiveValue value={row.earnedSalary} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 text-emerald-600"><SensitiveValue value={row.commissionTotal || 0} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 text-emerald-600">{row.present}</td>
-                    <td className="px-4 py-3 text-red-500">{row.absent}</td>
+                    <td className="px-4 py-3 text-red-500">{Number(row.absent || 0) + Number(row.unpaidLeave || 0)}</td>
                     <td className="px-4 py-3 text-orange-500">{row.halfDay}</td>
                     <td className="px-4 py-3">{row.paidLeave}</td>
-                    <td className="px-4 py-3 text-red-500">{row.unpaidLeave}</td>
                     <td className="px-4 py-3 text-red-600">{row.sandwichLeave}</td>
                     <td className="px-4 py-3 text-amber-500">
                       {row.late}

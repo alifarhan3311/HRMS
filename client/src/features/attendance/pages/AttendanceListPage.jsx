@@ -343,13 +343,14 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
   }, [isOpen, record]);
 
   function set(k, v) { setForm(p => ({ ...p, [k]: v })); }
+  const reasonRequired = form.status !== 'present';
   function handleSubmit(e) {
     e.preventDefault();
     if (!form.status && !form.signInTime && !form.signOutTime) {
       setError('Choose a status or correct at least one punch time.');
       return;
     }
-    if (form.reason.trim().length < 5) {
+    if (reasonRequired && form.reason.trim().length < 5) {
       setError('Enter a reason with at least 5 characters.');
       return;
     }
@@ -383,7 +384,11 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
           <Input label="Sign Out Time" type="time" value={form.signOutTime}
             onChange={(e) => set('signOutTime', e.target.value)} />
           <label className="block space-y-1.5 text-sm font-medium">Attendance Status
-            <select value={form.status} onChange={e => set('status', e.target.value)} className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
+            <select value={form.status} onChange={e => {
+              const status = e.target.value;
+              set('status', status);
+              if (status === 'present') setError('');
+            }} className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20">
               <option value="">Automatic from punches</option>
               <option value="present">Present</option>
               <option value="absent">Absent</option>
@@ -397,8 +402,9 @@ function CorrectionModal({ record, isOpen, onClose, onSubmit, isLoading }) {
               Overnight shift: sign-out date is automatically fixed to the next day.
             </p>
           )}
-          <Textarea required minLength={5} maxLength={500} label="Correction Reason" value={form.reason}
-            onChange={(e) => set('reason', e.target.value)} placeholder="Explain why this attendance is being corrected..." />
+          <Textarea required={reasonRequired} minLength={reasonRequired ? 5 : undefined} maxLength={500}
+            label={`Correction Reason${reasonRequired ? ' *' : ' (optional for Present)'}`} value={form.reason}
+            onChange={(e) => set('reason', e.target.value)} placeholder={reasonRequired ? 'Explain why this attendance is being corrected...' : 'Optional when marking Present'} />
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           {!!record?.correctionHistory?.length && <div className="space-y-2 rounded-xl border border-border bg-muted/20 p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Correction History</p><div className="max-h-36 space-y-2 overflow-y-auto">{[...record.correctionHistory].reverse().map((entry, index) => <div key={`${entry.changedAt}-${index}`} className="border-t border-border pt-2 text-xs"><p className="font-medium">{entry.changedBy?.fullName || 'HR'} · {fmtDate(entry.changedAt, true)}</p><p className="text-muted-foreground">{entry.previous?.status || '—'} → {entry.updated?.status || '—'} · {entry.reason}</p></div>)}</div></div>}
         </div>
@@ -1296,6 +1302,10 @@ export default function AttendanceListPage() {
                     ? { label: 'Awaiting Punch', variant: 'gray' }
                     : STATUS_STYLES[rec.status] || STATUS_STYLES.present;
                   const recordEmployee = employees.find(employee => employee._id === (rec.employeeId?._id || rec.employeeId));
+                  const manualStatusReason = rec.manualStatusOverride?.status
+                    && rec.manualStatusOverride.status === rec.status
+                    ? rec.manualStatusOverride?.reason?.trim()
+                    : '';
                   const reasonLabel = (() => {
                     if (!rec.signInTime && (rec.missedPunchType === 'sign_in' || rec.notes?.toLowerCase()?.includes('missing sign-in'))) {
                       return 'Missing Sign-In';
@@ -1330,6 +1340,12 @@ export default function AttendanceListPage() {
                         }`}>
                           {rec.workMode === 'wfh' ? 'WFH' : 'Office'}
                         </span>
+                        {manualStatusReason && (
+                          <p className="max-w-52 text-right text-[10px] leading-tight text-muted-foreground"
+                            title={`HR reason: ${manualStatusReason}`}>
+                            HR reason: {manualStatusReason}
+                          </p>
+                        )}
                       </div>
                       <div className="hidden sm:block text-xs text-muted-foreground space-y-0.5 text-right">
                         <p>{rec.isAwaitingPunch

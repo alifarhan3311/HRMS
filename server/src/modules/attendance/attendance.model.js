@@ -45,7 +45,7 @@ const correctionHistorySchema = new mongoose.Schema({
 
 const manualStatusOverrideSchema = new mongoose.Schema({
   status: { type: String, enum: ['present', 'absent', 'half_day', 'late'], required: true },
-  reason: { type: String, required: true, maxlength: 500 },
+  reason: { type: String, maxlength: 500 },
   changedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
   changedAt: { type: Date, required: true },
 }, { _id: false });

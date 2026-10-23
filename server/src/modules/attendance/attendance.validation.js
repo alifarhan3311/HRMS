@@ -69,11 +69,14 @@ const manualCorrectionSchema = Joi.object({
   // resolved fixed dates and returns a clear business error when needed.
   signOutTime: Joi.date().iso().optional(),
   status: Joi.string().valid('present', 'absent', 'half_day', 'late').allow('').default(''),
-  reason: Joi.string().trim().min(5).max(500).required(),
+  reason: Joi.string().trim().max(500).allow('').optional(),
   notes: Joi.string().trim().max(500).allow('').optional(),
 }).custom((value, helpers) => {
   if (!value.status && !value.signInTime && !value.signOutTime) {
     return helpers.message({ custom: 'Choose an attendance status or correct at least one punch time.' });
+  }
+  if (value.status !== 'present' && (value.reason || '').trim().length < 5) {
+    return helpers.message({ custom: 'Enter a reason with at least 5 characters unless marking the employee Present.' });
   }
   return value;
 }).custom((value, helpers) => {

@@ -81,6 +81,87 @@ const POS_PREVIOUS_BLOCKS = [
   { type: 'paragraph', text: 'POS software helps businesses accept and manage online payments through websites or apps.' },
   { type: 'paragraph', text: 'Example: When shopping online and paying using a Visa or Mastercard, the website uses an online payment system to process the payment.' },
 ];
+const INSURANCE_TRAINING_BLOCKS = [
+  { type: 'heading', text: 'Insurance Training – 7 Types' },
+  { type: 'heading', text: 'Life Insurance' },
+  { type: 'paragraph', text: 'Gives financial support to your family.' },
+  { type: 'paragraph', text: 'Example: If a parent passes away, the family may receive money.' },
+  { type: 'heading', text: 'Health Insurance' },
+  { type: 'paragraph', text: 'Helps pay medical bills.' },
+  { type: 'paragraph', text: 'Example: Helps pay hospital expenses.' },
+  { type: 'heading', text: 'Auto Insurance' },
+  { type: 'paragraph', text: 'Covers certain car damages.' },
+  { type: 'paragraph', text: 'Example: Helps pay for car repairs after an accident.' },
+  { type: 'heading', text: 'Home Insurance' },
+  { type: 'paragraph', text: 'Protects your home.' },
+  { type: 'paragraph', text: 'Example: Helps pay for fire damage to your house.' },
+  { type: 'heading', text: 'Business Insurance' },
+  { type: 'paragraph', text: 'Protects a business from certain losses.' },
+  { type: 'paragraph', text: 'Example: Helps cover damage to a shop after a fire.' },
+  { type: 'heading', text: 'Travel Insurance' },
+  { type: 'paragraph', text: 'Helps with problems during a trip.' },
+  { type: 'paragraph', text: 'Example: Helps pay medical costs during travel.' },
+  { type: 'heading', text: 'Mortgage Insurance' },
+  { type: 'paragraph', text: 'Helps protect against certain mortgage risks.' },
+  { type: 'paragraph', text: 'Example: Some policies help protect the lender if the borrower cannot repay the mortgage.' },
+  { type: 'heading', text: 'Note' },
+  { type: 'paragraph', text: 'Coverage depends on the insurance policy.' },
+];
+const INSURANCE_PREVIOUS_BLOCKS = [
+  { type: 'heading', text: 'Insurance – Basic Training' },
+  { type: 'heading', text: '1. Insurance kya hoti hai?' },
+  { type: 'paragraph', text: 'Insurance ek financial protection hai. Customer premium pay karta hai, aur policy ki conditions ke mutabiq accident, illness, death ya kisi covered loss ki surat mein financial benefit mil sakta hai.' },
+  { type: 'heading', text: '2. Insurance ki main types' },
+  { type: 'numbered', text: 'Life Insurance: Death ki surat mein family ko financial protection deti hai.\nHealth Insurance: Medical aur healthcare expenses cover karne mein madad karti hai.\nAuto Insurance: Car accidents, damage aur liability ke against protection deti hai.\nHome Insurance: Ghar aur belongings ko covered risks se protect karti hai.\nBusiness Insurance: Business ko covered losses aur liabilities se protect karti hai.\nTravel Insurance: Travel ke dauran covered medical emergencies aur doosre risks se protection deti hai.' },
+  { type: 'heading', text: '3. Life Insurance ki 3 main types' },
+  { type: 'bullets', text: 'Term Life: Specific period ke liye coverage, jaise 10, 20 ya 30 years.\nWhole Life: Permanent life coverage, usually cash value ke saath.\nUniversal Life: Permanent life coverage with a cash-value component aur policy ke mutabiq flexible options.' },
+  { type: 'heading', text: 'Yaad rakho' },
+  { type: 'paragraph', text: 'Insurance ka main purpose financial protection dena hai, taake unexpected situations mein financial burden kam ho sake.' },
+];
+const INSURANCE_PREVIOUS_ENGLISH_BLOCKS = [
+  { type: 'heading', text: 'Insurance – Basic Training' },
+  { type: 'heading', text: '1. What is insurance?' },
+  { type: 'paragraph', text: 'Insurance is financial protection. A customer pays a premium and, subject to the policy terms, may receive a financial benefit in the event of an accident, illness, death, or other covered loss.' },
+  { type: 'heading', text: '2. Main types of insurance' },
+  { type: 'numbered', text: 'Life Insurance: Provides financial protection for the family in the event of the insured person’s death.\nHealth Insurance: Helps cover medical and healthcare expenses.\nAuto Insurance: Provides protection against covered car accidents, damage, and liability.\nHome Insurance: Protects a home and belongings against covered risks.\nBusiness Insurance: Protects a business against covered losses and liabilities.\nTravel Insurance: Provides protection for covered medical emergencies and other risks during travel.' },
+  { type: 'heading', text: '3. Three main types of life insurance' },
+  { type: 'bullets', text: 'Term Life: Coverage for a specific period, such as 10, 20, or 30 years.\nWhole Life: Permanent life coverage, usually with a cash-value component.\nUniversal Life: Permanent life coverage with a cash-value component and flexible options, subject to the policy terms.' },
+  { type: 'heading', text: 'Remember' },
+  { type: 'paragraph', text: 'The main purpose of insurance is to provide financial protection and help reduce the financial burden of unexpected situations.' },
+];
+const BUSINESS_LOANS_TRAINING_BLOCKS = [
+  { type: 'heading', text: 'Business Loan – Simple Training' },
+  { type: 'bullets', text: [
+    'Credit Score: The client should have a credit score of at least 700.',
+    'Loan Types: Personal loans and business loans are different.',
+    'Our Help: We help clients with the process of getting a business loan.',
+    'Existing Loan: If the client already has a loan in process, they may not qualify for another loan.',
+    'Government Grant or Mortgage: If the client has a government grant or mortgage, it can affect their loan eligibility.',
+    'Loan Amount: The amount depends on the client’s credit score, business, and any existing loans or grants. We cannot confirm the exact amount in advance.',
+  ].join('\n') },
+];
+const ACCOUNTING_TRAINING_BLOCKS = [
+  { type: 'heading', text: 'Accounting – Basic Training for Freshers' },
+  { type: 'heading', text: 'What is Accounting?' },
+  { type: 'paragraph', text: 'Accounting means keeping records of a business’s income, expenses, and financial transactions.' },
+  { type: 'heading', text: 'Main Accounting Services' },
+  { type: 'bullets', text: [
+    'Bookkeeping: Recording daily income and expenses.',
+    'Personal Tax (T1): Filing an individual’s tax return.',
+    'Business Income (T2125): Reporting income and expenses for a self-employed business.',
+    'Corporate Tax (T2): Filing a company’s tax return.',
+    'Trust Tax (T3): Reporting income for a trust.',
+    'Payroll: Managing employee salaries and deductions.',
+    'GST/HST: Filing a business’s sales tax return.',
+    'Tax Slips (T4, T4A, T5): Showing salary, pension, and investment income.',
+  ].join('\n') },
+  { type: 'heading', text: 'Easy Rule' },
+  { type: 'bullets', text: [
+    'Tax Return: A form used to report income and calculate taxes.',
+    'Tax Slip: A document that shows income received during the year.',
+  ].join('\n') },
+  { type: 'paragraph', text: 'Remember: Accounting helps businesses manage their money, maintain records, and file taxes correctly.' },
+];
 
 function requireCompany(actor) {
   if (!actor?.companyId) throw createHttpError(403, 'Company access is required.');
@@ -114,7 +195,16 @@ async function seedStarterCategories(actor) {
     departments: [TRAINING_DEPARTMENT],
     // Starter pages should not imply that placeholder text is real training
     // material. ATM has the actual business terms supplied by HR.
-    blocks: slug === 'atm' ? [...ATM_COMMISSION_BLOCKS, ...ATM_RENTAL_BLOCKS, ...ATM_BUY_BLOCKS] : [{ type: 'paragraph', text: summary }],
+    blocks: slug === 'atm'
+      ? [...ATM_COMMISSION_BLOCKS, ...ATM_RENTAL_BLOCKS, ...ATM_BUY_BLOCKS]
+      : slug === 'pos' ? POS_TRAINING_BLOCKS
+        : slug === 'insurance' ? INSURANCE_TRAINING_BLOCKS
+          : slug === 'business-loans' ? BUSINESS_LOANS_TRAINING_BLOCKS
+            : slug === 'accounting' ? ACCOUNTING_TRAINING_BLOCKS : [{ type: 'paragraph', text: summary }],
+    ...(slug === 'pos' ? { posContentVersion: 1 } : {}),
+    ...(slug === 'insurance' ? { insuranceContentVersion: 3 } : {}),
+    ...(slug === 'business-loans' ? { businessLoansContentVersion: 1 } : {}),
+    ...(slug === 'accounting' ? { accountingContentVersion: 1 } : {}),
     createdBy: actor.id,
     updatedBy: actor.id,
   }));
@@ -188,34 +278,122 @@ async function list(actor) {
       }, { new: true, runValidators: true });
     }
   }
-  // Add the approved POS primer to the existing POS tab without replacing any
-  // training material HR has already written there.
+  // Normalize legacy POS starter content once. The old read-time migration
+  // appended defaults on every request, so HR-edited rates stayed above while
+  // the default rate was re-added below. Preserve any custom rate, collapse
+  // duplicate rate lines, then mark the category migrated so reads are stable.
   const posCategory = await TrainingCategory.findOne({ ...base, slug: 'pos' })
-    .select('_id blocks revision summary').lean();
-  if (posCategory) {
+    .select('_id blocks revision summary posContentVersion').lean();
+  if (posCategory && (posCategory.posContentVersion || 0) < 1) {
     const placeholder = 'HR can edit this page to add the training material, process steps, and learning resources.';
     const existingBlocks = (posCategory.blocks || []).filter(block => {
       if (block.type === 'heading' && block.text === 'Training details') return false;
       if (block.type === 'paragraph' && (block.text === placeholder || block.text === posCategory.summary)) return false;
       return true;
     });
+    const defaultDebitRate = 'Debit Card: 4 cents per transaction.';
+    const defaultCreditRate = 'Credit Card: 0.29% per transaction.';
+    const debitCandidates = existingBlocks.flatMap(block => block.type === 'bullets'
+      ? block.text.split(/\r?\n/).map(line => line.trim()).filter(line => /^Debit Card:/i.test(line))
+      : []);
+    const creditCandidates = existingBlocks.flatMap(block => block.type === 'bullets'
+      ? block.text.split(/\r?\n/).map(line => line.trim()).filter(line => /^Credit Card:/i.test(line))
+      : []);
+    const debitRate = [...debitCandidates].reverse().find(line => line.toLowerCase() !== defaultDebitRate.toLowerCase())
+      || debitCandidates[0] || defaultDebitRate;
+    const creditRate = [...creditCandidates].reverse().find(line => line.toLowerCase() !== defaultCreditRate.toLowerCase())
+      || creditCandidates[0] || defaultCreditRate;
+    const rateHeading = '4. Interchange Rate';
     const managedPosBlocks = [...POS_PREVIOUS_BLOCKS, ...POS_TRAINING_BLOCKS];
-    const authoredBlocks = existingBlocks.filter(block => !(block.type === 'heading' && managedPosBlocks.some(posBlock => posBlock.type === 'heading' && posBlock.text === block.text))
-      && !managedPosBlocks.some(posBlock => posBlock.type === block.type && posBlock.text === block.text));
-    const nextBlocks = [...authoredBlocks, ...POS_TRAINING_BLOCKS];
+    const authoredBlocks = existingBlocks.filter(block => {
+      if (block.type === 'heading' && (block.text === rateHeading || managedPosBlocks.some(item => item.type === 'heading' && item.text === block.text))) return false;
+      if (block.type === 'bullets' && /(?:^|\n)\s*(?:Debit|Credit) Card:/i.test(block.text)) return false;
+      return !managedPosBlocks.some(item => item.type === block.type && item.text === block.text);
+    });
+    const canonicalPosBlocks = POS_TRAINING_BLOCKS.map(block => block.type === 'bullets'
+      && block.text.includes(defaultDebitRate) && block.text.includes(defaultCreditRate)
+      ? { ...block, text: `${debitRate}\n${creditRate}` }
+      : block);
+    const nextBlocks = [...authoredBlocks, ...canonicalPosBlocks];
     const changed = nextBlocks.length !== (posCategory.blocks || []).length
       || nextBlocks.some((block, index) => block.type !== posCategory.blocks[index]?.type || block.text !== posCategory.blocks[index]?.text);
-    if (changed) {
+    if (changed || (posCategory.posContentVersion || 0) < 1) {
       await TrainingCategory.findOneAndUpdate({
         _id: posCategory._id,
         companyId: actor.companyId,
         deletedAt: null,
         revision: posCategory.revision,
       }, {
-        $set: { blocks: nextBlocks },
+        $set: { blocks: nextBlocks, posContentVersion: 1 },
         $inc: { revision: 1 },
       }, { new: true, runValidators: true });
     }
+  }
+  // Replace the previous insurance primer with the latest HR-approved seven
+  // types, retaining unrelated authored material and avoiding read-time repeats.
+  const insuranceCategory = await TrainingCategory.findOne({ ...base, slug: 'insurance' })
+    .select('_id blocks revision summary insuranceContentVersion').lean();
+  if (insuranceCategory && (insuranceCategory.insuranceContentVersion || 0) < 3) {
+    const placeholder = 'HR can edit this page to add the training material, process steps, and learning resources.';
+    const existingBlocks = (insuranceCategory.blocks || []).filter(block => {
+      if (block.type === 'heading' && block.text === 'Training details') return false;
+      if (block.type === 'paragraph' && (block.text === placeholder || block.text === insuranceCategory.summary)) return false;
+      return true;
+    });
+    const previousAndCurrentContent = [...INSURANCE_PREVIOUS_BLOCKS, ...INSURANCE_PREVIOUS_ENGLISH_BLOCKS, ...INSURANCE_TRAINING_BLOCKS];
+    const authoredBlocks = existingBlocks.filter(block => !previousAndCurrentContent.some(item => item.type === block.type && item.text === block.text));
+    const nextBlocks = [...authoredBlocks, ...INSURANCE_TRAINING_BLOCKS];
+    await TrainingCategory.findOneAndUpdate({
+      _id: insuranceCategory._id,
+      companyId: actor.companyId,
+      deletedAt: null,
+      revision: insuranceCategory.revision,
+    }, {
+      $set: { blocks: nextBlocks, insuranceContentVersion: 3 },
+      $inc: { revision: 1 },
+    }, { new: true, runValidators: true });
+  }
+  // Add the HR-provided business-loan guide once, keeping unrelated content.
+  const businessLoansCategory = await TrainingCategory.findOne({ ...base, slug: 'business-loans' })
+    .select('_id blocks revision summary businessLoansContentVersion').lean();
+  if (businessLoansCategory && (businessLoansCategory.businessLoansContentVersion || 0) < 1) {
+    const placeholder = 'HR can edit this page to add the training material, process steps, and learning resources.';
+    const existingBlocks = (businessLoansCategory.blocks || []).filter(block => {
+      if (block.type === 'heading' && block.text === 'Training details') return false;
+      if (block.type === 'paragraph' && (block.text === placeholder || block.text === businessLoansCategory.summary)) return false;
+      return true;
+    });
+    const authoredBlocks = existingBlocks.filter(block => !BUSINESS_LOANS_TRAINING_BLOCKS.some(item => item.type === block.type && item.text === block.text));
+    await TrainingCategory.findOneAndUpdate({
+      _id: businessLoansCategory._id,
+      companyId: actor.companyId,
+      deletedAt: null,
+      revision: businessLoansCategory.revision,
+    }, {
+      $set: { blocks: [...authoredBlocks, ...BUSINESS_LOANS_TRAINING_BLOCKS], businessLoansContentVersion: 1 },
+      $inc: { revision: 1 },
+    }, { new: true, runValidators: true });
+  }
+  // Add the fresher accounting guide once while retaining other HR content.
+  const accountingCategory = await TrainingCategory.findOne({ ...base, slug: 'accounting' })
+    .select('_id blocks revision summary accountingContentVersion').lean();
+  if (accountingCategory && (accountingCategory.accountingContentVersion || 0) < 1) {
+    const placeholder = 'HR can edit this page to add the training material, process steps, and learning resources.';
+    const existingBlocks = (accountingCategory.blocks || []).filter(block => {
+      if (block.type === 'heading' && block.text === 'Training details') return false;
+      if (block.type === 'paragraph' && (block.text === placeholder || block.text === accountingCategory.summary)) return false;
+      return true;
+    });
+    const authoredBlocks = existingBlocks.filter(block => !ACCOUNTING_TRAINING_BLOCKS.some(item => item.type === block.type && item.text === block.text));
+    await TrainingCategory.findOneAndUpdate({
+      _id: accountingCategory._id,
+      companyId: actor.companyId,
+      deletedAt: null,
+      revision: accountingCategory.revision,
+    }, {
+      $set: { blocks: [...authoredBlocks, ...ACCOUNTING_TRAINING_BLOCKS], accountingContentVersion: 1 },
+      $inc: { revision: 1 },
+    }, { new: true, runValidators: true });
   }
   const categories = await TrainingCategory.find(base).sort({ name: 1, _id: 1 }).lean();
   // Commission values are private HR data; never expose them through the

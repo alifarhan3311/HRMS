@@ -32,6 +32,20 @@ test('payroll deducts one full daily salary for every three chargeable lates', (
   assert.equal(result.unpaidLeaveDeduction, 2000);
 });
 
+test('unpaid leave reclassified as absence is deducted once under absence', () => {
+  const result = calculateAttendancePayroll({
+    basicSalary: 60000,
+    workingDays: 22,
+    absent: 3,
+    halfDay: 0,
+    late: 0,
+    unpaidLeave: 0,
+  });
+
+  assert.equal(result.absenceDeduction, 6000);
+  assert.equal(result.unpaidLeaveDeduction, 0);
+});
+
 test('approved leave-against-lates removes those lates from payroll deduction', () => {
   const result = calculateAttendancePayroll({
     basicSalary: 50000,

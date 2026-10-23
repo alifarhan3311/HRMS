@@ -46,7 +46,7 @@ test('only HR and administrator roles may create, update, or remove training tab
 });
 
 test('non-Call-Center employees are denied training-library access', async t => {
-  t.mock.method(TrainingCategory, 'findOne', query => ({ select: () => ({ lean: async () => query.slug === 'pos' ? null : ({ _id: 'atm-id', revision: 1, blocks: [{ type: 'heading', text: 'ATM Rental Model' }, { type: 'heading', text: 'ATM Commission Model' }, { type: 'heading', text: 'ATM Buy' }] }) }) }));
+  t.mock.method(TrainingCategory, 'findOne', query => ({ select: () => ({ lean: async () => query.slug === 'atm' ? ({ _id: 'atm-id', revision: 1, blocks: [{ type: 'heading', text: 'ATM Rental Model' }, { type: 'heading', text: 'ATM Commission Model' }, { type: 'heading', text: 'ATM Buy' }] }) : null }) }));
   t.mock.method(TrainingCategory, 'exists', async () => true);
   t.mock.method(TrainingCategory, 'updateMany', async () => ({ modifiedCount: 0 }));
   t.mock.method(TrainingCategory, 'findOneAndUpdate', async () => ({}));
@@ -57,7 +57,7 @@ test('non-Call-Center employees are denied training-library access', async t => 
 
 test('Call-Center employees can read the training library', async t => {
   const categories = [{ name: 'ATM', audience: 'department', departments: ['call center'] }];
-  t.mock.method(TrainingCategory, 'findOne', () => ({ select: () => ({ lean: async () => ({ _id: 'atm-id', revision: 1, blocks: [{ type: 'heading', text: 'ATM Rental Model' }, { type: 'heading', text: 'ATM Commission Model' }, { type: 'heading', text: 'ATM Buy' }] }) }) }));
+  t.mock.method(TrainingCategory, 'findOne', query => ({ select: () => ({ lean: async () => query.slug === 'atm' ? ({ _id: 'atm-id', revision: 1, blocks: [{ type: 'heading', text: 'ATM Rental Model' }, { type: 'heading', text: 'ATM Commission Model' }, { type: 'heading', text: 'ATM Buy' }] }) : null }) }));
   t.mock.method(TrainingCategory, 'exists', async () => true);
   t.mock.method(TrainingCategory, 'updateMany', async () => ({ modifiedCount: 0 }));
   t.mock.method(TrainingCategory, 'findOneAndUpdate', async () => ({}));
@@ -97,7 +97,7 @@ test('ATM rental terms are added once and existing ATM material is preserved', a
 
 test('POS training is added to the POS tab while preserving HR-authored material', async t => {
   const pos = {
-    _id: 'pos-id', revision: 3, summary: 'POS summary', blocks: [
+    _id: 'pos-id', revision: 3, posContentVersion: 0, summary: 'POS summary', blocks: [
       { type: 'paragraph', text: 'POS summary' },
       { type: 'paragraph', text: 'Existing POS guide' },
     ],
@@ -110,6 +110,7 @@ test('POS training is added to the POS tab while preserving HR-authored material
   t.mock.method(TrainingCategory, 'find', () => ({ sort: () => ({ lean: async () => [pos] }) }));
   await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
   assert.equal(migration.filter.revision, 3);
+  assert.equal(migration.update.$set.posContentVersion, 1);
   const blocks = migration.update.$set.blocks;
   assert.equal(blocks[0].text, 'Existing POS guide');
   assert.deepEqual(blocks.map(block => block.text).slice(1), [
@@ -131,4 +132,129 @@ test('POS training is added to the POS tab while preserving HR-authored material
     'Competitors (Not Connected With Us)',
     'TD, Chase, and Square are competitors. We are not connected with them.',
   ]);
+});
+
+test('POS migration keeps HR-edited interchange rate and removes legacy duplicates once', async t => {
+  const pos = {
+    _id: 'pos-id', revision: 8, posContentVersion: 0, summary: 'POS summary', blocks: [
+      { type: 'bullets', text: 'Debit Card: 5 cents per transaction.\nCredit Card: 0.29% per transaction.' },
+      { type: 'bullets', text: 'Debit Card: 5 cents per transaction.\nCredit Card: 0.29% per transaction.' },
+      { type: 'heading', text: '4. Interchange Rate' },
+      { type: 'bullets', text: 'Debit Card: 4 cents per transaction.\nCredit Card: 0.29% per transaction.' },
+    ],
+  };
+  let migrations = 0;
+  t.mock.method(TrainingCategory, 'exists', async () => true);
+  t.mock.method(TrainingCategory, 'updateMany', async () => ({ modifiedCount: 0 }));
+  t.mock.method(TrainingCategory, 'findOne', query => ({ select: () => ({ lean: async () => query.slug === 'pos' ? pos : null }) }));
+  t.mock.method(TrainingCategory, 'findOneAndUpdate', async (_filter, update) => {
+    migrations += 1;
+    pos.blocks = update.$set.blocks;
+    pos.posContentVersion = update.$set.posContentVersion;
+    pos.revision += update.$inc.revision;
+    return {};
+  });
+  t.mock.method(TrainingCategory, 'find', () => ({ sort: () => ({ lean: async () => [pos] }) }));
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  const rateBlocks = pos.blocks.filter(block => block.type === 'bullets' && /Debit Card:|Credit Card:/.test(block.text));
+  assert.equal(rateBlocks.length, 1);
+  assert.equal(rateBlocks[0].text, 'Debit Card: 5 cents per transaction.\nCredit Card: 0.29% per transaction.');
+  assert.equal(pos.blocks.filter(block => block.type === 'heading' && block.text === '4. Interchange Rate').length, 1);
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  assert.equal(migrations, 1, 'subsequent page loads should not rewrite migrated HR content');
+});
+
+test('insurance primer is added once while preserving HR-authored material', async t => {
+  const insurance = {
+    _id: 'insurance-id', revision: 2, insuranceContentVersion: 2,
+    summary: 'Insurance products, customer guidance, and process compliance.',
+    blocks: [
+      { type: 'paragraph', text: 'Insurance products, customer guidance, and process compliance.' },
+      { type: 'paragraph', text: 'Existing insurance notes' },
+    ],
+  };
+  let migrations = 0;
+  t.mock.method(TrainingCategory, 'exists', async () => true);
+  t.mock.method(TrainingCategory, 'updateMany', async () => ({ modifiedCount: 0 }));
+  t.mock.method(TrainingCategory, 'findOne', query => ({ select: () => ({ lean: async () => query.slug === 'insurance' ? insurance : null }) }));
+  t.mock.method(TrainingCategory, 'findOneAndUpdate', async (_filter, update) => {
+    migrations += 1;
+    insurance.blocks = update.$set.blocks;
+    insurance.insuranceContentVersion = update.$set.insuranceContentVersion;
+    insurance.revision += update.$inc.revision;
+    return {};
+  });
+  t.mock.method(TrainingCategory, 'find', () => ({ sort: () => ({ lean: async () => [insurance] }) }));
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  assert.equal(insurance.blocks[0].text, 'Existing insurance notes');
+  assert.ok(insurance.blocks.some(block => block.text === 'Life Insurance'));
+  assert.ok(insurance.blocks.some(block => block.text.includes('Mortgage Insurance:') || block.text === 'Mortgage Insurance'));
+  assert.ok(insurance.blocks.some(block => block.text === 'Coverage depends on the insurance policy.'));
+  assert.ok(!insurance.blocks.some(block => block.text.includes('Insurance is financial protection.')));
+  assert.equal(insurance.blocks.filter(block => block.text === 'Insurance Training – 7 Types').length, 1);
+  assert.equal(insurance.insuranceContentVersion, 3);
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  assert.equal(migrations, 1, 'subsequent page loads should not duplicate the insurance primer');
+});
+
+test('business-loan training is added once while preserving HR-authored material', async t => {
+  const category = {
+    _id: 'business-loans-id', revision: 1, businessLoansContentVersion: 0,
+    summary: 'Business lending products, application flow, and documentation.',
+    blocks: [{ type: 'paragraph', text: 'Existing lending notes' }],
+  };
+  let migrations = 0;
+  t.mock.method(TrainingCategory, 'exists', async () => true);
+  t.mock.method(TrainingCategory, 'updateMany', async () => ({ modifiedCount: 0 }));
+  t.mock.method(TrainingCategory, 'findOne', query => ({ select: () => ({ lean: async () => query.slug === 'business-loans' ? category : null }) }));
+  t.mock.method(TrainingCategory, 'findOneAndUpdate', async (_filter, update) => {
+    migrations += 1;
+    category.blocks = update.$set.blocks;
+    category.businessLoansContentVersion = update.$set.businessLoansContentVersion;
+    category.revision += update.$inc.revision;
+    return {};
+  });
+  t.mock.method(TrainingCategory, 'find', () => ({ sort: () => ({ lean: async () => [category] }) }));
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  assert.equal(category.blocks[0].text, 'Existing lending notes');
+  assert.ok(category.blocks.some(block => block.text.includes('Credit Score: The client should have a credit score of at least 700.')));
+  assert.ok(category.blocks.some(block => block.text.includes('We cannot confirm the exact amount in advance.')));
+  assert.equal(category.businessLoansContentVersion, 1);
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  assert.equal(migrations, 1, 'subsequent page loads should not duplicate the business-loan guide');
+});
+
+test('accounting fresher guide is added once while preserving HR-authored material', async t => {
+  const category = {
+    _id: 'accounting-id', revision: 1, accountingContentVersion: 0,
+    summary: 'Accounting workflows, records, and quality standards.',
+    blocks: [{ type: 'paragraph', text: 'Existing accounting notes' }],
+  };
+  let migrations = 0;
+  t.mock.method(TrainingCategory, 'exists', async () => true);
+  t.mock.method(TrainingCategory, 'updateMany', async () => ({ modifiedCount: 0 }));
+  t.mock.method(TrainingCategory, 'findOne', query => ({ select: () => ({ lean: async () => query.slug === 'accounting' ? category : null }) }));
+  t.mock.method(TrainingCategory, 'findOneAndUpdate', async (_filter, update) => {
+    migrations += 1;
+    category.blocks = update.$set.blocks;
+    category.accountingContentVersion = update.$set.accountingContentVersion;
+    category.revision += update.$inc.revision;
+    return {};
+  });
+  t.mock.method(TrainingCategory, 'find', () => ({ sort: () => ({ lean: async () => [category] }) }));
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  assert.equal(category.blocks[0].text, 'Existing accounting notes');
+  assert.ok(category.blocks.some(block => block.text.includes('Personal Tax (T1):')));
+  assert.ok(category.blocks.some(block => block.text.includes('Tax Slip: A document that shows income received during the year.')));
+  assert.equal(category.accountingContentVersion, 1);
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  assert.equal(migrations, 1, 'subsequent page loads should not duplicate the accounting guide');
 });

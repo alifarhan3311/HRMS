@@ -18,6 +18,7 @@ const {
 } = require('../src/modules/attendance/attendance.service');
 const { isSaturdayShiftDate, saturdayStatus } = require('../src/modules/attendance/saturdayPolicy');
 const Attendance = require('../src/modules/attendance/attendance.model');
+const { manualCorrectionSchema } = require('../src/modules/attendance/attendance.validation');
 
 const start = new Date('2026-07-23T20:00:00.000Z');
 const schedule = { scheduledStart: start };
@@ -254,6 +255,13 @@ test('attendance records require one normalized shift date for duplicate prevent
   assert.ok(record.validateSync()?.errors?.shiftDate);
   record.shiftDate = '2026-07-27';
   assert.equal(record.validateSync(), undefined);
+});
+
+test('manual attendance correction allows a blank reason only when status is Present', () => {
+  assert.equal(manualCorrectionSchema.validate({ status: 'present' }).error, undefined);
+  assert.equal(manualCorrectionSchema.validate({ status: 'absent' }).error?.details[0].message.includes('reason'), true);
+  assert.equal(manualCorrectionSchema.validate({ status: 'absent', reason: 'No approved leave' }).error, undefined);
+  assert.equal(manualCorrectionSchema.validate({ signInTime: '2026-10-23T13:00:00Z' }).error?.details[0].message.includes('reason'), true);
 });
 
 test('monthly-hours departments include operations and accounting and calculate the 184-hour target correctly', () => {

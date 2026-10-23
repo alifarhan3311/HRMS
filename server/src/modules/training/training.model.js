@@ -15,6 +15,12 @@ const schema = new mongoose.Schema({
   audience: { type: String, enum: ['all', 'department'], default: 'all', required: true },
   departments: { type: [String], default: [] },
   blocks: { type: [blockSchema], default: [] },
+  // Version of the one-time POS starter-content cleanup. Once normalized,
+  // subsequent reads must never re-append built-in copy over HR edits.
+  posContentVersion: { type: Number, default: 0 },
+  insuranceContentVersion: { type: Number, default: 0 },
+  businessLoansContentVersion: { type: Number, default: 0 },
+  accountingContentVersion: { type: Number, default: 0 },
   revision: { type: Number, default: 1 },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
