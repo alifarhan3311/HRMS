@@ -3,6 +3,9 @@
  * HTTP layer for login/refresh/logout — sets/clears the HttpOnly cookies.
  */
 const loginService = require('./login.service');
+const { sendCompanyMail } = require('../../config/mailer');
+const logger = require('../../utils/logger');
+const { sendPrivilegedLoginAlert } = require('./loginAlert');
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -34,6 +37,24 @@ const login = asyncHandler(async (req, res) => {
     userAgent: req.headers['user-agent'],
     ipAddress: req.ip,
   });
+
+  if (['hr', 'super_admin'].includes(user.role)) {
+    // Security notifications are best-effort: SMTP or GeoIP outages must not
+    // block a legitimate sign-in or delay issuance of the session cookies.
+    setImmediate(() => {
+      sendPrivilegedLoginAlert({
+        email: req.body.email,
+        user,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+        sendCompanyMail,
+      }).catch(error => logger.warn('[auth] Could not send privileged login alert', {
+        userId: String(user.id),
+        companyId: String(user.companyId || ''),
+        error: error.message,
+      }));
+    });
+  }
 
   req.auditContext = {
     userId: user.id,
