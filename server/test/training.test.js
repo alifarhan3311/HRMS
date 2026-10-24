@@ -258,3 +258,39 @@ test('accounting fresher guide is added once while preserving HR-authored materi
   await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
   assert.equal(migrations, 1, 'subsequent page loads should not duplicate the accounting guide');
 });
+
+test('Canadian business targeting guide is added to Digital Media once and preserves HR content', async t => {
+  const category = {
+    _id: 'digital-media-id', revision: 3, digitalMediaContentVersion: 0,
+    summary: 'Digital channels, content workflows, and campaign basics.',
+    blocks: [
+      { type: 'paragraph', text: 'Digital channels, content workflows, and campaign basics.' },
+      { type: 'paragraph', text: 'Existing HR campaign notes' },
+      { type: 'heading', text: 'Training details' },
+      { type: 'paragraph', text: 'HR can edit this page to add the training material, process steps, and learning resources.' },
+    ],
+  };
+  let migrations = 0;
+  t.mock.method(TrainingCategory, 'exists', async () => true);
+  t.mock.method(TrainingCategory, 'updateMany', async () => ({ modifiedCount: 0 }));
+  t.mock.method(TrainingCategory, 'findOne', query => ({ select: () => ({ lean: async () => query.slug === 'digital-media' ? category : null }) }));
+  t.mock.method(TrainingCategory, 'findOneAndUpdate', async (_filter, update) => {
+    migrations += 1;
+    category.blocks = update.$set.blocks;
+    category.digitalMediaContentVersion = update.$set.digitalMediaContentVersion;
+    category.revision += update.$inc.revision;
+    return {};
+  });
+  t.mock.method(TrainingCategory, 'find', () => ({ sort: () => ({ lean: async () => [category] }) }));
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  assert.equal(category.blocks[0].text, 'Existing HR campaign notes');
+  assert.ok(category.blocks.some(block => block.text.includes('Canadian Business Targeting')));
+  assert.ok(category.blocks.some(block => block.text.includes('Agentic AI Solutions')));
+  assert.ok(category.blocks.some(block => block.text.includes('Cleaning and Home Services')));
+  assert.ok(category.blocks.some(block => block.text.includes('book a consultation')));
+  assert.equal(category.digitalMediaContentVersion, 1);
+
+  await service.list({ role: 'hr', id: 'hr-id', companyId: 'company-id' });
+  assert.equal(migrations, 1, 'subsequent page loads should not duplicate the guide');
+});

@@ -21,6 +21,7 @@ const schema = new mongoose.Schema({
   insuranceContentVersion: { type: Number, default: 0 },
   businessLoansContentVersion: { type: Number, default: 0 },
   accountingContentVersion: { type: Number, default: 0 },
+  digitalMediaContentVersion: { type: Number, default: 0 },
   revision: { type: Number, default: 1 },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
   updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },

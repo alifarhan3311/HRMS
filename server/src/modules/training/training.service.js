@@ -162,6 +162,49 @@ const ACCOUNTING_TRAINING_BLOCKS = [
   ].join('\n') },
   { type: 'paragraph', text: 'Remember: Accounting helps businesses manage their money, maintain records, and file taxes correctly.' },
 ];
+const DIGITAL_MEDIA_TARGETING_BLOCKS = [
+  { type: 'heading', text: 'Canadian Business Targeting – Agent Training Guide' },
+  { type: 'heading', text: 'Our Services' },
+  { type: 'numbered', text: [
+    'Website and Web Application Development',
+    'Search Engine Optimization (SEO)',
+    'Social Media Marketing (SMM)',
+    'Digital Marketing and Lead Generation',
+    'Agentic AI Solutions',
+    'Generative AI Solutions',
+    'Customer Relationship Management (CRM)',
+    'Enterprise Resource Planning (ERP)',
+    'Custom Software Development and API Integrations',
+  ].join('\n') },
+  { type: 'heading', text: 'Business-Wise Requirements and Opportunities' },
+  { type: 'numbered', text: [
+    'Cleaning and Home Services — Needs: local customer acquisition, cleaning bookings, quotations, cleaner assignments, and recurring contracts. Relevant solutions: Local SEO, Google Ads, booking websites, AI receptionists, and scheduling CRM.',
+    'Construction and HVAC — Needs: service inquiries, emergency calls, quotations, technician scheduling, and job tracking. Relevant solutions: Google Ads, contractor websites, AI call handling, quotation CRM, and field service management.',
+    'Real Estate and Realtors — Needs: buyer/seller leads, property advertising, inquiries, viewing appointments, and client follow-ups. Relevant solutions: lead generation, property listing websites, real estate CRM, and AI follow-up automation.',
+    'Trucking and Logistics — Needs: commercial shipping clients, dispatch, driver assignments, shipment tracking, and invoicing. Relevant solutions: B2B marketing, freight quote portals, dispatch software, shipment tracking, and document automation.',
+    'Accounting and Bookkeeping — Needs: financial document processing, data entry, client document collection, and bookkeeping workflows. Relevant solutions: AI OCR, transaction classification, secure client portals, and QuickBooks/Xero integration.',
+    'Restaurants and Cafés — Needs: local customer acquisition, online orders, reservations, menu promotions, and customer retention. Relevant solutions: Local SEO, SMM, online ordering websites, digital menus, and loyalty systems.',
+    'Automotive Businesses — Needs: service appointments, vehicle records, maintenance reminders, and repair job management. Relevant solutions: Local SEO, Google Ads, booking websites, automotive CRM, and workshop management.',
+    'Hotels and Motels — Needs: direct bookings, OTA synchronization, room availability, guest communication, and housekeeping. Relevant solutions: hotel booking websites, SEO, Beds24/PMS integration, and AI guest assistants.',
+    'Retail and POS Businesses — Needs: online sales, inventory tracking, POS synchronization, supplier management, and customer loyalty. Relevant solutions: e-commerce websites, digital marketing, POS integration, inventory ERP, and loyalty CRM.',
+    'Staffing and Recruitment — Needs: employer acquisition, job postings, candidate applications, interview scheduling, and recruitment tracking. Relevant solutions: LinkedIn lead generation, recruitment websites, ATS, recruitment CRM, and AI scheduling.',
+  ].join('\n') },
+  { type: 'heading', text: 'Agent Research and Calling Focus' },
+  { type: 'bullets', text: [
+    'Cleaning: How does the company receive and manage cleaning bookings?',
+    'Construction and HVAC: How are emergency inquiries, estimates, and technicians managed?',
+    'Real Estate: How are buyer/seller leads generated and followed up?',
+    'Trucking and Logistics: Does the company use dispatch and shipment management software?',
+    'Accounting: How much financial data entry and document processing is manual?',
+    'Restaurants: Are orders received directly or mainly through third-party platforms?',
+    'Automotive: How are service appointments and customer reminders managed?',
+    'Hotels and Motels: Are reservations and room availability synchronized across booking platforms?',
+    'Retail: Are online sales, inventory, and POS systems connected?',
+    'Staffing: How are candidates, interviews, and employer clients managed?',
+  ].join('\n') },
+  { type: 'heading', text: 'Agent Instruction' },
+  { type: 'paragraph', text: 'Identify the customer’s actual business problem first. Then introduce only the relevant service. The goal is to generate interest and book a consultation—not to explain or sell every service.' },
+];
 
 function requireCompany(actor) {
   if (!actor?.companyId) throw createHttpError(403, 'Company access is required.');
@@ -200,11 +243,13 @@ async function seedStarterCategories(actor) {
       : slug === 'pos' ? POS_TRAINING_BLOCKS
         : slug === 'insurance' ? INSURANCE_TRAINING_BLOCKS
           : slug === 'business-loans' ? BUSINESS_LOANS_TRAINING_BLOCKS
-            : slug === 'accounting' ? ACCOUNTING_TRAINING_BLOCKS : [{ type: 'paragraph', text: summary }],
+            : slug === 'accounting' ? ACCOUNTING_TRAINING_BLOCKS
+              : slug === 'digital-media' ? DIGITAL_MEDIA_TARGETING_BLOCKS : [{ type: 'paragraph', text: summary }],
     ...(slug === 'pos' ? { posContentVersion: 1 } : {}),
     ...(slug === 'insurance' ? { insuranceContentVersion: 3 } : {}),
     ...(slug === 'business-loans' ? { businessLoansContentVersion: 1 } : {}),
     ...(slug === 'accounting' ? { accountingContentVersion: 1 } : {}),
+    ...(slug === 'digital-media' ? { digitalMediaContentVersion: 1 } : {}),
     createdBy: actor.id,
     updatedBy: actor.id,
   }));
@@ -392,6 +437,28 @@ async function list(actor) {
       revision: accountingCategory.revision,
     }, {
       $set: { blocks: [...authoredBlocks, ...ACCOUNTING_TRAINING_BLOCKS], accountingContentVersion: 1 },
+      $inc: { revision: 1 },
+    }, { new: true, runValidators: true });
+  }
+  // Add the Canadian business-targeting guide to existing Digital Media tabs
+  // once, retaining any unrelated content authored by HR.
+  const digitalMediaCategory = await TrainingCategory.findOne({ ...base, slug: 'digital-media' })
+    .select('_id blocks revision summary digitalMediaContentVersion').lean();
+  if (digitalMediaCategory && (digitalMediaCategory.digitalMediaContentVersion || 0) < 1) {
+    const placeholder = 'HR can edit this page to add the training material, process steps, and learning resources.';
+    const existingBlocks = (digitalMediaCategory.blocks || []).filter(block => {
+      if (block.type === 'heading' && block.text === 'Training details') return false;
+      if (block.type === 'paragraph' && (block.text === placeholder || block.text === digitalMediaCategory.summary)) return false;
+      return true;
+    });
+    const authoredBlocks = existingBlocks.filter(block => !DIGITAL_MEDIA_TARGETING_BLOCKS.some(item => item.type === block.type && item.text === block.text));
+    await TrainingCategory.findOneAndUpdate({
+      _id: digitalMediaCategory._id,
+      companyId: actor.companyId,
+      deletedAt: null,
+      revision: digitalMediaCategory.revision,
+    }, {
+      $set: { blocks: [...authoredBlocks, ...DIGITAL_MEDIA_TARGETING_BLOCKS], digitalMediaContentVersion: 1 },
       $inc: { revision: 1 },
     }, { new: true, runValidators: true });
   }
