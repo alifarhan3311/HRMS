@@ -125,7 +125,7 @@ export default function CommissionPage() {
     }
   }
 
-  return <div className="space-y-6">
+  return <div className="flex flex-col gap-6">
     <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 sm:p-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Commission</h1>
@@ -134,12 +134,12 @@ export default function CommissionPage() {
         <Button onClick={openAdd}><Plus className="h-4 w-4" />Add commission</Button>
     </header>
 
-    <section className="glass-card overflow-hidden">
+    <section className="glass-card order-2 overflow-hidden">
       <div className="border-b border-border px-5 py-4 sm:px-7"><h2 className="font-semibold">Commission rates</h2><p className="mt-1 text-sm text-muted-foreground">These rates are used for the monthly sales calculations.</p></div>
       {isLoading ? <p role="status" className="p-12 text-center text-muted-foreground">Loading commissions…</p> : isError ? <div role="alert" className="space-y-3 p-8 text-center"><p>Unable to load commissions.</p><Button variant="secondary" onClick={refetch}>Try again</Button></div> : commissions.length ? <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-muted/30 text-left text-xs uppercase text-muted-foreground"><tr><th className="px-5 py-3 sm:px-7">Product / service</th><th className="px-5 py-3">Commission rate</th><th className="px-5 py-3 text-right sm:px-7">Actions</th></tr></thead><tbody className="divide-y divide-border">{commissions.map(item => <tr key={item._id} className="hover:bg-accent/20"><td className="px-5 py-3.5 font-medium sm:px-7">{item.name}</td><td className="px-5 py-3.5 font-semibold text-primary">{item.unit === 'percent' ? `${item.amount}% of sales` : `${money(item.amount)} per sale`}</td><td className="px-5 py-3.5"><div className="flex justify-end gap-2"><Button size="sm" variant="outline" onClick={() => openEdit(item)}><Pencil className="h-4 w-4" />Edit</Button><Button size="sm" variant="ghost" aria-label={`Remove ${item.name}`} onClick={() => setDeleteTarget(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button></div></td></tr>)}</tbody></table></div> : <div className="p-12 text-center text-muted-foreground">No commission records yet. Add one to get started.</div>}
     </section>
 
-    <section className="glass-card overflow-hidden">
+    <section className="glass-card order-1 overflow-hidden">
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border px-5 py-4 sm:px-7">
         <div><div className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" /><h2 className="font-semibold">Monthly Call Center sales</h2></div><p className="mt-1 text-sm text-muted-foreground">Choose a month, enter each employee’s sales, then save.</p></div>
         <div className="flex flex-wrap items-end gap-3">
