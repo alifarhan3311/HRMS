@@ -29,6 +29,7 @@ import {
   Info,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from '../../../utils/toast';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function formatPKR(n) {
@@ -294,9 +295,14 @@ function HRFineHistory() {
 
   const handleVoid = async () => {
     if (!voidTarget) return;
-    await voidFine({ id: voidTarget._id, voidReason }).unwrap().catch(() => {});
-    setVoidTarget(null);
-    setVoidReason('');
+    try {
+      await voidFine({ id: voidTarget._id, voidReason }).unwrap();
+      toast.success('Fine removed from active records.');
+      setVoidTarget(null);
+      setVoidReason('');
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Unable to remove this fine. Please try again.');
+    }
   };
 
   return (

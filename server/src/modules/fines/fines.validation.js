@@ -21,7 +21,8 @@ const createFineSchema = Joi.object({
 });
 
 const voidFineSchema = Joi.object({
-  voidReason: Joi.string().trim().min(3).max(500).optional(),
+  // The client sends an empty string when the optional reason field is left blank.
+  voidReason: Joi.string().trim().min(3).max(500).allow('').optional(),
 });
 
 const listFinesSchema = Joi.object({
