@@ -10,9 +10,11 @@ const mongoose = require('mongoose');
 const authSchema = new mongoose.Schema(
   {
   employeeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+  companyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Company', index: true },
   refreshTokenHash: { type: String, required: true },
   userAgent: { type: String },
   ipAddress: { type: String },
+  lastActivityAt: { type: Date },
   expiresAt: { type: Date, required: true },
   revoked: { type: Boolean, default: false },
   },

@@ -39,6 +39,14 @@ export const authApi = api.injectEndpoints({
       query: (body) => ({ url: '/auth/change-password', method: 'PATCH', body }),
       invalidatesTags: ['Auth'],
     }),
+    listAuthSessions: builder.query({
+      query: () => '/auth/sessions',
+      providesTags: ['AuthSessions'],
+    }),
+    revokeAuthSession: builder.mutation({
+      query: (id) => ({ url: `/auth/sessions/${id}`, method: 'DELETE' }),
+      invalidatesTags: ['AuthSessions'],
+    }),
   }),
   overrideExisting: false,
 });
@@ -50,4 +58,6 @@ export const {
   useGetMeQuery,
   useUpdateProfileMutation,
   useChangePasswordMutation,
+  useListAuthSessionsQuery,
+  useRevokeAuthSessionMutation,
 } = authApi;

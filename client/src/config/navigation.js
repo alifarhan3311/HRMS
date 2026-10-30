@@ -8,7 +8,7 @@ import {
   Receipt, FolderKanban, Settings,
   GraduationCap, Package, BarChart3, Coins,
   TrendingUp, Bell, Building2, Shield, DoorOpen, ListChecks, ClipboardCheck,
-  BadgeDollarSign, BookOpen,
+  BadgeDollarSign, BookOpen, MonitorSmartphone,
 } from 'lucide-react';
 
 export const ROLES = {
@@ -134,6 +134,10 @@ export const NAV_GROUPS = [
       {
         id: 'audit-logs', label: 'Audit Logs', path: '/audit-logs',
         icon: Shield, roles: ['hr', 'manager', 'super_admin'],
+      },
+      {
+        id: 'sessions', label: 'Devices & Sessions', path: '/sessions',
+        icon: MonitorSmartphone, roles: ['hr', 'admin'],
       },
     ],
   },

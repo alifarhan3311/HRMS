@@ -53,7 +53,12 @@ function initSocket(httpServer) {
 
       const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
       if (socketToken && decoded.scope !== 'socket') return next(new Error('Unauthorized'));
-      socket.user = { id: decoded.sub, companyId: decoded.companyId, role: decoded.role };
+      socket.user = {
+        id: decoded.sub,
+        companyId: decoded.companyId,
+        role: decoded.role,
+        sessionId: decoded.sid,
+      };
       next();
     } catch (err) {
       next(new Error('Unauthorized'));
@@ -66,6 +71,7 @@ function initSocket(httpServer) {
     // Scope every client to a room per company so events never cross tenants
     socket.join(`company:${socket.user.companyId}`);
     socket.join(`user:${socket.user.id}`);
+    if (socket.user.sessionId) socket.join(`session:${socket.user.sessionId}`);
 
     socket.emit('socket:ready', {
       userId: socket.user.id,
@@ -87,10 +93,16 @@ function emitToUser(userId, event, payload) {
   return true;
 }
 
+function emitToSession(sessionId, event, payload) {
+  if (!socketServer || !sessionId) return false;
+  socketServer.to(`session:${sessionId}`).emit(event, payload);
+  return true;
+}
+
 function emitToCompany(companyId, event, payload) {
   if (!socketServer || !companyId) return false;
   socketServer.to(`company:${companyId}`).emit(event, payload);
   return true;
 }
 
-module.exports = { initSocket, emitToUser, emitToCompany };
+module.exports = { initSocket, emitToUser, emitToSession, emitToCompany };

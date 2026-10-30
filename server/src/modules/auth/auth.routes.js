@@ -25,8 +25,8 @@ router.patch('/profile', authenticate, validate(profileUpdateSchema), loginContr
 router.patch('/change-password', authenticate, validate(changePasswordSchema), loginController.changePassword);
 router.post('/socket-token', authenticate, loginController.socketToken);
 
-// Admin session management
-router.get('/sessions', authenticate, authorize('admin', 'super_admin'), sessionController.list);
-router.delete('/sessions/:id', authenticate, authorize('admin', 'super_admin'), sessionController.remove);
+// HR/Admin self-service only: never expose another account's sessions.
+router.get('/sessions', authenticate, authorize('hr', 'admin'), sessionController.list);
+router.delete('/sessions/:id', authenticate, authorize('hr', 'admin'), sessionController.remove);
 
 module.exports = router;

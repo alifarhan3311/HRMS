@@ -57,9 +57,11 @@ async function login({ email, password, userAgent, ipAddress }) {
 
   const session = await Session.create({
     employeeId: employee._id,
+    companyId: employee.companyId,
     refreshTokenHash,
     userAgent,
     ipAddress,
+    lastActivityAt: new Date(),
     expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
   });
 
@@ -138,6 +140,7 @@ function createSocketToken(actor) {
       role: actor.role,
       companyId: actor.companyId,
       branchId: actor.branchId,
+      sid: actor.authSessionId,
       scope: 'socket',
     },
     process.env.JWT_ACCESS_SECRET,

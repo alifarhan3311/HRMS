@@ -17,10 +17,21 @@ async function findById(id) {
 async function findAll({ filter = {}, page = 1, limit = 20, sort = '-createdAt' } = {}) {
   const skip = (page - 1) * limit;
   const [items, total] = await Promise.all([
-    Session.find(filter).sort(sort).skip(skip).limit(limit),
+    Session.find(filter)
+      .select('-refreshTokenHash')
+      .populate('employeeId', 'fullName employeeCode email role department')
+      .sort(sort).skip(skip).limit(limit).lean(),
     Session.countDocuments(filter),
   ]);
   return { items, total, page, limit, totalPages: Math.ceil(total / limit) };
+}
+
+async function revokeActiveById(id, employeeId) {
+  return Session.findOneAndUpdate(
+    { _id: id, employeeId, revoked: false, expiresAt: { $gt: new Date() } },
+    { $set: { revoked: true } },
+    { new: true },
+  ).select('_id');
 }
 
 async function updateById(id, data) {
@@ -31,4 +42,4 @@ async function deleteById(id) {
   return Session.findByIdAndDelete(id);
 }
 
-module.exports = { create, findById, findAll, updateById, deleteById };
+module.exports = { create, findById, findAll, updateById, deleteById, revokeActiveById };

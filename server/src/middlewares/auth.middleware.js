@@ -124,7 +124,19 @@ async function authenticate(req, res, next) {
       companyId: employee.companyId,
       branchId: employee.branchId,
       tokenVersion: employee.tokenVersion || 0,
+      authSessionId: decoded.sid,
     };
+
+    // Throttle last-activity writes so the sessions page can distinguish a
+    // recently used device without updating MongoDB on every API request.
+    const activityCutoff = new Date(Date.now() - 5 * 60 * 1000);
+    Session.updateOne({
+      _id: decoded.sid,
+      $or: [
+        { lastActivityAt: { $lt: activityCutoff } },
+        { lastActivityAt: { $exists: false } },
+      ],
+    }, { $set: { lastActivityAt: new Date() } }).catch(() => {});
 
     next();
   } catch (err) {

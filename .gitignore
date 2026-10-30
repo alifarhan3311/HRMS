@@ -36,6 +36,10 @@
 **/*credentials*.txt
 **/scripts/*.local.js
 
+# One-off local attendance / biometric diagnostics (not application runtime).
+# Keep these on the developer machine, outside the pushed project.
+/server/scripts/
+
 # =========================
 # Database dumps / backups
 # =========================

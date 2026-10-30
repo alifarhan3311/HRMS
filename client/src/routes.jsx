@@ -27,6 +27,7 @@ import auditLogsRoutes     from './features/auditLogs/routes/auditLogs.routes';
 import rulesRoutes         from './features/rules/routes/rules.routes';
 import trainingRoutes      from './features/training/routes/training.routes';
 import commissionRoutes    from './features/training/routes/commission.routes';
+import sessionsRoutes      from './features/auth/routes/sessions.routes';
 
 const withRoles = (routes, roles) => routes.map((route) => ({
   ...route,
@@ -68,6 +69,7 @@ const router = createBrowserRouter([
       ...withDeclaredRoles(auditLogsRoutes),
       ...withRoles(reportsRoutes, ['hr', 'admin', 'super_admin']),
       ...notificationsRoutes,
+      ...withRoles(sessionsRoutes, ['hr', 'admin']),
       ...profileRoutes,
     ],
   },

@@ -52,6 +52,7 @@ export const api = createApi({
   refetchOnReconnect: true,
   tagTypes: [
     'Auth',
+    'AuthSessions',
     'Dashboard',
     'Employees',
     'Attendance',

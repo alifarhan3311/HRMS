@@ -21,7 +21,7 @@ const getById = asyncHandler(async (req, res) => {
 
 const list = asyncHandler(async (req, res) => {
   const result = await service.listSessions(req.query, req.user);
-  res.status(200).json({ success: true, ...result });
+  res.status(200).json({ success: true, data: { ...result, currentSessionId: req.user.authSessionId } });
 });
 
 const update = asyncHandler(async (req, res) => {
@@ -30,8 +30,8 @@ const update = asyncHandler(async (req, res) => {
 });
 
 const remove = asyncHandler(async (req, res) => {
-  await service.deleteSession(req.params.id);
-  res.status(204).send();
+  const result = await service.revokeSession(req.params.id, req.user, req.user.authSessionId);
+  res.status(200).json({ success: true, ...result });
 });
 
 module.exports = { create, getById, list, update, remove };
