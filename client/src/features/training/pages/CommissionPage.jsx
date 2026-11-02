@@ -4,6 +4,7 @@ import Button from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Modal, ModalFooter } from '../../../components/ui/Modal';
 import { toast } from '../../../utils/toast';
+import { buildChangedSalesEntries } from '../salesEditor';
 import {
   useCreateTrainingCommissionMutation,
   useDeleteTrainingCommissionMutation,
@@ -31,7 +32,8 @@ export default function CommissionPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [salesValues, setSalesValues] = useState({});
-  const { data: periodData, isLoading: periodLoading, isError: periodError, refetch: refetchPeriod } = useGetSalesCommissionPeriodQuery({ month, year });
+  const { currentData: periodData, isLoading: periodInitialLoading, isFetching: periodFetching, isError: periodError, refetch: refetchPeriod } = useGetSalesCommissionPeriodQuery({ month, year });
+  const periodLoading = periodInitialLoading || (!periodData && periodFetching);
   const commissions = data?.items || [];
   const periodCommissions = periodData?.data?.commissions || [];
   const employees = periodData?.data?.employees || [];
@@ -47,6 +49,7 @@ export default function CommissionPage() {
   }, [periodData]);
 
   function updateSale(employeeId, slug, key, value) {
+    if (savingSales || periodFetching || employees.find(employee => employee._id === employeeId)?.commissionLocked) return;
     setSalesValues(current => ({
       ...current,
       [employeeId]: {
@@ -75,19 +78,14 @@ export default function CommissionPage() {
   }
 
   const monthTotal = useMemo(() => employees.reduce((sum, employee) => sum + calculateEmployeeCommission(employee._id), 0), [employees, periodCommissions, salesValues]);
+  const changedEntries = useMemo(() => buildChangedSalesEntries(employees, periodCommissions, salesValues), [employees, periodCommissions, salesValues]);
 
   async function saveMonthlySales() {
+    if (savingSales || periodFetching || periodError) return;
+    if (!changedEntries.length) return toast.info('No sales changes to save.');
     try {
-      const entries = employees.map(employee => ({
-        employeeId: employee._id,
-        products: Object.fromEntries(periodCommissions.map(commission => {
-          const input = salesValues[employee._id]?.[commission.slug] || {};
-          return [commission.slug, { quantity: Number(input.quantity || 0), salesAmount: commission.unit === 'percent' ? Number(input.salesAmount || 0) : 0 }];
-        })),
-      }));
-      await saveSales({ month, year, entries }).unwrap();
-      toast.success(`Sales commissions saved for ${MONTHS[month - 1]} ${year}`);
-      refetchPeriod();
+      await saveSales({ month, year, entries: changedEntries }).unwrap();
+      toast.success(`Sales changes saved for ${MONTHS[month - 1]} ${year}`);
     } catch (error) {
       toast.error(error?.data?.error?.message || 'Unable to save monthly sales.');
     }
@@ -141,11 +139,11 @@ export default function CommissionPage() {
 
     <section className="glass-card order-1 overflow-hidden">
       <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border px-5 py-4 sm:px-7">
-        <div><div className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" /><h2 className="font-semibold">Monthly Call Center sales</h2></div><p className="mt-1 text-sm text-muted-foreground">Choose a month, enter each employee’s sales, then save.</p></div>
+        <div><div className="flex items-center gap-2"><CalendarDays className="h-5 w-5 text-primary" /><h2 className="font-semibold">Monthly Call Center sales</h2></div><p className="mt-1 text-sm text-muted-foreground">Only edited employees are saved. Each employee’s own payroll controls their commission lock.</p></div>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="grid gap-1 text-xs font-medium text-muted-foreground">Month<select className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={month} onChange={event => setMonth(Number(event.target.value))}>{MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select></label>
-          <label className="grid gap-1 text-xs font-medium text-muted-foreground">Year<input className="w-24 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" type="number" min="2000" max="2100" value={year} onChange={event => setYear(Number(event.target.value))} /></label>
-          <Button onClick={saveMonthlySales} loading={savingSales} disabled={periodLoading || periodError || !employees.length}><Save className="h-4 w-4" />Save month</Button>
+          <label className="grid gap-1 text-xs font-medium text-muted-foreground">Month<select className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={month} disabled={savingSales} onChange={event => setMonth(Number(event.target.value))}>{MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}</select></label>
+          <label className="grid gap-1 text-xs font-medium text-muted-foreground">Year<input className="w-24 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" type="number" min="2000" max="2100" value={year} disabled={savingSales} onChange={event => setYear(Number(event.target.value))} /></label>
+          <Button onClick={saveMonthlySales} loading={savingSales} disabled={periodLoading || periodFetching || periodError || !changedEntries.length}><Save className="h-4 w-4" />Save changes</Button>
         </div>
       </div>
       {periodLoading ? <p role="status" className="p-10 text-center text-muted-foreground">Loading employees and monthly sales…</p>
@@ -153,16 +151,16 @@ export default function CommissionPage() {
           : !employees.length ? <div className="p-10 text-center text-muted-foreground">No Call Center employees were employed during {MONTHS[month - 1]} {year}.</div>
             : <><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/15 px-5 py-4 sm:px-7"><p className="text-sm text-muted-foreground">{employees.length} employees · {periodCommissions.length} commission types</p><p className="text-sm text-muted-foreground">Month total <strong className="ml-2 text-base text-primary">{money(monthTotal)}</strong></p></div><div className="divide-y divide-border">{employees.map((employee, index) => <details key={employee._id} open={index === 0} className="group">
                 <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-accent/20 sm:px-7 [&::-webkit-details-marker]:hidden"><div className="flex min-w-0 items-center gap-3"><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /><div className="min-w-0"><p className="truncate font-semibold">{employee.fullName}</p><p className="mt-0.5 text-xs text-muted-foreground">{employee.employeeCode} · {employee.department}</p></div></div><div className="flex items-center gap-3"><span className="text-xs text-muted-foreground">Commission</span><strong className="text-primary">{money(calculateEmployeeCommission(employee._id))}</strong></div></summary>
-                <div className="border-t border-border bg-muted/10 px-5 py-4 sm:px-7"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{periodCommissions.map(commission => {
+                <div className="border-t border-border bg-muted/10 px-5 py-4 sm:px-7">{employee.commissionLocked && <p role="status" className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-600">Read-only: this employee’s payroll for {MONTHS[month - 1]} {year} is {employee.payrollStatus?.replaceAll('_', ' ')}. Other employees can still be edited.</p>}<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{periodCommissions.map(commission => {
                   const input = salesValues[employee._id]?.[commission.slug] || {};
                   const rate = getEmployeeRate(employee, commission);
                   const earned = rate.unit === 'percent' ? Number(input.salesAmount || 0) * rate.amount / 100 : Number(input.quantity || 0) * rate.amount;
                   return <div key={commission._id} className="rounded-xl border border-border bg-card p-4"><div className="mb-3 flex items-start justify-between gap-2"><div><h3 className="font-medium">{commission.name}</h3><p className="mt-0.5 text-xs text-muted-foreground">{rate.unit === 'percent' ? `${rate.amount}% of sales` : `${money(rate.amount)} per sale`}</p></div><strong className="whitespace-nowrap text-sm text-emerald-600">{money(earned)}</strong></div><div className={`grid gap-3 ${rate.unit === 'percent' ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                    <label className="grid gap-1 text-xs text-muted-foreground">{rate.unit === 'percent' ? 'Number of sales' : 'Quantity sold'}<input aria-label={`${employee.fullName} ${commission.name} quantity`} type="number" min="0" step="1" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={input.quantity ?? ''} onChange={event => updateSale(employee._id, commission.slug, 'quantity', event.target.value)} />{rate.unit === 'percent' && <span className="text-[11px]">How many deals were completed?</span>}</label>
-                    {rate.unit === 'percent' && <label className="grid gap-1 text-xs text-muted-foreground">Combined sales amount<input aria-label={`${employee.fullName} ${commission.name} combined sales amount`} type="number" min="0" step="0.01" className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground" value={input.salesAmount ?? ''} onChange={event => updateSale(employee._id, commission.slug, 'salesAmount', event.target.value)} placeholder="e.g. 270000" /><span className="text-[11px]">Add all deal amounts together (e.g. 50,000 + 20,000 + 200,000 = 270,000).</span></label>}
+                    <label className="grid gap-1 text-xs text-muted-foreground">{rate.unit === 'percent' ? 'Number of sales' : 'Quantity sold'}<input aria-label={`${employee.fullName} ${commission.name} quantity`} type="number" min="0" step="1" disabled={employee.commissionLocked || savingSales || periodFetching} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60" value={input.quantity ?? ''} onChange={event => updateSale(employee._id, commission.slug, 'quantity', event.target.value)} />{rate.unit === 'percent' && <span className="text-[11px]">How many deals were completed?</span>}</label>
+                    {rate.unit === 'percent' && <label className="grid gap-1 text-xs text-muted-foreground">Combined sales amount<input aria-label={`${employee.fullName} ${commission.name} combined sales amount`} type="number" min="0" step="0.01" disabled={employee.commissionLocked || savingSales || periodFetching} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-60" value={input.salesAmount ?? ''} onChange={event => updateSale(employee._id, commission.slug, 'salesAmount', event.target.value)} placeholder="e.g. 270000" /><span className="text-[11px]">Add all deal amounts together (e.g. 50,000 + 20,000 + 200,000 = 270,000).</span></label>}
                   </div></div>;
                 })}</div></div>
-              </details>)}</div><p className="px-5 py-3 text-xs text-muted-foreground sm:px-7">Rates are saved with each monthly entry. Sales for a month are locked after its payroll is submitted for approval.</p></>}
+              </details>)}</div><p className="px-5 py-3 text-xs text-muted-foreground sm:px-7">Rates are saved with each monthly entry. Only an employee’s own submitted/approved/paid payroll locks their sales. Clearing that payroll allows editing again.</p></>}
     </section>
 
     {editorOpen && <Modal isOpen onClose={() => !(creating || updating) && setEditorOpen(false)} title={target ? `Edit ${target.name}` : 'Add commission'} size="sm"><form onSubmit={save} className="space-y-5 p-5"><label className="block space-y-2 text-sm font-medium"><span>Name *</span><input required autoFocus maxLength={100} className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" value={form.name} onChange={event => setForm(previous => ({ ...previous, name: event.target.value }))} placeholder="e.g. ATM" /></label><div className="grid grid-cols-2 gap-3"><label className="space-y-2 text-sm font-medium"><span>Value *</span><input required type="number" min="0" step="0.01" className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" value={form.amount} onChange={event => setForm(previous => ({ ...previous, amount: event.target.value }))} placeholder="Amount" /></label><label className="space-y-2 text-sm font-medium"><span>Unit *</span><select className="w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" value={form.unit} onChange={event => setForm(previous => ({ ...previous, unit: event.target.value }))}><option value="PKR">Rupees (PKR)</option><option value="percent">Percent (%)</option></select></label></div><ModalFooter><Button type="button" variant="secondary" disabled={creating || updating} onClick={() => setEditorOpen(false)}>Cancel</Button><Button type="submit" loading={creating || updating}>{target ? 'Save changes' : 'Add commission'}</Button></ModalFooter></form></Modal>}

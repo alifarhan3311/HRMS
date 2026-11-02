@@ -5,6 +5,7 @@ const Payslip = require('../payroll/payroll.model');
 const TrainingCommission = require('./commission.model');
 const SalesCommission = require('./salesCommission.model');
 const commissionService = require('./commission.service');
+const LOCKED_PAYROLL_STATUSES = ['pending_approval', 'approved', 'paid', 'locked'];
 
 function requireHr(actor) {
   if (actor?.role !== 'hr' || !actor.companyId) throw createHttpError(403, 'Only HR can manage monthly sales commissions.');
@@ -69,13 +70,23 @@ async function listPeriod(query, actor) {
     commissionService.list(actor),
   ]);
   const callCenterEmployees = employees.filter(employee => normalizeDepartment(employee.department));
-  const records = await SalesCommission.find({ companyId: actor.companyId, month, year, employeeId: { $in: callCenterEmployees.map(employee => employee._id) } }).lean();
+  const employeeIds = callCenterEmployees.map(employee => employee._id);
+  const [records, payslips] = await Promise.all([
+    SalesCommission.find({ companyId: actor.companyId, month, year, employeeId: { $in: employeeIds } }).lean(),
+    Payslip.find({ companyId: actor.companyId, month, year, employeeId: { $in: employeeIds } }).select('employeeId status').lean(),
+  ]);
   const byEmployee = new Map(records.map(record => [String(record.employeeId), record]));
+  const payrollByEmployee = new Map(payslips.map(record => [String(record.employeeId), record.status]));
   return {
     month,
     year,
     commissions,
-    employees: callCenterEmployees.map(employee => ({ ...employee, salesCommission: byEmployee.get(String(employee._id)) || null })),
+    employees: callCenterEmployees.map(employee => ({
+      ...employee,
+      salesCommission: byEmployee.get(String(employee._id)) || null,
+      payrollStatus: payrollByEmployee.get(String(employee._id)) || null,
+      commissionLocked: LOCKED_PAYROLL_STATUSES.includes(payrollByEmployee.get(String(employee._id))),
+    })),
   };
 }
 
@@ -88,27 +99,42 @@ async function savePeriod(payload, actor) {
     throw createHttpError(400, 'Each employee must appear once in the monthly entry.');
   }
   const [employees, commissions] = await Promise.all([
-    Employee.find({ _id: { $in: employeeIds }, companyId: actor.companyId, status: { $in: ['active', 'on_leave', 'resigned'] }, joiningDate: { $lte: end }, $or: [{ exitDate: { $exists: false } }, { exitDate: null }, { exitDate: { $gte: start } }] }).select('department').lean(),
+    Employee.find({ _id: { $in: employeeIds }, companyId: actor.companyId, status: { $in: ['active', 'on_leave', 'resigned'] }, joiningDate: { $lte: end }, $or: [{ exitDate: { $exists: false } }, { exitDate: null }, { exitDate: { $gte: start } }] }).select('_id fullName department').lean(),
     commissionService.list(actor),
   ]);
   if (employees.length !== employeeIds.length || employees.some(employee => !normalizeDepartment(employee.department))) {
     throw createHttpError(400, 'Monthly sales can only be recorded for Call Center employees employed during the selected month.');
   }
-  const finalizedPayslip = await Payslip.findOne({
-    companyId: actor.companyId,
-    employeeId: { $in: employeeIds },
-    month,
-    year,
-    status: { $in: ['pending_approval', 'approved', 'paid', 'locked'] },
-  }).select('_id').lean();
-  if (finalizedPayslip) throw createHttpError(409, 'Commission sales are locked after payroll is submitted for approval.');
-
   const existingSales = await SalesCommission.find({ companyId: actor.companyId, employeeId: { $in: employeeIds }, month, year }).select('employeeId items').lean();
   const existingByEmployee = new Map(existingSales.map(record => [String(record.employeeId), record.items || []]));
+  // Older clients send the entire employee grid. Validate all requested values
+  // first, but lock and write only genuinely changed sales, never untouched rows.
+  const changedEntries = payload.entries.map(entry => {
+    const previous = existingByEmployee.get(String(entry.employeeId)) || [];
+    const items = shapeItems(commissions, entry, previous);
+    const changed = items.some(item => {
+      const prior = previous.find(value => value.slug === item.slug);
+      return item.quantity !== Number(prior?.quantity || 0)
+        || item.salesAmount !== Number(prior?.salesAmount || 0);
+    });
+    return { employeeId: entry.employeeId, items, changed };
+  }).filter(entry => entry.changed);
+  if (!changedEntries.length) return { month, year, savedCount: 0, unchangedCount: payload.entries.length };
+  const finalizedPayslip = await Payslip.findOne({
+    companyId: actor.companyId,
+    employeeId: { $in: changedEntries.map(entry => entry.employeeId) },
+    month,
+    year,
+    status: { $in: LOCKED_PAYROLL_STATUSES },
+  }).select('employeeId status').lean();
+  if (finalizedPayslip) {
+    const owner = employees.find(employee => String(employee._id) === String(finalizedPayslip.employeeId));
+    throw createHttpError(409, `${owner?.fullName || 'This employee'}: commission sales are locked because their payroll for ${month}/${year} is ${finalizedPayslip.status}.`);
+  }
 
   const saved = [];
-  for (const entry of payload.entries) {
-    const items = shapeItems(commissions, entry, existingByEmployee.get(String(entry.employeeId)) || []);
+  for (const entry of changedEntries) {
+    const { items } = entry;
     const totalCommission = Math.round(items.reduce((sum, item) => sum + item.commissionAmount, 0) * 100) / 100;
     const record = await SalesCommission.findOneAndUpdate(
       { companyId: actor.companyId, employeeId: entry.employeeId, month, year },
@@ -122,7 +148,7 @@ async function savePeriod(payload, actor) {
     saved.push(record);
     await refreshDraftPayslip(record);
   }
-  return { month, year, savedCount: saved.length };
+  return { month, year, savedCount: saved.length, unchangedCount: payload.entries.length - saved.length };
 }
 
 async function refreshDraftPayslip(salesRecord) {
