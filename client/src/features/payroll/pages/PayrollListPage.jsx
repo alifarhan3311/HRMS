@@ -59,6 +59,16 @@ function formatPeriodLabel(month, year) {
   return `${MONTHS[Number(month) - 1] || '—'} ${year || ''}`.trim();
 }
 
+function commissionTotalFor(record) {
+  return Number(record.commissionTotal ?? (record.commissionItems || []).reduce((sum, item) => sum + Number(item.amount || 0), 0));
+}
+
+function commissionDescription(item) {
+  return item.unit === 'percent'
+    ? `${Number(item.rate || 0)}% of ${fmtPKR(item.salesAmount || 0)} sales`
+    : `${Number(item.quantity || 0)} sale(s) × ${fmtPKR(item.rate || 0)} per sale`;
+}
+
 function normalizeDeductionItems(items = []) {
   const totals = new Map();
   for (const item of items) {
@@ -93,7 +103,7 @@ function numberToWords(num) {
   return str.trim() ? str.trim() : '';
 }
 
-function PayrollPrintView({ payload }) {
+export function PayrollPrintView({ payload }) {
   if (!payload) return null;
   const {
     employeeName,
@@ -122,7 +132,7 @@ function PayrollPrintView({ payload }) {
   const amount = (value) => Number(value || 0);
   const money = (value) => `PKR ${amount(value).toLocaleString('en-PK')}`;
   const earningRows = salaryRows.filter((row) => row.group !== 'deduction');
-  const grossPay = amount(earnedSalary ?? monthlySalary);
+  const grossPay = amount(payload.grossSalary ?? earnedSalary ?? monthlySalary);
   const totalDeductions = amount(deductions);
   const listedDeductions = salaryRows.filter((row) => row.group === 'deduction');
   const listedDeductionTotal = listedDeductions.reduce((sum, row) => sum + amount(row.amount), 0);
@@ -212,7 +222,7 @@ function PayrollPrintView({ payload }) {
 }
 
 // ─── Payslip Detail Modal ─────────────────────────────────────────────────────
-function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGenerate, canApprove, isActioning, revealSensitive = false, onToggleSensitive }) {
+export function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGenerate, canApprove, isActioning, revealSensitive = false, onToggleSensitive }) {
   if (!payslip) return null;
   const emp = payslip.employeeId;
   const st = getStatusStyle(payslip.status);
@@ -269,6 +279,7 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGe
             { label: 'Per Day', value: payslip.perDaySalary },
             { label: 'Per Hour', value: payslip.perHourSalary },
             { label: 'Gross Salary', value: payslip.grossSalary, cls: 'text-emerald-600' },
+            { label: 'Commission (included in gross)', value: commissionTotalFor(payslip), cls: 'text-emerald-600' },
             { label: 'Total Deductions', value: totalDeductions, cls: 'text-red-500' },
           ].map(item => (
             <div key={item.label} className="rounded-xl border border-border bg-muted/20 p-3">
@@ -349,9 +360,10 @@ function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint, canGe
   );
 }
 
-function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
+export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
   if (!employee) return null;
   const monthlyMode = employee.monthlyTargetHours != null;
+  const commissionTotal = commissionTotalFor(employee);
   const attendance = [
     ['Present', employee.present, 'text-emerald-600'],
     ['Absent', Number(employee.absent || 0) + Number(employee.unpaidLeave || 0), 'text-red-500'],
@@ -429,6 +441,7 @@ function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
               { label: 'Monthly Salary', value: employee.monthlySalary, formatter: fmtPKR },
               { label: 'Daily Salary', value: employee.dailySalary, formatter: fmtPKR },
               { label: 'Earned So Far', value: employee.earnedSalary, formatter: fmtPKR, color: 'text-emerald-600' },
+              { label: 'Commission', value: commissionTotal, formatter: (value) => `+ ${fmtPKR(value)}`, color: 'text-emerald-600' },
               { label: 'Total Deductions', value: employee.deductions, formatter: (value) => `− ${fmtPKR(value)}`, color: 'text-red-500' },
               { label: 'Projected Net Payable', value: employee.netPayable, formatter: fmtPKR, color: 'text-primary' },
               ...(monthlyMode
@@ -444,12 +457,38 @@ function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
               </div>
             ))}
           </div>
+          {commissionTotal > 0 && <p className="mt-2 text-xs text-muted-foreground">Earned So Far and Projected Net Payable already include commission. It is not added a second time.</p>}
           <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm">
             <p className="font-semibold text-amber-600">3 Lates = 1 Full-Day Salary Deduction</p>
             <p className="mt-1 text-muted-foreground">
               {employee.late ?? 0} total late(s) · {employee.waivedLate ?? 0} covered by approved paid leave · {employee.lateDeductionDays ?? 0} deduction day(s) · {employee.unusedLates ?? 0} unused late(s)
             </p>
           </div>
+        </section>
+
+        <section aria-label="Commission breakdown" className="overflow-hidden rounded-xl border border-emerald-500/20">
+          <div className="border-b border-border bg-emerald-500/5 px-4 py-3">
+            <h3 className="text-sm font-semibold">Commission breakdown · {formatPeriodLabel(employee.month, employee.year)}</h3>
+          </div>
+          <div className="divide-y divide-border">
+            {(employee.commissionItems || []).map((item, index) => (
+              <div key={`${item.label || item.name}-${index}`} className="flex items-center justify-between gap-4 px-4 py-3 text-sm">
+                <div><p className="font-medium">{item.label || `${item.name} Commission`}</p><p className="mt-1 text-xs text-muted-foreground">{commissionDescription(item)}</p></div>
+                <span className="shrink-0 font-semibold text-emerald-600">+ {fmtPKR(item.amount)}</span>
+              </div>
+            ))}
+            {!(employee.commissionItems || []).length && <p className="px-4 py-3 text-sm text-muted-foreground">{commissionTotal > 0 ? 'Commission included in this payroll period.' : 'No commission recorded for this payroll period.'}</p>}
+            <div className="flex justify-between gap-4 bg-emerald-500/5 px-4 py-3 text-sm font-semibold"><span>Total Commission</span><span className="text-emerald-600">+ {fmtPKR(commissionTotal)}</span></div>
+          </div>
+        </section>
+
+        <section aria-label="Net salary calculation" className="space-y-2 rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm">
+          <h3 className="mb-3 font-semibold">How your net salary is calculated</h3>
+          <div className="flex justify-between gap-4"><span>Monthly Salary</span><span>{fmtPKR(employee.monthlySalary)}</span></div>
+          <div className="flex justify-between gap-4"><span>Total Deductions</span><span className="text-red-500">− {fmtPKR(employee.deductions)}</span></div>
+          <div className="flex justify-between gap-4"><span>Salary after deductions (minimum zero)</span><span>{fmtPKR(Math.max(0, Number(employee.monthlySalary || 0) - Number(employee.deductions || 0)))}</span></div>
+          <div className="flex justify-between gap-4"><span>Commission</span><span className="text-emerald-600">+ {fmtPKR(commissionTotal)}</span></div>
+          <div className="flex justify-between gap-4 border-t border-border pt-2 font-bold"><span>Projected Net Payable</span><span className="text-primary">{fmtPKR(employee.netPayable)}</span></div>
         </section>
 
         <section>
@@ -492,7 +531,7 @@ function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
 }
 
 // ─── Generate Payslip Form ────────────────────────────────────────────────────
-function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
+function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees, period }) {
   const now = new Date();
   
   const uniqueDepartments = useMemo(() => {
@@ -502,8 +541,8 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees }) {
 
   const [form, setForm, clearDraft] = useFormDraft(draftKey, {
     employeeId: '',
-    month: now.getMonth() + 1,
-    year: now.getFullYear(),
+    month: Number(period?.month) || now.getMonth() + 1,
+    year: Number(period?.year) || now.getFullYear(),
     bonus: '', incentives: '',
     loanDeduction: '', advanceSalary: '', notes: '',
     allowanceItems: [{ label: 'House Rent', amount: '' }, { label: 'Transport', amount: '' }],
@@ -629,13 +668,14 @@ export default function PayrollListPage() {
   const [salaryVisible, setSalaryVisible] = useState(false);
   const [liveSearch, setLiveSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({ month: '', year: String(now.getFullYear()), status: '' });
+  const [filters, setFilters] = useState({ month: String(now.getMonth() + 1), year: String(now.getFullYear()), status: '' });
 
-  const { data, isLoading, isFetching, refetch } = useListPayrollQuery({ page, limit: 15, ...filters });
-  const { data: liveData, isLoading: liveLoading, refetch: refetchLive } = useGetLivePayrollQuery({
-    month: filters.month || now.getMonth() + 1,
-    year: filters.year || now.getFullYear(),
+  const { currentData: data, isLoading, isFetching, refetch } = useListPayrollQuery({ page, limit: 15, ...filters });
+  const { currentData: liveData, isFetching: liveFetching, refetch: refetchLive, error: liveError } = useGetLivePayrollQuery({
+    month: Number(filters.month),
+    year: Number(filters.year),
   });
+  const liveLoading = !liveData && liveFetching;
   const { data: employeesData } = useListEmployeesQuery(
     { page: 1, limit: 100, status: 'active' },
     { skip: !canGenerate }
@@ -648,6 +688,14 @@ export default function PayrollListPage() {
   const isActioning = approving || paying;
 
   const [selectedDepartment, setSelectedDepartment] = useState('');
+
+  function changePeriod(field, value) {
+    setFilters(previous => ({ ...previous, [field]: value }));
+    setPage(1);
+    setLivePayrollEmployee(null);
+    setDetailPayslip(null);
+    setPrintPayload(null);
+  }
 
   const payslips   = data?.items || [];
   const total      = data?.total || 0;
@@ -674,9 +722,9 @@ export default function PayrollListPage() {
 
   function exportLiveCsv() {
     if (!liveRows.length) return toast.error('No live payroll data to export');
-    const headers = ['Employee','Code','Monthly Salary','Daily Salary','Earned Salary','Present','Absent','Half Days','Paid Leave','Sandwich Leave','Late','Deductions','Net Payable'];
+    const headers = ['Employee','Code','Monthly Salary','Daily Salary','Earned Salary (incl. commission)','Commission','Present','Absent','Half Days','Paid Leave','Sandwich Leave','Late','Deductions','Net Payable'];
     const rows = liveRows.map(row => [
-      row.employeeName, row.employeeCode, row.monthlySalary, row.dailySalary, row.earnedSalary, row.present,
+      row.employeeName, row.employeeCode, row.monthlySalary, row.dailySalary, row.earnedSalary, commissionTotalFor(row), row.present,
       Number(row.absent || 0) + Number(row.unpaidLeave || 0), row.halfDay, row.paidLeave, row.sandwichLeave, row.late, row.deductions, row.netPayable,
     ]);
     const csv = [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
@@ -763,10 +811,13 @@ export default function PayrollListPage() {
         monthlySalary: source.monthlySalary,
         dailySalary: source.dailySalary,
         earnedSalary: source.earnedSalary,
+        grossSalary: Number(source.monthlySalary || 0) + commissionTotalFor(source),
         netPayable: source.netPayable,
         deductions: source.deductions,
         salaryRows: [
           { label: 'Basic Salary', amount: source.monthlySalary, group: 'earning' },
+          ...(source.commissionItems || []).map((item) => ({ label: item.label || `${item.name} Commission`, amount: item.amount, group: 'earning' })),
+          ...(!(source.commissionItems || []).length && commissionTotalFor(source) > 0 ? [{ label: 'Commission', amount: commissionTotalFor(source), group: 'earning' }] : []),
           ...((source.attendanceRows || []).map((row) => ({ ...row, group: 'deduction' }))),
         ],
         monthlyTargetHours: source.monthlyTargetHours,
@@ -865,13 +916,13 @@ export default function PayrollListPage() {
           </div>
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" className="gap-1.5"
-              onClick={() => { refetch(); refetchLive(); }} disabled={isFetching}>
-              <RefreshCw className={`h-3.5 w-3.5 ${isFetching ? 'animate-spin' : ''}`} />
+              onClick={() => { refetch(); refetchLive(); }} disabled={isFetching || liveFetching}>
+              <RefreshCw className={`h-3.5 w-3.5 ${isFetching || liveFetching ? 'animate-spin' : ''}`} />
             </Button>
-            <Button variant="secondary" size="sm" className="gap-1.5" onClick={exportLiveCsv}>
+            <Button variant="secondary" size="sm" className="gap-1.5" onClick={exportLiveCsv} disabled={!liveData || liveFetching}>
               <Download className="h-3.5 w-3.5" /> Excel
             </Button>
-            <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => {
+            <Button variant="secondary" size="sm" className="gap-1.5" disabled={isFetching || liveFetching} onClick={() => {
               if (detailPayslip) return handlePrint(detailPayslip);
               if (livePayrollEmployee) return handlePrint(livePayrollEmployee);
               if (visibleLiveRows.length > 0) return handlePrint(visibleLiveRows[0]);
@@ -888,10 +939,27 @@ export default function PayrollListPage() {
           </div>
         </motion.div>
 
+        <section aria-label="Payroll period" className="glass-card flex flex-col gap-4 px-5 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold">Payroll period · {formatPeriodLabel(filters.month, filters.year)}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">Choose a month and year to view employee payroll and saved payslips.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:flex sm:items-end">
+            <Select label="Month" aria-label="Payroll month" value={filters.month}
+              onChange={event => changePeriod('month', event.target.value)} className="sm:w-36">
+              {MONTHS.map((month, index) => <option key={month} value={index + 1}>{month}</option>)}
+            </Select>
+            <Select label="Year" aria-label="Payroll year" value={filters.year}
+              onChange={event => changePeriod('year', event.target.value)} className="sm:w-28">
+              {Array.from({ length: 101 }, (_, index) => 2000 + index).map(year => <option key={year} value={year}>{year}</option>)}
+            </Select>
+          </div>
+        </section>
+
         <div className="glass-card overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="font-semibold">Live Salary Dashboard</h2>
+                <h2 className="font-semibold">Live Salary Dashboard · {formatPeriodLabel(filters.month, filters.year)}</h2>
                 <p className="text-xs text-muted-foreground">Attendance aur leave change hote hi earned salary aur deductions automatically update hotay hain.</p>
               </div>
               <div className="flex flex-col gap-2 sm:items-end">
@@ -932,7 +1000,9 @@ export default function PayrollListPage() {
                 )}
               </div>
             </div>
-          {liveLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Calculating live payroll...</div> : liveRows.length === 0 ? (
+          {liveLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Calculating payroll for {formatPeriodLabel(filters.month, filters.year)}...</div> : liveError ? (
+            <div role="alert" className="p-8 text-center text-sm text-destructive">Could not load payroll for {formatPeriodLabel(filters.month, filters.year)}. Please refresh and try again.</div>
+          ) : liveRows.length === 0 ? (
             <div className="p-10 text-center"><p className="font-medium">No payroll employees available</p><p className="mt-1 text-sm text-muted-foreground">Aapki profile ya reporting team active honi chahiye. Monthly salary missing ho to Employees module se configure karein.</p></div>
           ) : user?.role === 'hr' ? (
             visibleLiveRows.length === 0 ? (
@@ -977,6 +1047,10 @@ export default function PayrollListPage() {
                       </p>
                       <p className="text-[11px] text-muted-foreground">Late</p>
                     </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                    <span className="text-muted-foreground">Commission</span>
+                    <SensitiveValue className="font-semibold text-emerald-600" value={commissionTotalFor(row)} formatter={value => `+ ${fmtPKR(value)}`} visible={salaryVisible} showToggle={false} />
                   </div>
                   <p className="mt-3 text-center text-xs font-medium text-primary">Click to view complete payroll</p>
                 </motion.button>
@@ -1033,14 +1107,7 @@ export default function PayrollListPage() {
         <div className="glass-card overflow-hidden">
           {/* Toolbar */}
           <div className="flex items-center flex-wrap gap-3 px-5 py-3 border-b border-border">
-            <Select value={filters.month} onChange={(e) => { setFilters(p => ({ ...p, month: e.target.value })); setPage(1); }}
-              className="w-32">
-              <option value="">All Months</option>
-              {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-            </Select>
-            <Input type="number" placeholder="Year" value={filters.year}
-              onChange={(e) => { setFilters(p => ({ ...p, year: e.target.value })); setPage(1); }}
-              className="w-24" />
+            <h2 className="text-sm font-semibold">Saved payslips · {formatPeriodLabel(filters.month, filters.year)}</h2>
             <select className="rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
               value={filters.status} onChange={(e) => { setFilters(p => ({ ...p, status: e.target.value })); setPage(1); }}>
               <option value="">All Status</option>
@@ -1050,7 +1117,7 @@ export default function PayrollListPage() {
           </div>
 
           {/* Table */}
-          {isLoading ? (
+          {isLoading || (!data && isFetching) ? (
             <div className="p-4 space-y-2">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="flex gap-4 items-center py-2">
@@ -1148,8 +1215,10 @@ export default function PayrollListPage() {
         {/* Generate Modal */}
         <Modal isOpen={generateOpen} onClose={() => setGenerateOpen(false)} title="Generate Payslip" size="lg">
           <GenerateForm onSubmit={handleGenerate} onClose={() => setGenerateOpen(false)} isLoading={generating || bulkGenerating}
+            key={`${filters.year}-${filters.month}`}
             employees={employees}
-            draftKey={`hrms:draft:payroll:create:${user?.id || 'user'}`} />
+            period={filters}
+            draftKey={`hrms:draft:payroll:create:${user?.id || 'user'}:${filters.year}-${filters.month}`} />
         </Modal>
 
         {/* Detail Modal */}
