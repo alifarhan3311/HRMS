@@ -64,6 +64,30 @@ function commissionTotalFor(record) {
   return Number(record.commissionTotal ?? (record.commissionItems || []).reduce((sum, item) => sum + Number(item.amount || 0), 0));
 }
 
+function periodBasicFor(record) {
+  return Number(record.periodBasicSalary ?? record.monthlySalary ?? record.basicSalary ?? 0);
+}
+
+function basicPayLabel(record) {
+  return record.salaryProration?.applied ? 'Prorated Basic Salary' : 'Basic Salary';
+}
+
+export function PayrollProrationNote({ record, visible = true }) {
+  const proration = record.salaryProration;
+  if (!proration?.applied) return null;
+  return (
+    <section aria-label="Joining-month adjustment" className="space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm">
+      <h3 className="font-semibold">Joining-month salary adjustment</h3>
+      <p className="text-xs text-muted-foreground">{proration.periodStart} to {proration.periodEnd} · {proration.eligibleDays} calendar days, including weekly offs. Salary basis: {proration.salaryDays}/{proration.basisDays} days. Pre-joining days are not absences.</p>
+      <p className="flex flex-wrap items-center gap-1 font-semibold">
+        <SensitiveValue value={record.monthlySalary ?? record.basicSalary} formatter={fmtPKR} visible={visible} showToggle={false} />
+        <span>× {proration.salaryDays} ÷ {proration.basisDays} =</span>
+        <SensitiveValue value={periodBasicFor(record)} formatter={fmtPKR} visible={visible} showToggle={false} />
+      </p>
+    </section>
+  );
+}
+
 function commissionDescription(item) {
   return item.unit === 'percent'
     ? `${Number(item.rate || 0)}% of ${fmtPKR(item.salesAmount || 0)} sales`
@@ -83,6 +107,7 @@ export function LivePayrollCardSalary({ employee, visible = false }) {
           <span className="text-muted-foreground">Monthly Salary</span>
           <SensitiveValue value={employee.monthlySalary} formatter={fmtPKR} visible={visible} showToggle={false} />
         </div>
+        {employee.salaryProration?.applied && <div className="flex items-center justify-between gap-2"><span className="text-muted-foreground">Prorated Basic Pay ({employee.salaryProration.salaryDays}/{employee.salaryProration.basisDays} days)</span><SensitiveValue value={periodBasicFor(employee)} formatter={fmtPKR} visible={visible} showToggle={false} /></div>}
         <div className="flex items-center justify-between gap-2">
           <span className="text-muted-foreground">Deductions</span>
           <SensitiveValue className="text-red-500" value={employee.deductions} formatter={value => `− ${fmtPKR(value)}`} visible={visible} showToggle={false} />
@@ -205,6 +230,8 @@ export function PayrollPrintView({ payload }) {
           <div><span>Days Worked</span><b>{daysWorked}</b></div>
         </section>
 
+        {payload.salaryProration?.applied && <p className="payroll-slip-proration">Joining-month pay: {payload.salaryProration.periodStart} to {payload.salaryProration.periodEnd} · {payload.salaryProration.salaryDays}/{payload.salaryProration.basisDays} salary days (weekly offs included).</p>}
+
         <section className="payroll-slip-section">
           <h3>Earnings / Allowances</h3>
           <table>
@@ -256,7 +283,7 @@ export function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint
   const st = getStatusStyle(payslip.status);
 
   const rows = [
-    { label: 'Basic Salary',   amount: Number(payslip.basicSalary),  type: 'base'  },
+    { label: basicPayLabel(payslip), amount: periodBasicFor(payslip), type: 'base' },
     ...(payslip.allowanceItems||[]).map(a => ({ label: a.label, amount: a.amount, type: 'add' })),
     ...(payslip.commissionItems||[]).map(item => ({ label: item.label || `${item.name} Commission`, amount: item.amount, type: 'add' })),
     ...(payslip.bonus     ? [{ label: 'Bonus',       amount: payslip.bonus,      type: 'add' }] : []),
@@ -283,6 +310,8 @@ export function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint
             <Badge variant={st.variant} className="mt-1">{st.label}</Badge>
           </div>
         </div>
+
+        <PayrollProrationNote record={payslip} visible={revealSensitive} />
 
         {/* Attendance summary */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -426,6 +455,8 @@ export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
           </div>
           </div>
 
+        <PayrollProrationNote record={employee} />
+
         {monthlyMode && (
           <section className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
             <div className="flex items-center justify-between gap-3">
@@ -467,6 +498,7 @@ export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[
               { label: 'Monthly Salary', value: employee.monthlySalary, formatter: fmtPKR },
+              ...(employee.salaryProration?.applied ? [{ label: 'Prorated Basic Salary', value: periodBasicFor(employee), formatter: fmtPKR }] : []),
               { label: 'Daily Salary', value: employee.dailySalary, formatter: fmtPKR },
               { label: 'Earned So Far', value: employee.earnedSalary, formatter: fmtPKR, color: 'text-emerald-600' },
               { label: 'Commission', value: commissionTotal, formatter: (value) => `+ ${fmtPKR(value)}`, color: 'text-emerald-600' },
@@ -486,12 +518,12 @@ export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
             ))}
           </div>
           {commissionTotal > 0 && <p className="mt-2 text-xs text-muted-foreground">Earned So Far and Projected Net Payable already include commission. It is not added a second time.</p>}
-          <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm">
+          {!monthlyMode && <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm">
             <p className="font-semibold text-amber-600">3 Lates = 1 Full-Day Salary Deduction</p>
             <p className="mt-1 text-muted-foreground">
               {employee.late ?? 0} total late(s) · {employee.waivedLate ?? 0} covered by approved paid leave · {employee.lateDeductionDays ?? 0} deduction day(s) · {employee.unusedLates ?? 0} unused late(s)
             </p>
-          </div>
+          </div>}
         </section>
 
         <section aria-label="Commission breakdown" className="overflow-hidden rounded-xl border border-emerald-500/20">
@@ -513,8 +545,9 @@ export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
         <section aria-label="Net salary calculation" className="space-y-2 rounded-xl border border-border bg-muted/20 px-4 py-3 text-sm">
           <h3 className="mb-3 font-semibold">How your net salary is calculated</h3>
           <div className="flex justify-between gap-4"><span>Monthly Salary</span><span>{fmtPKR(employee.monthlySalary)}</span></div>
+          {employee.salaryProration?.applied && <div className="flex justify-between gap-4"><span>Prorated Basic Salary ({employee.salaryProration.salaryDays}/{employee.salaryProration.basisDays} days)</span><span>{fmtPKR(periodBasicFor(employee))}</span></div>}
           <div className="flex justify-between gap-4"><span>Total Deductions</span><span className="text-red-500">− {fmtPKR(employee.deductions)}</span></div>
-          <div className="flex justify-between gap-4"><span>Salary after deductions (minimum zero)</span><span>{fmtPKR(Math.max(0, Number(employee.monthlySalary || 0) - Number(employee.deductions || 0)))}</span></div>
+          <div className="flex justify-between gap-4"><span>Salary after deductions (minimum zero)</span><span>{fmtPKR(Math.max(0, periodBasicFor(employee) - Number(employee.deductions || 0)))}</span></div>
           <div className="flex justify-between gap-4"><span>Commission</span><span className="text-emerald-600">+ {fmtPKR(commissionTotal)}</span></div>
           <div className="flex justify-between gap-4 border-t border-border pt-2 font-bold"><span>Projected Net Payable</span><span className="text-primary">{fmtPKR(employee.netPayable)}</span></div>
         </section>
@@ -792,9 +825,9 @@ export default function PayrollListPage() {
 
   function exportLiveCsv() {
     if (!liveRows.length) return toast.error('No live payroll data to export');
-    const headers = ['Employee','Code','Monthly Salary','Daily Salary','Earned Salary (incl. commission)','Commission','Present','Absent','Half Days','Paid Leave','Sandwich Leave','Late','Deductions','Net Payable'];
+    const headers = ['Employee','Code','Monthly Salary','Period Basic Pay','Salary Days (30-day basis)','Daily Salary','Earned Salary (incl. commission)','Commission','Present','Absent','Half Days','Paid Leave','Sandwich Leave','Late','Deductions','Net Payable'];
     const rows = liveRows.map(row => [
-      row.employeeName, row.employeeCode, row.monthlySalary, row.dailySalary, row.earnedSalary, commissionTotalFor(row), row.present,
+      row.employeeName, row.employeeCode, row.monthlySalary, periodBasicFor(row), row.salaryProration?.salaryDays ?? 30, row.dailySalary, row.earnedSalary, commissionTotalFor(row), row.present,
       Number(row.absent || 0) + Number(row.unpaidLeave || 0), row.halfDay, row.paidLeave, row.sandwichLeave, row.late, row.deductions, row.netPayable,
     ]);
     const csv = [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
@@ -898,13 +931,14 @@ export default function PayrollListPage() {
         accountTitle: source.accountTitle,
         paymentMode: source.paymentMode,
         monthlySalary: source.monthlySalary,
+        salaryProration: source.salaryProration,
         dailySalary: source.dailySalary,
         earnedSalary: source.earnedSalary,
-        grossSalary: Number(source.monthlySalary || 0) + commissionTotalFor(source),
+        grossSalary: periodBasicFor(source) + commissionTotalFor(source),
         netPayable: source.netPayable,
         deductions: source.deductions,
         salaryRows: [
-          { label: 'Basic Salary', amount: source.monthlySalary, group: 'earning' },
+          { label: basicPayLabel(source), amount: periodBasicFor(source), group: 'earning' },
           ...(source.commissionItems || []).map((item) => ({ label: item.label || `${item.name} Commission`, amount: item.amount, group: 'earning' })),
           ...(!(source.commissionItems || []).length && commissionTotalFor(source) > 0 ? [{ label: 'Commission', amount: commissionTotalFor(source), group: 'earning' }] : []),
           ...((source.attendanceRows || []).map((row) => ({ ...row, group: 'deduction' }))),
@@ -949,12 +983,13 @@ export default function PayrollListPage() {
         accountTitle: source.employeeId?.salaryAccountTitle,
         paymentMode: source.employeeId?.salaryPaymentMethod,
         monthlySalary: source.basicSalary,
+        salaryProration: source.salaryProration,
         dailySalary: source.perDaySalary,
         earnedSalary: source.grossSalary,
         netPayable: source.netSalary,
         deductions: Number(source.deductions || 0) + Number(source.taxDeduction || 0),
         salaryRows: [
-          { label: 'Basic Salary', amount: source.basicSalary, group: 'earning' },
+          { label: basicPayLabel(source), amount: periodBasicFor(source), group: 'earning' },
           ...(source.allowanceItems || []).map((item) => ({ label: item.label, amount: item.amount, group: 'earning' })),
           ...(source.commissionItems || []).map((item) => ({ label: item.label || `${item.name} Commission`, amount: item.amount, group: 'earning' })),
           ...(source.bonus ? [{ label: 'Bonus', amount: source.bonus, group: 'earning' }] : []),
@@ -1125,7 +1160,7 @@ export default function PayrollListPage() {
                       <p className="truncate text-xs text-muted-foreground">{row.employeeCode} · {row.designation}</p>
                       {row.monthlyTargetHours != null && (
                         <p className="mt-1 text-[11px] text-primary">
-                          184-hour target: {row.monthlyCompletedHours ?? 0}h completed
+                          {row.monthlyTargetHours}-hour target: {row.monthlyCompletedHours ?? 0}h completed
                           {row.monthlyRemainingHours != null ? ` · ${row.monthlyRemainingHours}h remaining` : ''}
                         </p>
                       )}

@@ -9,6 +9,7 @@
 const createHttpError = require('http-errors');
 const repository = require('./payroll.repository');
 const { clearPeriodSchema } = require('./payroll.validation');
+const { buildPayrollPeriod } = require('./prorationPolicy');
 const Employee = require('../employees/employees.model');
 const Attendance = require('../attendance/attendance.model');
 const LeaveRequest = require('../leaves/leaves.model');
@@ -63,8 +64,8 @@ function calculateAttendancePayroll({
   };
 }
 
-function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, year) {
-  const targetHours = employee.monthlyTargetHours || MONTHLY_HOUR_TARGET;
+function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, year, period) {
+  const targetHours = Number(((employee.monthlyTargetHours || MONTHLY_HOUR_TARGET) * period.salaryProration.salaryDays / 30).toFixed(2));
   let monthlyHours = buildMonthlyHoursSummary(records, { month, year, targetHours });
 
   const paidLeaveDates = new Set();
@@ -72,6 +73,7 @@ function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, 
   for (const leave of approvedLeaves) {
     if (leave.requestKind === 'late_conversion') continue;
     for (const dutyDate of leaveDutyDates(leave)) {
+      if (dutyDate < period.salaryProration.periodStart || dutyDate > period.salaryProration.periodEnd) continue;
       (leave.leaveType === 'unpaid' ? unpaidLeaveDates : paidLeaveDates).add(dutyDate);
     }
   }
@@ -87,17 +89,21 @@ function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, 
   const completionPercentage = targetHours > 0
     ? Number(Math.min(100, totalEffectiveHours / targetHours * 100).toFixed(1))
     : 0;
-  const averageHoursPerDay = monthlyHours.daysElapsed
-    ? Number((totalEffectiveHours / monthlyHours.daysElapsed).toFixed(2))
+  const elapsed = Math.min(period.salaryProration.eligibleDays, Math.max(0, monthlyHours.daysElapsed - (period.start.getUTCDate() - 1)));
+  const remaining = Math.max(0, period.salaryProration.eligibleDays - elapsed);
+  const averageHoursPerDay = elapsed
+    ? Number((totalEffectiveHours / elapsed).toFixed(2))
     : 0;
-  const projectedMonthlyTotal = monthlyHours.daysElapsed
-    ? Number((averageHoursPerDay * monthlyHours.daysInMonth).toFixed(2))
+  const projectedMonthlyTotal = elapsed
+    ? Number((averageHoursPerDay * period.salaryProration.eligibleDays).toFixed(2))
     : totalEffectiveHours;
   const status = totalEffectiveHours >= targetHours
     ? 'target_completed'
     : extraHours > 0 ? 'ahead' : projectedMonthlyTotal >= targetHours ? 'on_track' : 'behind';
   monthlyHours = {
     ...monthlyHours,
+    daysElapsed: elapsed,
+    daysRemaining: remaining,
     leaveHours,
     totalEffectiveHours,
     remainingHours,
@@ -105,8 +111,8 @@ function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, 
     extraHours,
     completionPercentage,
     averageHoursPerDay,
-    requiredAverageHoursPerRemainingDay: monthlyHours.daysRemaining
-      ? Number((remainingHours / monthlyHours.daysRemaining).toFixed(2))
+    requiredAverageHoursPerRemainingDay: remaining
+      ? Number((remainingHours / remaining).toFixed(2))
       : 0,
     projectedMonthlyTotal,
     status,
@@ -128,8 +134,8 @@ function buildAttendancePayrollRecord(employee, records, approvedLeaves, month, 
     ? employee.shiftId.workingDays
     : [1, 2, 3, 4, 5];
   const sandwichDates = calculateSandwichDates({
-    start: monthBounds(month, year).start,
-    end: monthBounds(month, year).end,
+    start: period.start,
+    end: period.end,
     workingDayNumbers,
     records,
     unpaidLeaveDates,
@@ -223,9 +229,9 @@ function isPayrollLateRecord(record) {
   return record.status === 'late';
 }
 
-async function getAttendanceData(employee, month, year) {
-  const { start, end } = monthBounds(month, year);
-  const [records, approvedLeaves] = await Promise.all([
+async function getAttendanceData(employee, month, year, period) {
+  const { start, end } = period;
+  const [rawRecords, approvedLeaves] = await Promise.all([
     Attendance.find({ employeeId: employee._id, date: { $gte: start, $lte: end } }),
     LeaveRequest.find({
       employeeId: employee._id,
@@ -234,9 +240,14 @@ async function getAttendanceData(employee, month, year) {
       endDate: { $gte: start },
     }).select('leaveType startDate endDate dutyDates requestKind selectedLateAttendanceIds'),
   ]);
+  // Defense against legacy/misdated records or leave spanning the joining day.
+  const records = rawRecords.filter(record => {
+    const key = record.shiftDate || (record.date ? dateKey(record.date) : null);
+    return key && key >= period.salaryProration.periodStart && key <= period.salaryProration.periodEnd;
+  });
   const monthlyMode = isMonthlyHourDepartment(employee.department);
   if (monthlyMode) {
-    return buildAttendancePayrollRecord(employee, records, approvedLeaves, month, year);
+    return buildAttendancePayrollRecord(employee, records, approvedLeaves, month, year, period);
   }
 
   const present = records.filter(r => r.status === 'present' || r.status === 'late').length;
@@ -321,9 +332,11 @@ async function generatePayslip(payload, actor) {
 
   const basicSalary = Number(employee.currentSalary) || 0;
   if (basicSalary <= 0) throw createHttpError(422, 'Employee salary must be configured before generating payroll.');
+  const period = buildPayrollPeriod({ joiningDate: employee.joiningDate, monthlySalary: basicSalary, month, year });
+  if (!period.employedDuringPeriod) throw createHttpError(422, 'Employee had not joined during the selected payroll month.');
   const commissionItems = await salesCommissionService.getPayrollCommissionItems(employee, month, year);
   const commissionTotal = commissionItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const attendance = await getAttendanceData(employee, month, year);
+  const attendance = await getAttendanceData(employee, month, year, period);
   const {
     present, absent, late, deductibleLate, lateMinutes, halfDay, paidLeave, unpaidLeave, sandwichLeave, holiday, weekend,
     workingDays, workedMinutes,
@@ -350,7 +363,7 @@ async function generatePayslip(payload, actor) {
     ? calculateMonthlyHoursDeduction({
       monthlySalary: basicSalary,
       completedHours: monthlyHours?.totalEffectiveHours || 0,
-      targetHours: employee.monthlyTargetHours || MONTHLY_HOUR_TARGET,
+      targetHours: monthlyHours.targetHours,
     })
     : calculateAttendancePayroll({
       basicSalary,
@@ -387,7 +400,7 @@ async function generatePayslip(payload, actor) {
     ].filter(d => d.amount > 0);
 
   const deductionTotal = deductionItems.reduce((s, d) => s + d.amount, 0);
-  const grossSalary = basicSalary + allowanceTotal + Number(bonus) + Number(incentives) + commissionTotal;
+  const grossSalary = period.periodBasicSalary + allowanceTotal + Number(bonus) + Number(incentives) + commissionTotal;
   const taxDeduction = calcTaxDeduction(grossSalary);
   const netSalary = Math.max(0, grossSalary - deductionTotal - taxDeduction);
 
@@ -396,6 +409,8 @@ async function generatePayslip(payload, actor) {
     month,
     year,
     basicSalary: String(basicSalary),
+    periodBasicSalary: String(period.periodBasicSalary),
+    salaryProration: period.salaryProration,
     grossSalary: String(grossSalary),
     netSalary: String(netSalary),
     allowanceItems,
@@ -420,7 +435,7 @@ async function generatePayslip(payload, actor) {
     weekendDays: weekend,
     workingDays,
     workedMinutes,
-    monthlyTargetHours: monthlyMode ? (employee.monthlyTargetHours || MONTHLY_HOUR_TARGET) : null,
+    monthlyTargetHours: monthlyMode ? monthlyHours.targetHours : null,
     monthlyCompletedHours: monthlyMode ? monthlyHours?.completedHours || 0 : null,
     monthlyLeaveHours: monthlyMode ? monthlyHours?.leaveHours || 0 : null,
     monthlyTotalEffectiveHours: monthlyMode ? monthlyHours?.totalEffectiveHours || 0 : null,
@@ -590,8 +605,10 @@ async function getLivePayroll(query, actor) {
     Employee.find(employeeFilter).populate('shiftId').sort({ fullName: 1 }),
     settingsService.getPolicy(actor.companyId),
   ]);
-  const items = await Promise.all(employees.map(async (employee) => {
-    const attendance = await getAttendanceData(employee, month, year);
+  const eligibleEmployees = employees.filter(employee => buildPayrollPeriod({ joiningDate: employee.joiningDate, monthlySalary: employee.currentSalary, month, year }).employedDuringPeriod);
+  const items = await Promise.all(eligibleEmployees.map(async (employee) => {
+    const period = buildPayrollPeriod({ joiningDate: employee.joiningDate, monthlySalary: employee.currentSalary, month, year });
+    const attendance = await getAttendanceData(employee, month, year, period);
     
     const fineRecords = await Fine.find({
       employeeId: employee._id,
@@ -611,7 +628,7 @@ async function getLivePayroll(query, actor) {
       ? calculateMonthlyHoursDeduction({
         monthlySalary: basicSalary,
         completedHours: attendance.monthlyHours?.totalEffectiveHours || 0,
-        targetHours: employee.monthlyTargetHours || MONTHLY_HOUR_TARGET,
+        targetHours: attendance.monthlyHours.targetHours,
       })
       : calculateAttendancePayroll({
         basicSalary,
@@ -634,8 +651,8 @@ async function getLivePayroll(query, actor) {
       : attendance.present + (attendance.halfDay * 0.5)
         + attendance.paidLeave + attendance.holiday;
     const earnedSalary = monthlyMode
-      ? Math.max(0, basicSalary - deductions) + commissionTotal
-      : Math.min(basicSalary, Math.round(calculation.perDaySalary * creditedDays)) + commissionTotal;
+      ? Math.max(0, period.periodBasicSalary - deductions) + commissionTotal
+      : Math.min(period.periodBasicSalary, Math.round(calculation.perDaySalary * creditedDays)) + commissionTotal;
     return {
       employeeId: employee._id,
       employeeName: employee.fullName,
@@ -644,18 +661,28 @@ async function getLivePayroll(query, actor) {
       department: employee.department,
       joiningDate: employee.joiningDate,
       monthlySalary: basicSalary,
+      periodBasicSalary: period.periodBasicSalary,
+      salaryProration: period.salaryProration,
       dailySalary: Math.round(calculation.perDaySalary),
       earnedSalary,
       totalFines,
       deductions,
-      netPayable: Math.max(0, basicSalary - deductions) + commissionTotal,
+      netPayable: Math.max(0, period.periodBasicSalary - deductions) + commissionTotal,
       commissionItems,
       commissionTotal,
       month,
       year,
       ...attendance,
       ...calculation,
-      monthlyTargetHours: monthlyMode ? (employee.monthlyTargetHours || MONTHLY_HOUR_TARGET) : null,
+      monthlyTargetHours: monthlyMode ? attendance.monthlyHours.targetHours : null,
+      monthlyCompletedHours: monthlyMode ? attendance.monthlyHours.completedHours : null,
+      monthlyLeaveHours: monthlyMode ? attendance.monthlyHours.leaveHours : null,
+      monthlyTotalEffectiveHours: monthlyMode ? attendance.monthlyHours.totalEffectiveHours : null,
+      monthlyRemainingHours: monthlyMode ? attendance.monthlyHours.remainingHours : null,
+      monthlyCompletionPercentage: monthlyMode ? attendance.monthlyHours.completionPercentage : null,
+      monthlyStatus: monthlyMode ? attendance.monthlyHours.status : null,
+      monthlyShortHours: monthlyMode ? calculation.shortHours : null,
+      monthlyAttendanceDeduction: monthlyMode ? calculation.attendanceDeduction : null,
     };
   }));
   return { items, month, year, total: items.length };

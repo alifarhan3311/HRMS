@@ -10,7 +10,7 @@ let PayrollPage;
 let views;
 test.before(async () => {
   const result = await build({
-    stdin: { contents: "export { default, LivePayrollDetailModal, LivePayrollCardSalary, PayslipDetailModal, PayrollPrintView, ClearPayrollDialog } from './src/features/payroll/pages/PayrollListPage.jsx'; export { default as Pagination } from './src/components/ui/Pagination.jsx';", resolveDir: path.resolve(__dirname, '..') },
+    stdin: { contents: "export { default, LivePayrollDetailModal, LivePayrollCardSalary, PayslipDetailModal, PayrollPrintView, ClearPayrollDialog, PayrollProrationNote } from './src/features/payroll/pages/PayrollListPage.jsx'; export { default as Pagination } from './src/components/ui/Pagination.jsx';", resolveDir: path.resolve(__dirname, '..') },
     bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', jsx: 'automatic',
     plugins: [{ name: 'payroll-fixtures', setup(builder) {
       builder.onResolve({ filter: /react-dom$|react-redux$|payroll\.api$|employees\.api$|ui\/Modal$/ }, args => ({ path: args.path, namespace: 'fixture' }));
@@ -104,6 +104,13 @@ const commissionEmployee = {
   commissionItems: [{ label: 'ATM Commission', name: 'ATM', quantity: 2, rate: 5000, unit: 'PKR', amount: 10000 }],
 };
 
+const joiningEmployee = {
+  ...commissionEmployee, monthlySalary: 25000, periodBasicSalary: 12500,
+  deductions: 417, netPayable: 12083, earnedSalary: 10417,
+  commissionTotal: 0, commissionItems: [],
+  salaryProration: { applied: true, periodStart: '2026-10-17', periodEnd: '2026-10-31', salaryDays: 15, eligibleDays: 15, basisDays: 30 },
+};
+
 function renderLive(employee) {
   return renderToStaticMarkup(React.createElement(views.LivePayrollDetailModal, { employee, isOpen: true }));
 }
@@ -119,6 +126,33 @@ test('HR card shows selected-month net salary separately from zero commission', 
   assert.ok(html.includes('− PKR 7,000'));
   assert.ok(html.includes('Commission (included)'));
   assert.ok(html.includes('+ PKR 0'));
+});
+
+test('joining-month details show prorated basic pay and no full-month payable', () => {
+  const html = renderLive(joiningEmployee);
+  for (const text of ['Joining-month salary adjustment', '2026-10-17', '2026-10-31', '15/30 days', 'PKR 12,500', 'PKR 12,083']) assert.ok(html.includes(text), text);
+  assert.ok(!html.includes('PKR 24,583'));
+  const card = renderToStaticMarkup(React.createElement(views.LivePayrollCardSalary, { employee: joiningEmployee, visible: true }));
+  assert.ok(card.includes('Prorated Basic Pay (15/30 days)'));
+  assert.ok(card.includes('PKR 12,083'));
+});
+
+test('joining-month note masks salary values with the single salary control', () => {
+  const html = renderToStaticMarkup(React.createElement(views.PayrollProrationNote, { record: joiningEmployee, visible: false }));
+  assert.ok(html.includes('15/30 days'));
+  assert.ok(!html.includes('25,000'));
+  assert.ok(!html.includes('12,500'));
+});
+
+test('generated payslip breakdown preserves the joining-month salary basis', () => {
+  const html = renderToStaticMarkup(React.createElement(views.PayslipDetailModal, {
+    isOpen: true, revealSensitive: true,
+    payslip: { ...joiningEmployee, basicSalary: '25000', grossSalary: '12500', netSalary: '12083', employeeId: { fullName: 'Joining employee' } },
+  }));
+  assert.ok(html.includes('Joining-month salary adjustment'));
+  assert.ok(html.includes('Prorated Basic Salary'));
+  assert.ok(html.includes('PKR 12,500'));
+  assert.ok(html.includes('PKR 12,083'));
 });
 
 test('HR card uses returned net salary including commission without adding it twice', () => {

@@ -133,7 +133,7 @@ async function refreshDraftPayslip(salesRecord) {
     quantity: item.quantity, salesAmount: item.salesAmount, rate: item.rate, unit: item.unit,
   }));
   const commissionTotal = commissionItems.reduce((sum, item) => sum + item.amount, 0);
-  const grossSalary = Number(payslip.basicSalary || 0) + Number(payslip.allowances || 0)
+  const grossSalary = Number(payslip.periodBasicSalary ?? payslip.basicSalary ?? 0) + Number(payslip.allowances || 0)
     + Number(payslip.bonus || 0) + Number(payslip.incentives || 0) + commissionTotal;
   const netSalary = Math.max(0, grossSalary - Number(payslip.deductions || 0) - Number(payslip.taxDeduction || 0));
   payslip.commissionItems = commissionItems;

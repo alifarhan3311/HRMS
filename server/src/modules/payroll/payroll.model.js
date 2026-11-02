@@ -26,6 +26,11 @@ const payrollSchema = new mongoose.Schema(
     year: { type: Number, required: true },
     // Core salary (encrypted)
     basicSalary:  { type: String, required: true, set: encryptField, get: decryptFieldSafe },
+    periodBasicSalary: { type: String, set: encryptField, get: decryptFieldSafe },
+    salaryProration: {
+      applied: Boolean, periodStart: String, periodEnd: String,
+      eligibleDays: Number, salaryDays: Number, basisDays: Number,
+    },
     netSalary:    { type: String, required: true, set: encryptField, get: decryptFieldSafe },
     grossSalary:  { type: String, set: encryptField, get: decryptFieldSafe },
     // Breakdown (plain numbers, not individually sensitive when isolated)

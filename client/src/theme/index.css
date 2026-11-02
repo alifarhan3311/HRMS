@@ -300,6 +300,15 @@
     break-inside: avoid;
   }
 
+  .payroll-slip-proration {
+    margin: 0 0 3mm;
+    padding: 2mm;
+    border: 1px solid #cbd5e1;
+    font-size: 8pt;
+    line-height: 1.4;
+    color: #334155;
+  }
+
   .payroll-slip-section h3 {
     margin: 0;
     padding: 2mm 3mm;

@@ -30,3 +30,23 @@ test('editing historical monthly sales preserves the rate snapshot for that peri
   assert.equal(item.rate, 5000);
   assert.equal(item.commissionAmount, 10000);
 });
+
+test('saving commission sales preserves the prorated base of a draft payslip', async t => {
+  const service = require('../src/modules/training/salesCommission.service');
+  const Employee = require('../src/modules/employees/employees.model');
+  const Payslip = require('../src/modules/payroll/payroll.model');
+  const SalesCommission = require('../src/modules/training/salesCommission.model');
+  const commissionService = require('../src/modules/training/commission.service');
+  const employeeId = '507f1f77bcf86cd799439011';
+  const companyId = '507f191e810c19729de860ea';
+  t.mock.method(Employee, 'find', () => ({ select: () => ({ lean: async () => [{ department: 'call center' }] }) }));
+  t.mock.method(commissionService, 'list', async () => [{ _id: 'rate', slug: 'atm', name: 'ATM', amount: 5000, unit: 'PKR' }]);
+  const draft = { basicSalary: '25000', periodBasicSalary: '12500', deductions: 417, async save() {} };
+  t.mock.method(Payslip, 'findOne', filter => filter.status === 'draft' ? Promise.resolve(draft) : { select: () => ({ lean: async () => null }) });
+  t.mock.method(SalesCommission, 'find', () => ({ select: () => ({ lean: async () => [] }) }));
+  t.mock.method(SalesCommission, 'findOneAndUpdate', async (filter, update) => ({ ...filter, ...update.$set }));
+  await service.savePeriod({ month: 10, year: 2026, entries: [{ employeeId, products: { atm: { quantity: 2 } } }] }, { role: 'hr', id: employeeId, companyId });
+  assert.equal(draft.commissionTotal, 10000);
+  assert.equal(draft.grossSalary, '22500');
+  assert.equal(draft.netSalary, '22083');
+});
