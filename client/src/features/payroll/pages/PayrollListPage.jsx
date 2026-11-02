@@ -13,11 +13,11 @@ import {
   Wallet, Plus, CheckCircle2, CreditCard,
   RefreshCw, ChevronRight, Eye, EyeOff,
   TrendingUp, TrendingDown, Banknote, FileText, Target,
-  Download, Printer, Search,
+  Download, Printer, Search, Trash2,
 } from 'lucide-react';
 import {
   useListPayrollQuery, useGetLivePayrollQuery, useGeneratePayrollMutation,
-  useBulkGeneratePayrollMutation,
+  useBulkGeneratePayrollMutation, useClearPayrollPeriodMutation,
   useApprovePayrollMutation, useMarkPayrollPaidMutation,
 } from '../api/payroll.api';
 import { useListEmployeesQuery } from '../../employees/api/employees.api';
@@ -681,12 +681,47 @@ function GenerateForm({ onSubmit, onClose, isLoading, draftKey, employees, perio
   );
 }
 
+export function ClearPayrollDialog({ period, isLoading, onClear, onClose }) {
+  const [confirmation, setConfirmation] = useState('');
+  if (!period) return null;
+  const expected = `CLEAR ${period.year}-${String(period.month).padStart(2, '0')}`;
+  return (
+    <Modal isOpen onClose={() => !isLoading && onClose()} title={`Clear payroll · ${formatPeriodLabel(period.month, period.year)}`} size="md">
+      <form onSubmit={event => {
+        event.preventDefault();
+        if (!isLoading && confirmation === expected) onClear({ ...period, confirmation });
+      }}>
+        <div className="space-y-4 px-6 py-5 text-sm">
+          <p className="rounded-xl border border-destructive/20 bg-destructive/5 p-3">
+            Clear all generated payslips for <strong>{formatPeriodLabel(period.month, period.year)}</strong>, for all employees and all statuses (including approved and paid), regardless of the current page or status filter.
+          </p>
+          <p className="text-muted-foreground">A recovery copy is archived before removal. Attendance, employee salaries, commissions and other months will not change. HR/Admin can generate this month again afterwards.</p>
+          <label className="block space-y-2">
+            <span>Type <strong>{expected}</strong> to confirm.</span>
+            <input aria-label="Payroll clear confirmation" autoComplete="off" required disabled={isLoading}
+              value={confirmation} onChange={event => setConfirmation(event.target.value)}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 outline-none focus:border-destructive"
+              placeholder={expected} />
+          </label>
+        </div>
+        <ModalFooter>
+          <Button type="button" variant="secondary" disabled={isLoading} onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="danger" disabled={isLoading || confirmation !== expected}>
+            <Trash2 className="h-4 w-4" /> {isLoading ? 'Clearing…' : 'Clear this month'}
+          </Button>
+        </ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PayrollListPage() {
   const { user } = useSelector((s) => s.auth);
   const canGenerate = ['admin', 'super_admin', 'hr'].includes(user?.role);
   const canApprove = ['admin', 'super_admin', 'hr'].includes(user?.role);
   const canViewTeamPayroll = canGenerate || canApprove;
+  const canClearPayroll = ['hr', 'admin'].includes(user?.role);
   const now = new Date();
 
   const [generateOpen, setGenerateOpen] = useState(false);
@@ -698,6 +733,7 @@ export default function PayrollListPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [filters, setFilters] = useState({ month: String(now.getMonth() + 1), year: String(now.getFullYear()), status: '' });
+  const [clearTarget, setClearTarget] = useState(null);
 
   const { currentData: data, isLoading, isFetching, refetch } = useListPayrollQuery({ page, limit: pageSize, sort: '-year -month -createdAt -_id', ...filters });
   const { currentData: liveData, isFetching: liveFetching, refetch: refetchLive, error: liveError } = useGetLivePayrollQuery({
@@ -713,6 +749,7 @@ export default function PayrollListPage() {
   const [bulkGeneratePayroll, { isLoading: bulkGenerating }] = useBulkGeneratePayrollMutation();
   const [approvePayroll,  { isLoading: approving }]   = useApprovePayrollMutation();
   const [markPaid,        { isLoading: paying }]      = useMarkPayrollPaidMutation();
+  const [clearPayrollPeriod, { isLoading: clearing }] = useClearPayrollPeriodMutation();
 
   const isActioning = approving || paying;
 
@@ -775,6 +812,25 @@ export default function PayrollListPage() {
     approved: payslips.filter(p => p.status === 'approved').length,
     paid:     payslips.filter(p => ['paid', 'locked'].includes(p.status)).length,
   };
+
+  async function handleClearPayroll(payload) {
+    if (!canClearPayroll || clearing) return;
+    try {
+      const response = await clearPayrollPeriod(payload).unwrap();
+      const result = response.data;
+      toast.success(result.clearedCount
+        ? `${result.clearedCount} payslip(s) cleared for ${formatPeriodLabel(result.month, result.year)}. You can generate this month again.`
+        : 'No saved payslips found for this month.');
+      setClearTarget(null);
+      setDetailPayslip(null);
+      setLivePayrollEmployee(null);
+      setPrintPayload(null);
+      setFilters(previous => ({ ...previous, status: '' }));
+      setPage(1);
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Could not clear payroll. Please refresh and try again.');
+    }
+  }
 
   async function handleGenerate(payload) {
     if (String(payload.employeeId) === 'ALL' || String(payload.employeeId).startsWith('BULK_')) {
@@ -947,7 +1003,7 @@ export default function PayrollListPage() {
             <h1 className="text-2xl font-bold tracking-tight">Payroll</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Manage salary, payslips and disbursements</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" className="gap-1.5"
               onClick={() => { refetch(); refetchLive(); }} disabled={isFetching || liveFetching}>
               <RefreshCw className={`h-3.5 w-3.5 ${isFetching || liveFetching ? 'animate-spin' : ''}`} />
@@ -967,6 +1023,12 @@ export default function PayrollListPage() {
             {canGenerate && (
               <Button variant="primary" size="sm" className="gap-1.5" onClick={() => setGenerateOpen(true)}>
                 <Plus className="h-4 w-4" /> Generate Payslip
+              </Button>
+            )}
+            {canClearPayroll && (
+              <Button variant="danger" size="sm" className="gap-1.5" disabled={generating || bulkGenerating || clearing}
+                onClick={() => setClearTarget({ month: Number(filters.month), year: Number(filters.year) })}>
+                <Trash2 className="h-4 w-4" /> Clear Payroll
               </Button>
             )}
           </div>
@@ -1229,6 +1291,9 @@ export default function PayrollListPage() {
             isLoading={isLoading || isFetching} onPageChange={setPage}
             onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
         </div>
+
+        <ClearPayrollDialog key={clearTarget ? `${clearTarget.year}-${clearTarget.month}` : 'closed'}
+          period={clearTarget} isLoading={clearing} onClear={handleClearPayroll} onClose={() => !clearing && setClearTarget(null)} />
 
         {/* Generate Modal */}
         <Modal isOpen={generateOpen} onClose={() => setGenerateOpen(false)} title="Generate Payslip" size="lg">

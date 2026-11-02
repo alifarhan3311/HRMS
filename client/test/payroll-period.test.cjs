@@ -10,19 +10,19 @@ let PayrollPage;
 let views;
 test.before(async () => {
   const result = await build({
-    stdin: { contents: "export { default, LivePayrollDetailModal, LivePayrollCardSalary, PayslipDetailModal, PayrollPrintView } from './src/features/payroll/pages/PayrollListPage.jsx'; export { default as Pagination } from './src/components/ui/Pagination.jsx';", resolveDir: path.resolve(__dirname, '..') },
+    stdin: { contents: "export { default, LivePayrollDetailModal, LivePayrollCardSalary, PayslipDetailModal, PayrollPrintView, ClearPayrollDialog } from './src/features/payroll/pages/PayrollListPage.jsx'; export { default as Pagination } from './src/components/ui/Pagination.jsx';", resolveDir: path.resolve(__dirname, '..') },
     bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', jsx: 'automatic',
     plugins: [{ name: 'payroll-fixtures', setup(builder) {
       builder.onResolve({ filter: /react-dom$|react-redux$|payroll\.api$|employees\.api$|ui\/Modal$/ }, args => ({ path: args.path, namespace: 'fixture' }));
       builder.onLoad({ filter: /.*/, namespace: 'fixture' }, ({ path: name }) => {
         const contents = name === 'react-dom' ? 'export const createPortal = children => children;'
           : name === 'react-redux'
-          ? "export const useSelector = selector => selector({ auth: { user: { id: 'hr-one', role: 'hr' } } });"
+          ? "export const useSelector = selector => selector({ auth: { user: { id: 'hr-one', role: globalThis.testPayrollRole || 'hr' } } });"
           : name.endsWith('payroll.api')
             ? `export const useListPayrollQuery = params => { globalThis.payrollQueries.saved = params; return globalThis.savedPayrollQuery; };
                export const useGetLivePayrollQuery = params => { globalThis.payrollQueries.live = params; return globalThis.livePayrollQuery; };
                const mutation = () => [() => {}, {}];
-               export const useGeneratePayrollMutation = mutation, useBulkGeneratePayrollMutation = mutation,
+               export const useGeneratePayrollMutation = mutation, useBulkGeneratePayrollMutation = mutation, useClearPayrollPeriodMutation = mutation,
                  useApprovePayrollMutation = mutation, useMarkPayrollPaidMutation = mutation;`
             : name.endsWith('employees.api')
               ? 'export const useListEmployeesQuery = () => ({ data: { items: [] } });'
@@ -40,6 +40,7 @@ test.before(async () => {
 });
 
 test.beforeEach(() => {
+  globalThis.testPayrollRole = 'hr';
   globalThis.payrollQueries = {};
   globalThis.savedPayrollQuery = { currentData: { items: [], total: 0 }, refetch() {} };
   globalThis.livePayrollQuery = { currentData: { items: [] }, refetch() {} };
@@ -243,4 +244,31 @@ test('loading disables navigation and does not display a stale result count', ()
   const html = renderToStaticMarkup(tree);
   assert.ok(html.includes('Loading payslips…'));
   assert.ok(!html.includes('of 35 payslips'));
+});
+
+test('only HR and Admin have the Clear Payroll action', () => {
+  for (const role of ['hr', 'admin', 'super_admin', 'manager', 'employee']) {
+    globalThis.testPayrollRole = role;
+    assert.equal(renderPeriod().includes('Clear Payroll'), ['hr', 'admin'].includes(role), role);
+  }
+});
+
+test('clear dialog explicitly targets the selected period and warns about all statuses', () => {
+  const html = renderToStaticMarkup(React.createElement(views.ClearPayrollDialog, { period: { month: 10, year: 2026 } }));
+  for (const text of ['Oct 2026', 'CLEAR 2026-10', 'all employees and all statuses', 'approved and paid', 'recovery copy', 'commissions and other months will not change']) assert.ok(html.includes(text), text);
+  assert.match(html, /<button[^>]*disabled[^>]*>[\s\S]*?Clear this month/);
+});
+
+test('clear dialog submits only the confirmed period and blocks mismatched confirmation', () => {
+  const submitted = [];
+  const original = React.useState;
+  try {
+    const props = { period: { month: 10, year: 2026 }, onClear: value => submitted.push(value) };
+    for (const text of ['', 'CLEAR 2026-11', 'CLEAR 2026-10']) {
+      React.useState = () => [text, () => {}];
+      const tree = views.ClearPayrollDialog(props);
+      findElement(tree, item => item.type === 'form').props.onSubmit({ preventDefault() {} });
+    }
+    assert.deepEqual(submitted, [{ month: 10, year: 2026, confirmation: 'CLEAR 2026-10' }]);
+  } finally { React.useState = original; }
 });

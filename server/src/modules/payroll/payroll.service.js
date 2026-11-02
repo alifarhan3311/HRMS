@@ -8,6 +8,7 @@
  */
 const createHttpError = require('http-errors');
 const repository = require('./payroll.repository');
+const { clearPeriodSchema } = require('./payroll.validation');
 const Employee = require('../employees/employees.model');
 const Attendance = require('../attendance/attendance.model');
 const LeaveRequest = require('../leaves/leaves.model');
@@ -498,6 +499,19 @@ async function bulkGeneratePayslips(payload, actor) {
   return { generatedCount, skippedCount, failedCount: failures.length, failures, notificationWarningCount };
 }
 
+async function clearPayrollPeriod(payload, actor) {
+  if (!actor?.id || !actor.companyId || !['hr', 'admin'].includes(actor.role)) {
+    throw createHttpError(403, 'Only HR and Admin can clear payroll.');
+  }
+  const { error, value } = clearPeriodSchema.validate(payload, { convert: false });
+  if (error || !value) throw createHttpError(400, 'Select a valid month and year and provide the clear confirmation.');
+  const { month, year, confirmation } = value;
+  const expected = `CLEAR ${year}-${String(month).padStart(2, '0')}`;
+  if (confirmation !== expected) throw createHttpError(400, `Type ${expected} to clear this payroll period.`);
+  const result = await repository.clearPeriodWithArchive({ companyId: actor.companyId, month, year }, actor.id);
+  return { ...result, month, year };
+}
+
 // ─── Update payslip (before approval) ────────────────────────────────────────
 async function updatePayslip(id, payload, actor) {
   const record = await repository.findById(id);
@@ -648,6 +662,7 @@ async function getLivePayroll(query, actor) {
 }
 
 module.exports = {
+  clearPayrollPeriod,
   generatePayslip, bulkGeneratePayslips, updatePayslip, listPayslips, getPayslipById,
   approvePayslip, markPaid,
   calculateAttendancePayroll, calculateSandwichDates,

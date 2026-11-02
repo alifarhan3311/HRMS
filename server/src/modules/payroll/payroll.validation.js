@@ -24,4 +24,10 @@ const updateSchema = createSchema.fork(
   (schema) => schema.optional()
 );
 
-module.exports = { createSchema, updateSchema };
+const clearPeriodSchema = Joi.object({
+  month: Joi.number().integer().min(1).max(12).required(),
+  year: Joi.number().integer().min(2000).max(2100).required(),
+  confirmation: Joi.string().max(20).required(),
+}).unknown(false);
+
+module.exports = { createSchema, updateSchema, clearPeriodSchema };

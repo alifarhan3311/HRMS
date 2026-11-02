@@ -18,6 +18,7 @@ router.get('/',    authorize(...PAYROLL_VIEWERS), controller.list);
 router.get('/live', authorize(...PAYROLL_VIEWERS), controller.live);
 router.post('/',   authorize(...PAYROLL_ADMINS), controller.generate);
 router.post('/bulk', authorize(...PAYROLL_ADMINS), controller.bulkGenerate);
+router.delete('/period', authorize('hr', 'admin'), controller.clearPeriod);
 
 // Per-payslip
 router.get('/:id',  authorize(...PAYROLL_VIEWERS),

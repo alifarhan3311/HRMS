@@ -48,4 +48,13 @@ const markPaid = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: record });
 });
 
-module.exports = { generate, bulkGenerate, list, live, getById, update, approve, markPaid };
+const clearPeriod = asyncHandler(async (req, res) => {
+  const result = await service.clearPayrollPeriod(req.body, req.user);
+  req.auditContext = {
+    action: 'payroll.clear_period', resourceType: 'payroll',
+    resourceId: `${result.year}-${String(result.month).padStart(2, '0')}`,
+  };
+  res.status(200).json({ success: true, data: result });
+});
+
+module.exports = { generate, bulkGenerate, list, live, getById, update, approve, markPaid, clearPeriod };

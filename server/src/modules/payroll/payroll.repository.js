@@ -2,6 +2,9 @@
  * modules/payroll/payroll.repository.js
  */
 const Payslip = require('./payroll.model');
+const PayrollArchive = require('./payrollArchive.model');
+const mongoose = require('mongoose');
+const createHttpError = require('http-errors');
 
 async function create(data) { return Payslip.create(data); }
 
@@ -42,4 +45,27 @@ async function getMonthlyStats(companyId, month, year) {
   ]);
 }
 
-module.exports = { create, findById, findByEmployeeAndPeriod, findAll, updateById, getMonthlyStats };
+async function clearPeriodWithArchive({ companyId, month, year }, clearedBy) {
+  // Fail closed on deployments without transaction support: never delete
+  // records unless their recovery snapshots commit in the same transaction.
+  return Payslip.db.transaction(async session => {
+    const filter = { companyId, month, year };
+    const records = await Payslip.find(filter).session(session).lean();
+    if (!records.length) return { clearedCount: 0, archiveBatchId: null };
+    const batchId = new mongoose.Types.ObjectId();
+    const clearedAt = new Date();
+    await PayrollArchive.insertMany(records.map(record => ({
+      companyId, month, year, batchId, payslipId: record._id, clearedBy, clearedAt,
+      snapshot: record,
+    })), { session });
+    const result = await Payslip.deleteMany({
+      ...filter, _id: { $in: records.map(record => record._id) },
+    }).session(session);
+    if (result.deletedCount !== records.length) {
+      throw createHttpError(409, 'Payroll changed while clearing. Nothing was cleared; please refresh and try again.');
+    }
+    return { clearedCount: records.length, archiveBatchId: String(batchId) };
+  });
+}
+
+module.exports = { create, findById, findByEmployeeAndPeriod, findAll, updateById, getMonthlyStats, clearPeriodWithArchive };
