@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSelector } from 'react-redux';
 import {
   Wallet, Plus, CheckCircle2, CreditCard,
-  RefreshCw, ChevronLeft, ChevronRight, Eye, EyeOff,
+  RefreshCw, ChevronRight, Eye, EyeOff,
   TrendingUp, TrendingDown, Banknote, FileText, Target,
   Download, Printer, Search,
 } from 'lucide-react';
@@ -31,6 +31,7 @@ import { Avatar } from '../../../components/ui/Avatar';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import SensitiveValue from '../../../components/ui/SensitiveValue';
+import Pagination from '../../../components/ui/Pagination';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const STATUS_STYLES = {
@@ -67,6 +68,33 @@ function commissionDescription(item) {
   return item.unit === 'percent'
     ? `${Number(item.rate || 0)}% of ${fmtPKR(item.salesAmount || 0)} sales`
     : `${Number(item.quantity || 0)} sale(s) × ${fmtPKR(item.rate || 0)} per sale`;
+}
+
+export function LivePayrollCardSalary({ employee, visible = false }) {
+  return (
+    <div className="mt-3 space-y-2 rounded-xl border border-primary/15 bg-primary/5 px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span className="text-xs font-medium text-muted-foreground">Net Payable · {formatPeriodLabel(employee.month, employee.year)}</span>
+        <SensitiveValue className="text-lg font-bold text-primary" value={employee.netPayable}
+          formatter={fmtPKR} visible={visible} showToggle={false} />
+      </div>
+      <div className="space-y-1.5 border-t border-primary/10 pt-2 text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-muted-foreground">Monthly Salary</span>
+          <SensitiveValue value={employee.monthlySalary} formatter={fmtPKR} visible={visible} showToggle={false} />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-muted-foreground">Deductions</span>
+          <SensitiveValue className="text-red-500" value={employee.deductions} formatter={value => `− ${fmtPKR(value)}`} visible={visible} showToggle={false} />
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-muted-foreground">Commission (included)</span>
+          <SensitiveValue className="font-semibold text-emerald-600" value={commissionTotalFor(employee)}
+            formatter={value => `+ ${fmtPKR(value)}`} visible={visible} showToggle={false} />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function normalizeDeductionItems(items = []) {
@@ -668,9 +696,10 @@ export default function PayrollListPage() {
   const [salaryVisible, setSalaryVisible] = useState(false);
   const [liveSearch, setLiveSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [filters, setFilters] = useState({ month: String(now.getMonth() + 1), year: String(now.getFullYear()), status: '' });
 
-  const { currentData: data, isLoading, isFetching, refetch } = useListPayrollQuery({ page, limit: 15, ...filters });
+  const { currentData: data, isLoading, isFetching, refetch } = useListPayrollQuery({ page, limit: pageSize, sort: '-year -month -createdAt -_id', ...filters });
   const { currentData: liveData, isFetching: liveFetching, refetch: refetchLive, error: liveError } = useGetLivePayrollQuery({
     month: Number(filters.month),
     year: Number(filters.year),
@@ -700,6 +729,10 @@ export default function PayrollListPage() {
   const payslips   = data?.items || [];
   const total      = data?.total || 0;
   const totalPages = data?.totalPages || 1;
+  useEffect(() => {
+    // Status changes can remove the last item from a filtered page.
+    if (data && page > totalPages) setPage(totalPages);
+  }, [data, page, totalPages]);
   const employees = employeesData?.items || [];
   const liveRows = liveData?.items || [];
   
@@ -1048,10 +1081,7 @@ export default function PayrollListPage() {
                       <p className="text-[11px] text-muted-foreground">Late</p>
                     </div>
                   </div>
-                  <div className="mt-3 flex items-center justify-between gap-2 text-xs">
-                    <span className="text-muted-foreground">Commission</span>
-                    <SensitiveValue className="font-semibold text-emerald-600" value={commissionTotalFor(row)} formatter={value => `+ ${fmtPKR(value)}`} visible={salaryVisible} showToggle={false} />
-                  </div>
+                  <LivePayrollCardSalary employee={row} visible={salaryVisible} />
                   <p className="mt-3 text-center text-xs font-medium text-primary">Click to view complete payroll</p>
                 </motion.button>
               ))}
@@ -1094,11 +1124,11 @@ export default function PayrollListPage() {
         {/* Stats */}
         {canViewTeamPayroll && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <StatCard title="Draft" value={stats.draft} icon={FileText}
+            <StatCard title="Draft (this page)" value={stats.draft} icon={FileText}
               trend={{ label: 'Needs approval', positive: false }} />
-            <StatCard title="Approved" value={stats.approved} icon={CheckCircle2}
+            <StatCard title="Approved (this page)" value={stats.approved} icon={CheckCircle2}
               trend={{ label: 'Ready to disburse', positive: true }} />
-            <StatCard title="Paid" value={stats.paid} icon={CreditCard}
+            <StatCard title="Paid (this page)" value={stats.paid} icon={CreditCard}
               trend={{ label: 'Disbursed', positive: true }} />
           </div>
         )}
@@ -1195,21 +1225,9 @@ export default function PayrollListPage() {
           )}
 
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between px-5 py-3 border-t border-border">
-              <span className="text-xs text-muted-foreground">Page {page} of {totalPages}</span>
-              <div className="flex gap-1">
-                <Button variant="secondary" size="sm" className="px-2"
-                  onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <Button variant="secondary" size="sm" className="px-2"
-                  onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page === totalPages}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
+          <Pagination page={page} pageSize={pageSize} total={total} totalPages={totalPages}
+            isLoading={isLoading || isFetching} onPageChange={setPage}
+            onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
         </div>
 
         {/* Generate Modal */}

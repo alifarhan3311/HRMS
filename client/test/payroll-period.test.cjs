@@ -10,7 +10,7 @@ let PayrollPage;
 let views;
 test.before(async () => {
   const result = await build({
-    stdin: { contents: "export { default, LivePayrollDetailModal, PayslipDetailModal, PayrollPrintView } from './src/features/payroll/pages/PayrollListPage.jsx';", resolveDir: path.resolve(__dirname, '..') },
+    stdin: { contents: "export { default, LivePayrollDetailModal, LivePayrollCardSalary, PayslipDetailModal, PayrollPrintView } from './src/features/payroll/pages/PayrollListPage.jsx'; export { default as Pagination } from './src/components/ui/Pagination.jsx';", resolveDir: path.resolve(__dirname, '..') },
     bundle: true, write: false, platform: 'node', format: 'cjs', packages: 'external', jsx: 'automatic',
     plugins: [{ name: 'payroll-fixtures', setup(builder) {
       builder.onResolve({ filter: /react-dom$|react-redux$|payroll\.api$|employees\.api$|ui\/Modal$/ }, args => ({ path: args.path, namespace: 'fixture' }));
@@ -45,10 +45,12 @@ test.beforeEach(() => {
   globalThis.livePayrollQuery = { currentData: { items: [] }, refetch() {} };
 });
 
-function renderPeriod(period) {
+function renderPeriod(period, pagination = {}) {
   const useState = React.useState;
-  React.useState = initial => useState(period && initial && typeof initial === 'object'
-    && 'month' in initial && 'year' in initial && 'status' in initial ? { ...initial, ...period } : initial);
+  React.useState = initial => useState(initial === 1 && pagination.page ? pagination.page
+    : initial === 10 && pagination.pageSize ? pagination.pageSize
+      : period && initial && typeof initial === 'object'
+        && 'month' in initial && 'year' in initial && 'status' in initial ? { ...initial, ...period } : initial);
   try { return renderToStaticMarkup(React.createElement(PayrollPage)); }
   finally { React.useState = useState; }
 }
@@ -105,6 +107,40 @@ function renderLive(employee) {
   return renderToStaticMarkup(React.createElement(views.LivePayrollDetailModal, { employee, isOpen: true }));
 }
 
+test('HR card shows selected-month net salary separately from zero commission', () => {
+  const html = renderToStaticMarkup(React.createElement(views.LivePayrollCardSalary, {
+    employee: { ...commissionEmployee, netPayable: 38000, commissionTotal: 0, commissionItems: [] }, visible: true,
+  }));
+  assert.ok(html.includes('Net Payable · Oct 2026'));
+  assert.ok(html.includes('PKR 38,000'));
+  assert.ok(html.includes('Monthly Salary'));
+  assert.ok(html.includes('PKR 45,000'));
+  assert.ok(html.includes('− PKR 7,000'));
+  assert.ok(html.includes('Commission (included)'));
+  assert.ok(html.includes('+ PKR 0'));
+});
+
+test('HR card uses returned net salary including commission without adding it twice', () => {
+  const html = renderToStaticMarkup(React.createElement(views.LivePayrollCardSalary, { employee: commissionEmployee, visible: true }));
+  assert.ok(html.includes('PKR 48,000'));
+  assert.ok(html.includes('+ PKR 10,000'));
+  assert.ok(!html.includes('PKR 58,000'));
+});
+
+test('HR card salary values follow the existing single Show/Hide salary control', () => {
+  const html = renderToStaticMarkup(React.createElement(views.LivePayrollCardSalary, { employee: commissionEmployee, visible: false }));
+  for (const amount of ['48,000', '45,000', '7,000', '10,000']) assert.ok(!html.includes(amount), amount);
+  assert.ok(html.includes('PKR ••••••'));
+  assert.ok(!html.includes('<button'));
+});
+
+test('HR payroll cards include selected-month net payable even before opening details', () => {
+  globalThis.livePayrollQuery.currentData = { items: [{ ...commissionEmployee, employeeId: 'employee-one' }] };
+  const html = renderPeriod({ month: '10', year: '2026' });
+  assert.ok(html.includes('Net Payable · Oct 2026'));
+  assert.ok(html.includes('Commission (included)'));
+});
+
 test('live payroll displays fixed commission and reconciles base salary, deductions and payable', () => {
   const html = renderLive(commissionEmployee);
   assert.ok(html.includes('Commission breakdown · Oct 2026'));
@@ -151,4 +187,60 @@ test('PDF print view lists commission separately and uses gross earnings before 
     assert.ok(html.includes('PKR 48,000'));
     assert.ok(!html.includes('PKR 47,500'));
   } finally { globalThis.document = originalDocument; }
+});
+
+test('saved payroll requests selected page and size with stable ordering', () => {
+  globalThis.savedPayrollQuery.currentData = { items: [], total: 35, totalPages: 7 };
+  const html = renderPeriod({ month: '10', year: '2026' }, { page: 3, pageSize: 5 });
+  assert.equal(globalThis.payrollQueries.saved.page, 3);
+  assert.equal(globalThis.payrollQueries.saved.limit, 5);
+  assert.equal(globalThis.payrollQueries.saved.sort, '-year -month -createdAt -_id');
+  assert.ok(html.includes('Showing 11–15 of 35 payslips'));
+  assert.ok(html.includes('Page 3 of 7'));
+});
+
+function paginationProps(overrides = {}) {
+  return { page: 1, pageSize: 10, total: 10, totalPages: 1, onPageChange() {}, onPageSizeChange() {}, ...overrides };
+}
+
+test('pagination remains visible for one page and supports empty results', () => {
+  const html = renderToStaticMarkup(React.createElement(views.Pagination, paginationProps()));
+  assert.ok(html.includes('Showing 1–10 of 10 payslips'));
+  assert.ok(html.includes('Page 1 of 1'));
+  assert.ok(html.includes('Rows per page'));
+  assert.match(html, /<button[^>]*disabled[^>]*aria-label="Next payslips page"/);
+  const empty = renderToStaticMarkup(React.createElement(views.Pagination, paginationProps({ total: 0, totalPages: 0 })));
+  assert.ok(empty.includes('Showing 0–0 of 0 payslips'));
+});
+
+function findElement(element, predicate) {
+  if (!element || typeof element !== 'object') return undefined;
+  if (predicate(element)) return element;
+  for (const child of React.Children.toArray(element.props?.children)) {
+    const found = findElement(child, predicate);
+    if (found) return found;
+  }
+}
+
+test('pagination controls send page numbers and numeric row limits to their handlers', () => {
+  const changedPages = [], sizes = [];
+  const tree = views.Pagination(paginationProps({ page: 2, total: 35, totalPages: 4,
+    onPageChange: value => changedPages.push(value), onPageSizeChange: value => sizes.push(value) }));
+  const named = name => findElement(tree, item => item.props?.['aria-label'] === name);
+  named('Previous payslips page').props.onClick();
+  named('Next payslips page').props.onClick();
+  named('Payslips page 4').props.onClick();
+  named('Payslips per page').props.onChange({ target: { value: '25' } });
+  assert.deepEqual(changedPages, [1, 3, 4]);
+  assert.deepEqual(sizes, [25]);
+});
+
+test('loading disables navigation and does not display a stale result count', () => {
+  const tree = views.Pagination(paginationProps({ page: 2, total: 35, totalPages: 4, isLoading: true }));
+  for (const label of ['Previous payslips page', 'Next payslips page', 'Payslips per page']) {
+    assert.equal(findElement(tree, item => item.props?.['aria-label'] === label).props.disabled, true);
+  }
+  const html = renderToStaticMarkup(tree);
+  assert.ok(html.includes('Loading payslips…'));
+  assert.ok(!html.includes('of 35 payslips'));
 });
