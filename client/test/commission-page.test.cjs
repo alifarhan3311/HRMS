@@ -50,3 +50,10 @@ test('switching periods hides stale employee data until the selected period has 
   assert.ok(!html.includes('Editable Employee'));
   assert.match(html, /<button[^>]*disabled[^>]*>[\s\S]*?Save changes/);
 });
+
+test('monthly sales exposes a labelled employee search and keeps the month total visible', () => {
+  const html = renderToStaticMarkup(React.createElement(Page));
+  assert.match(html, /Search employees by name or ID<\/span>[\s\S]*?<input type="search"/);
+  assert.match(html, /2 employees/);
+  assert.match(html, /Month total/);
+});

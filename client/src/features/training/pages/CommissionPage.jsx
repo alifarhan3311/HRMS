@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, Trash2, CalendarDays, Save, ChevronDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, CalendarDays, Save, ChevronDown, Search } from 'lucide-react';
 import Button from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Modal, ModalFooter } from '../../../components/ui/Modal';
@@ -32,11 +32,17 @@ export default function CommissionPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [salesValues, setSalesValues] = useState({});
+  const [employeeSearch, setEmployeeSearch] = useState('');
   const { currentData: periodData, isLoading: periodInitialLoading, isFetching: periodFetching, isError: periodError, refetch: refetchPeriod } = useGetSalesCommissionPeriodQuery({ month, year });
   const periodLoading = periodInitialLoading || (!periodData && periodFetching);
   const commissions = data?.items || [];
   const periodCommissions = periodData?.data?.commissions || [];
   const employees = periodData?.data?.employees || [];
+  const searchTerms = employeeSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const visibleEmployees = employees.filter(employee => {
+    const searchable = `${employee.fullName || ''} ${employee.employeeCode || ''}`.toLowerCase();
+    return searchTerms.every(term => searchable.includes(term));
+  });
 
   useEffect(() => {
     const next = {};
@@ -149,7 +155,19 @@ export default function CommissionPage() {
       {periodLoading ? <p role="status" className="p-10 text-center text-muted-foreground">Loading employees and monthly sales…</p>
         : periodError ? <div role="alert" className="space-y-3 p-8 text-center"><p>Unable to load monthly sales.</p><Button variant="secondary" onClick={refetchPeriod}>Try again</Button></div>
           : !employees.length ? <div className="p-10 text-center text-muted-foreground">No Call Center employees were employed during {MONTHS[month - 1]} {year}.</div>
-            : <><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/15 px-5 py-4 sm:px-7"><p className="text-sm text-muted-foreground">{employees.length} employees · {periodCommissions.length} commission types</p><p className="text-sm text-muted-foreground">Month total <strong className="ml-2 text-base text-primary">{money(monthTotal)}</strong></p></div><div className="divide-y divide-border">{employees.map((employee, index) => <details key={employee._id} open={index === 0} className="group">
+            : <><div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/15 px-5 py-4 sm:px-7">
+              <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+                <label className="relative w-full sm:w-64">
+                  <span className="sr-only">Search employees by name or ID</span>
+                  <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input type="search" value={employeeSearch} onChange={event => setEmployeeSearch(event.target.value)} placeholder="Search by name or employee ID" className="w-full rounded-lg border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/15" />
+                </label>
+                <p role="status" className="text-sm text-muted-foreground">{searchTerms.length ? `${visibleEmployees.length} of ${employees.length}` : employees.length} employees · {periodCommissions.length} commission types</p>
+              </div>
+              <p className="text-sm text-muted-foreground">Month total <strong className="ml-2 text-base text-primary">{money(monthTotal)}</strong></p>
+            </div>
+            {!visibleEmployees.length && <p className="p-10 text-center text-sm text-muted-foreground">No employees match your search.</p>}
+            <div className="divide-y divide-border">{visibleEmployees.map((employee, index) => <details key={employee._id} open={index === 0} className="group">
                 <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-5 py-4 hover:bg-accent/20 sm:px-7 [&::-webkit-details-marker]:hidden"><div className="flex min-w-0 items-center gap-3"><ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /><div className="min-w-0"><p className="truncate font-semibold">{employee.fullName}</p><p className="mt-0.5 text-xs text-muted-foreground">{employee.employeeCode} · {employee.department}</p></div></div><div className="flex items-center gap-3"><span className="text-xs text-muted-foreground">Commission</span><strong className="text-primary">{money(calculateEmployeeCommission(employee._id))}</strong></div></summary>
                 <div className="border-t border-border bg-muted/10 px-5 py-4 sm:px-7">{employee.commissionLocked && <p role="status" className="mb-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-sm text-amber-600">Read-only: this employee’s payroll for {MONTHS[month - 1]} {year} is {employee.payrollStatus?.replaceAll('_', ' ')}. Other employees can still be edited.</p>}<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{periodCommissions.map(commission => {
                   const input = salesValues[employee._id]?.[commission.slug] || {};
