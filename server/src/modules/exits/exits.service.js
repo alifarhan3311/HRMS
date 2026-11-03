@@ -161,14 +161,13 @@ async function complete(id, actor) {
   if (pendingAssets.length) {
     throw createHttpError(409, `Return ${pendingAssets.length} assigned asset(s) before completing exit clearance.`);
   }
-  if (record.checklist.some((x) => !x.completed)) throw createHttpError(400, 'Complete every clearance item first.');
   const employee = await Employee.findById(record.employeeId);
   employee.status = 'resigned'; employee.exitDate = record.finalLastWorkingDay; employee.exitReason = record.reason;
   employee.biometricDeviceUserId = undefined; employee.managerId = undefined; employee.floorHeadId = undefined; employee.teamLeadId = undefined;
   employee.tokenVersion = Number(employee.tokenVersion || 0) + 1;
   await employee.save();
   record.status = 'completed'; record.completedAt = new Date(); await record.save();
-  await notify(record.employeeId, actor.companyId, 'Exit process completed', 'Your clearance and final settlement have been completed.', record.id);
+  await notify(record.employeeId, actor.companyId, 'Exit process completed', 'HR has completed your employee exit.', record.id);
   return record;
 }
 

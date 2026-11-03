@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { DoorOpen, Plus, CheckCircle2, XCircle } from 'lucide-react';
 import Button from '../../../components/ui/Button';
 import { Modal, ModalFooter } from '../../../components/ui/Modal';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Input } from '../../../components/ui/Input';
 import SensitiveValue from '../../../components/ui/SensitiveValue';
 import { toast } from '../../../utils/toast';
@@ -24,7 +25,7 @@ export default function ExitManagementPage() {
   const [clearance] = useUpdateClearanceMutation(); const [complete] = useCompleteExitMutation(); const [withdraw] = useWithdrawExitMutation();
   const isHR = ['hr', 'super_admin'].includes(user?.role);
 
-  const act = async (promise, message) => { try { await promise.unwrap(); toast.success(message); } catch (e) { toast.error(e?.data?.error?.message || 'Action failed.'); } };
+  const act = async (promise, message) => { try { await promise.unwrap(); toast.success(message); return true; } catch (e) { toast.error(e?.data?.error?.message || 'Action failed.'); return false; } };
   const send = async (e) => { e.preventDefault(); try { await submit(form).unwrap(); toast.success('Resignation submitted.'); setOpen(false); } catch (x) { toast.error(x?.data?.error?.message || 'Submission failed.'); } };
 
   return <div className="space-y-6 p-4 sm:p-6">
@@ -54,12 +55,21 @@ export default function ExitManagementPage() {
 }
 
 function ExitCard({ record:r, user, isHR, act, review, decide, clearance, complete, withdraw }) {
+  const [confirmExit, setConfirmExit] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const pendingAssets = r.assetClearance?.length || 0;
   const [settlement, setSettlement] = useState(Object.fromEntries(moneyFields.map(k=>[k,r.settlement?.[k]||0])));
   const mine = String(r.employeeId?._id || r.employeeId) === String(user?.id);
   const current = r.approvals?.[r.currentApprovalIndex];
   const myApproval = !r.directHrReview && r.status === 'pending_approval' && String(current?.approverId?._id || current?.approverId) === String(user?.id);
   const net = useMemo(() => Number(settlement.salaryUntilLastDay)+Number(settlement.bonuses)-Number(settlement.unpaidLeaveDeduction)-Number(settlement.loanDeduction)-Number(settlement.otherDeductions), [settlement]);
-  const patchChecklist = (key, completed) => act(clearance({ id:r._id, checklist:r.checklist.map(x=>({ key:x.key, completed:x.key===key?completed:x.completed, notes:x.notes })) }), 'Clearance updated.');
+  async function finishExit() {
+    if (completing) return;
+    setCompleting(true);
+    const success = await act(complete(r._id), 'Employee exit completed.');
+    setCompleting(false);
+    if (success) setConfirmExit(false);
+  }
   return <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
     <div className="flex flex-wrap justify-between gap-3"><div><h2 className="font-semibold">{r.employeeId?.fullName || 'Employee'}</h2><p className="text-sm text-muted-foreground">{r.employeeId?.department} · Submitted {new Date(r.resignationDate).toLocaleDateString()}</p></div><span className="h-fit rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold capitalize text-primary">{r.directHrReview ? 'HR Review' : r.status.replaceAll('_',' ')}</span></div>
     <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3"><p><b>Proposed last day:</b><br/>{new Date(r.proposedLastWorkingDay).toLocaleDateString()}</p><p><b>Final last day:</b><br/>{r.finalLastWorkingDay ? new Date(r.finalLastWorkingDay).toLocaleDateString() : 'Pending'}</p><p><b>Reason:</b><br/>{r.reason}</p></div>
@@ -69,8 +79,17 @@ function ExitCard({ record:r, user, isHR, act, review, decide, clearance, comple
       {isHR && (r.status==='hr_review' || r.directHrReview) && <><Button size="sm" onClick={()=>act(decide({id:r._id,action:'accept',finalLastWorkingDay:r.proposedLastWorkingDay}),'Resignation accepted.')} >Accept</Button><Button size="sm" variant="danger" onClick={()=>act(decide({id:r._id,action:'reject'}),'Resignation rejected.')}>Reject</Button></>}
       {mine && ['pending_approval','hr_review'].includes(r.status) && <Button size="sm" variant="outline" onClick={()=>act(withdraw(r._id),'Resignation withdrawn.')}>Withdraw</Button>}
     </div>
-    {isHR && r.status==='clearance' && <div className="mt-5 border-t border-border pt-5"><h3 className="font-semibold">Exit clearance</h3><div className="mt-3 grid gap-2 sm:grid-cols-2">{r.checklist.map(x=><label key={x.key} className="flex items-center gap-2 rounded-lg border border-border p-2 text-sm"><input type="checkbox" checked={x.completed} disabled={x.key==='assets'} onChange={e=>patchChecklist(x.key,e.target.checked)}/>{x.label}{x.key==='assets'&&<span className="ml-auto text-xs text-muted-foreground">Managed in Assets</span>}</label>)}</div>
-      {!!r.assetClearance?.length&&<div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3"><p className="text-sm font-semibold text-amber-700">Assets pending return</p><div className="mt-2 space-y-1">{r.assetClearance.map(asset=><p key={asset._id} className="text-sm">{asset.name} ({asset.assetCode}) · {asset.status.replaceAll('_',' ')}</p>)}</div></div>}
-      <h3 className="mt-5 font-semibold">Final settlement</h3><div className="mt-2 grid gap-3 sm:grid-cols-3">{moneyFields.map(k=><Input key={k} label={k.replace(/([A-Z])/g,' $1')} type="number" sensitive value={settlement[k]} onChange={e=>setSettlement({...settlement,[k]:e.target.value})}/>)}</div><p className="mt-3 font-semibold">Net payable: <SensitiveValue value={net} formatter={(value) => `PKR ${Number(value).toLocaleString()}`} /></p><div className="mt-3 flex gap-2"><Button size="sm" variant="outline" onClick={()=>act(clearance({id:r._id,settlement}),'Settlement saved.')}>Save Settlement</Button><Button size="sm" onClick={()=>act(complete(r._id),'Employee exit completed.')}>Complete Exit</Button></div></div>}
+    {isHR && r.status === 'clearance' && <div className="mt-5 space-y-3 border-t border-border pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h3 className="font-semibold">Exit clearance</h3><p className="text-sm text-muted-foreground">{pendingAssets ? `Return ${pendingAssets} assigned asset(s) in Assets before completing exit.` : 'No company assets pending return.'}</p></div>
+        <Button size="sm" disabled={!!pendingAssets} onClick={() => setConfirmExit(true)}>Complete Exit</Button>
+      </div>
+      <details className="rounded-lg border border-border px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium">Final settlement (optional)</summary>
+      <div className="mt-2 grid gap-3 sm:grid-cols-3">{moneyFields.map(k=><Input key={k} label={k.replace(/([A-Z])/g,' $1')} type="number" sensitive value={settlement[k]} onChange={e=>setSettlement({...settlement,[k]:e.target.value})}/>)}</div><p className="mt-3 font-semibold">Net payable: <SensitiveValue value={net} formatter={(value) => `PKR ${Number(value).toLocaleString()}`} /></p>
+        <Button className="mt-3" size="sm" variant="outline" onClick={()=>act(clearance({id:r._id,settlement}),'Settlement saved.')}>Save Settlement</Button>
+      </details>
+      {confirmExit && <ConfirmDialog isOpen title="Complete employee exit?" message="This marks the employee as resigned and signs them out. Save any optional settlement changes before completing." confirmLabel="Complete Exit" isLoading={completing} onConfirm={finishExit} onCancel={() => !completing && setConfirmExit(false)} />}
+    </div>}
   </section>;
 }
