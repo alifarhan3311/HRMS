@@ -5,6 +5,8 @@ const Asset = require('../assets/assets.model');
 const { createNotification } = require('../notifications/notifications.service');
 
 const HR_ROLES = ['hr', 'super_admin'];
+const isCallCenter = department => ['callcenter', 'callcentre'].includes(String(department || '').toLowerCase().replace(/[^a-z]/g, ''));
+const awaitsDirectHrReview = (status, department) => status === 'pending_approval' && isCallCenter(department);
 const CHECKLIST = [
   ['attendance', 'Attendance reviewed'], ['leaves', 'Leave balance reviewed'],
   ['salary', 'Final salary calculated'], ['loans', 'Advance / loan cleared'],
@@ -49,7 +51,7 @@ async function submit(body, actor) {
   if (new Date(body.proposedLastWorkingDay) < new Date(body.resignationDate)) {
     throw createHttpError(400, 'Proposed last working day cannot be before resignation date.');
   }
-  const ids = [employee.teamLeadId, employee.floorHeadId, employee.managerId].filter(Boolean);
+  const ids = isCallCenter(employee.department) ? [] : [employee.teamLeadId, employee.floorHeadId, employee.managerId].filter(Boolean);
   const people = ids.length ? await Employee.find({ _id: { $in: ids }, status: 'active' }).select('_id role') : [];
   const byId = new Map(people.map((p) => [String(p._id), p]));
   const approvals = ids.map((id) => byId.get(String(id))).filter(Boolean)
@@ -80,6 +82,7 @@ async function list(query, actor) {
     .populate('approvals.approverId', 'fullName role').sort('-createdAt').limit(500).lean();
   return Promise.all(items.map(async record => ({
     ...record,
+    directHrReview: awaitsDirectHrReview(record.status, record.employeeId?.department),
     assetClearance: await assignedAssets(record.employeeId?._id || record.employeeId, record.companyId),
   })));
 }
@@ -95,13 +98,14 @@ async function review(id, body, actor) {
   if (record.status !== 'pending_approval') throw createHttpError(400, 'This request is not awaiting hierarchy approval.');
   const step = record.approvals[record.currentApprovalIndex];
   if (!step || String(step.approverId) !== String(actor.id)) throw createHttpError(403, 'This approval is not assigned to you.');
+  const employee = await Employee.findOne({ _id: record.employeeId, companyId: actor.companyId }).select('fullName department');
+  if (awaitsDirectHrReview(record.status, employee?.department)) throw createHttpError(400, 'This resignation is awaiting HR review.');
   step.status = body.action === 'reject' ? 'rejected' : (step.role === 'manager' ? 'recommended' : 'acknowledged');
   step.comments = body.comments; step.decidedAt = new Date();
   if (body.action === 'reject') record.status = 'rejected';
   else if (record.currentApprovalIndex + 1 < record.approvals.length) record.currentApprovalIndex += 1;
   else record.status = 'hr_review';
   await record.save();
-  const employee = await Employee.findById(record.employeeId).select('fullName');
   if (record.status === 'pending_approval') {
     await notify(record.approvals[record.currentApprovalIndex].approverId, actor.companyId, 'Resignation awaiting review', `${employee.fullName}'s resignation requires your review.`, record.id);
   } else if (record.status === 'hr_review') {
@@ -113,7 +117,12 @@ async function review(id, body, actor) {
 async function decide(id, body, actor) {
   if (!HR_ROLES.includes(actor.role)) throw createHttpError(403, 'Only HR can make the final decision.');
   const record = await getRecord(id, actor);
-  if (!['hr_review', 'accepted'].includes(record.status)) throw createHttpError(400, 'Request is not ready for an HR decision.');
+  if (!['hr_review', 'accepted'].includes(record.status)) {
+    const employee = record.status === 'pending_approval'
+      ? await Employee.findOne({ _id: record.employeeId, companyId: actor.companyId }).select('department')
+      : null;
+    if (!awaitsDirectHrReview(record.status, employee?.department)) throw createHttpError(400, 'Request is not ready for an HR decision.');
+  }
   record.hrDecision = { action: body.action, comments: body.comments, decidedBy: actor.id, decidedAt: new Date() };
   record.finalLastWorkingDay = body.finalLastWorkingDay || record.proposedLastWorkingDay;
   record.status = body.action === 'reject' ? 'rejected' : 'clearance';
