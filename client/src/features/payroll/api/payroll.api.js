@@ -13,6 +13,10 @@ export const payrollApi = api.injectEndpoints({
       query: (params) => ({ url: '/payroll/live', params }),
       providesTags: ['Payroll', 'Attendance', 'Leaves'],
     }),
+    savePayrollAllowance: builder.mutation({
+      query: (body) => ({ url: '/payroll/allowance', method: 'PUT', body }),
+      invalidatesTags: (result) => result ? ['Payroll', 'Dashboard', 'Reports'] : [],
+    }),
     getPayrollById: builder.query({
       query: (id) => `/payroll/${id}`,
       providesTags: (result, error, id) => [{ type: 'Payroll', id }],
@@ -48,6 +52,7 @@ export const payrollApi = api.injectEndpoints({
 export const {
   useListPayrollQuery,
   useGetLivePayrollQuery,
+  useSavePayrollAllowanceMutation,
   useGetPayrollByIdQuery,
   useGeneratePayrollMutation,
   useBulkGeneratePayrollMutation,

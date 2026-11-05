@@ -7,6 +7,7 @@ const { encryptField, decryptFieldSafe } = require('../../utils/crypto');
 
 const allowanceItemSchema = new mongoose.Schema({
   label: { type: String }, amount: { type: Number, default: 0 },
+  source: { type: String, enum: ['hr_monthly'] },
 }, { _id: false });
 
 const deductionItemSchema = new mongoose.Schema({

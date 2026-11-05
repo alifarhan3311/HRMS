@@ -23,7 +23,7 @@ test.before(async () => {
                export const useGetLivePayrollQuery = params => { globalThis.payrollQueries.live = params; return globalThis.livePayrollQuery; };
                const mutation = () => [() => {}, {}];
                export const useGeneratePayrollMutation = mutation, useBulkGeneratePayrollMutation = mutation, useClearPayrollPeriodMutation = mutation,
-                 useApprovePayrollMutation = mutation, useMarkPayrollPaidMutation = mutation;`
+                 useApprovePayrollMutation = mutation, useMarkPayrollPaidMutation = mutation, useSavePayrollAllowanceMutation = mutation;`
             : name.endsWith('employees.api')
               ? 'export const useListEmployeesQuery = () => ({ data: { items: [] } });'
               : 'export const Modal = ({ isOpen, children }) => isOpen ? children : null; export const ModalFooter = ({ children }) => children;';
@@ -114,6 +114,26 @@ const joiningEmployee = {
 function renderLive(employee) {
   return renderToStaticMarkup(React.createElement(views.LivePayrollDetailModal, { employee, isOpen: true }));
 }
+
+test('HR-only Call Center allowance editor is scoped to the selected month', () => {
+  const employee = { ...commissionEmployee, employeeId: 'one', allowanceAmount: 2500, netPayable: 50500 };
+  const html = renderToStaticMarkup(React.createElement(views.LivePayrollDetailModal, { employee, isOpen: true, canEditAllowance: true }));
+  for (const text of ['Manage monthly allowance', 'Allowance · Oct 2026', 'Allowance amount (PKR)', 'Save Allowance', 'Remove', '+ PKR 2,500', 'PKR 50,500']) assert.ok(html.includes(text), text);
+  assert.ok(!renderLive(employee).includes('Manage monthly allowance'));
+  const otherDepartment = renderToStaticMarkup(React.createElement(views.LivePayrollDetailModal, { employee: { ...employee, department: 'accounting' }, isOpen: true, canEditAllowance: true }));
+  assert.ok(!otherDepartment.includes('Manage monthly allowance'));
+});
+
+test('approved payroll shows allowance as read-only while employees still see its salary breakdown', () => {
+  const employee = { ...commissionEmployee, allowanceAmount: 2500, allowanceLocked: true, allowancePayrollStatus: 'approved' };
+  const html = renderToStaticMarkup(React.createElement(views.LivePayrollDetailModal, { employee, isOpen: true, canEditAllowance: true }));
+  assert.ok(html.includes('payroll is approved'));
+  assert.ok(!html.includes('Save Allowance'));
+  assert.ok(renderLive(employee).includes('+ PKR 2,500'));
+  const card = renderToStaticMarkup(React.createElement(views.LivePayrollCardSalary, { employee, visible: true }));
+  assert.ok(card.includes('Allowance (included)'));
+  assert.ok(card.includes('2,500'));
+});
 
 test('HR card shows selected-month net salary separately from zero commission', () => {
   const html = renderToStaticMarkup(React.createElement(views.LivePayrollCardSalary, {

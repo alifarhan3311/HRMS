@@ -19,6 +19,7 @@ import {
   useListPayrollQuery, useGetLivePayrollQuery, useGeneratePayrollMutation,
   useBulkGeneratePayrollMutation, useClearPayrollPeriodMutation,
   useApprovePayrollMutation, useMarkPayrollPaidMutation,
+  useSavePayrollAllowanceMutation,
 } from '../api/payroll.api';
 import { useListEmployeesQuery } from '../../employees/api/employees.api';
 import { toast } from '../../../utils/toast';
@@ -63,6 +64,8 @@ function formatPeriodLabel(month, year) {
 function commissionTotalFor(record) {
   return Number(record.commissionTotal ?? (record.commissionItems || []).reduce((sum, item) => sum + Number(item.amount || 0), 0));
 }
+
+const allowanceTotalFor = record => Number(record.allowanceAmount ?? record.allowances ?? (record.allowanceItems || []).reduce((sum, item) => sum + Number(item.amount || 0), 0));
 
 function periodBasicFor(record) {
   return Number(record.periodBasicSalary ?? record.monthlySalary ?? record.basicSalary ?? 0);
@@ -117,6 +120,7 @@ export function LivePayrollCardSalary({ employee, visible = false }) {
           <SensitiveValue className="font-semibold text-emerald-600" value={commissionTotalFor(employee)}
             formatter={value => `+ ${fmtPKR(value)}`} visible={visible} showToggle={false} />
         </div>
+        {allowanceTotalFor(employee) > 0 && <div className="flex items-center justify-between gap-2"><span className="text-muted-foreground">Allowance (included)</span><SensitiveValue className="font-semibold text-emerald-600" value={allowanceTotalFor(employee)} formatter={value => `+ ${fmtPKR(value)}`} visible={visible} showToggle={false} /></div>}
       </div>
     </div>
   );
@@ -337,6 +341,7 @@ export function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint
             { label: 'Per Hour', value: payslip.perHourSalary },
             { label: 'Gross Salary', value: payslip.grossSalary, cls: 'text-emerald-600' },
             { label: 'Commission (included in gross)', value: commissionTotalFor(payslip), cls: 'text-emerald-600' },
+            { label: 'Allowances (included in gross)', value: allowanceTotalFor(payslip), cls: 'text-emerald-600' },
             { label: 'Total Deductions', value: totalDeductions, cls: 'text-red-500' },
           ].map(item => (
             <div key={item.label} className="rounded-xl border border-border bg-muted/20 p-3">
@@ -417,7 +422,37 @@ export function PayslipDetailModal({ payslip, isOpen, onClose, onAction, onPrint
   );
 }
 
-export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
+export function MonthlyAllowanceEditor({ employee }) {
+  const [amount, setAmount] = useState(String(employee.allowanceAmount || 0));
+  const [saveAllowance, { isLoading: saving }] = useSavePayrollAllowanceMutation();
+  useEffect(() => { setAmount(String(employee.allowanceAmount || 0)); }, [employee.allowanceAmount]);
+  const locked = !!employee.allowanceLocked;
+  async function save(value) {
+    const parsed = Number(value);
+    if (value === '' || !Number.isFinite(parsed) || parsed < 0 || parsed > 100000000 || Math.abs(parsed * 100 - Math.round(parsed * 100)) > 0.000001) {
+      return toast.error('Enter a non-negative amount with up to two decimal places.');
+    }
+    try {
+      await saveAllowance({ employeeId: employee.employeeId, month: Number(employee.month), year: Number(employee.year), amount: parsed }).unwrap();
+      setAmount(String(parsed));
+      toast.success(parsed === 0 ? 'Allowance removed for this month.' : 'Allowance saved for this month.');
+    } catch (error) {
+      toast.error(error?.data?.error?.message || 'Unable to save allowance.');
+    }
+  }
+  return <section aria-label="Manage monthly allowance" className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+    <h3 className="text-sm font-semibold">Allowance · {formatPeriodLabel(employee.month, employee.year)}</h3>
+    <p className="mt-1 text-xs text-muted-foreground">HR only · Optional extra pay for this month. No automatic rules.</p>
+    {locked ? <p className="mt-3 text-sm text-amber-600">Read-only: this employee’s payroll is {employee.allowancePayrollStatus?.replaceAll('_', ' ')}. Clear that payroll before changing the allowance.</p>
+      : <div className="mt-3 flex flex-wrap items-end gap-3">
+        <label className="grid gap-1 text-sm"><span>Allowance amount (PKR)</span><input aria-label="Allowance amount (PKR)" className="w-48 rounded-lg border border-border bg-background px-3 py-2 outline-none focus:border-primary" type="number" min="0" max="100000000" step="0.01" value={amount} disabled={saving} onChange={event => setAmount(event.target.value)} /></label>
+        <Button size="sm" loading={saving} disabled={amount === '' || Number(amount) === Number(employee.allowanceAmount || 0)} onClick={() => save(amount)}>Save Allowance</Button>
+        {Number(employee.allowanceAmount) > 0 && <Button size="sm" variant="outline" disabled={saving} onClick={() => save(0)}>Remove</Button>}
+      </div>}
+  </section>;
+}
+
+export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint, canEditAllowance = false }) {
   if (!employee) return null;
   const monthlyMode = employee.monthlyTargetHours != null;
   const commissionTotal = commissionTotalFor(employee);
@@ -456,6 +491,8 @@ export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
           </div>
 
         <PayrollProrationNote record={employee} />
+
+        {canEditAllowance && ['callcenter', 'callcentre'].includes(String(employee.department || '').toLowerCase().replace(/[^a-z]/g, '')) && <MonthlyAllowanceEditor key={`${employee.employeeId}-${employee.year}-${employee.month}`} employee={employee} />}
 
         {monthlyMode && (
           <section className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
@@ -502,6 +539,7 @@ export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
               { label: 'Daily Salary', value: employee.dailySalary, formatter: fmtPKR },
               { label: 'Earned So Far', value: employee.earnedSalary, formatter: fmtPKR, color: 'text-emerald-600' },
               { label: 'Commission', value: commissionTotal, formatter: (value) => `+ ${fmtPKR(value)}`, color: 'text-emerald-600' },
+              { label: 'Allowance', value: allowanceTotalFor(employee), formatter: (value) => `+ ${fmtPKR(value)}`, color: 'text-emerald-600' },
               { label: 'Total Deductions', value: employee.deductions, formatter: (value) => `− ${fmtPKR(value)}`, color: 'text-red-500' },
               { label: 'Projected Net Payable', value: employee.netPayable, formatter: fmtPKR, color: 'text-primary' },
               ...(monthlyMode
@@ -517,7 +555,7 @@ export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
               </div>
             ))}
           </div>
-          {commissionTotal > 0 && <p className="mt-2 text-xs text-muted-foreground">Earned So Far and Projected Net Payable already include commission. It is not added a second time.</p>}
+          {(commissionTotal > 0 || allowanceTotalFor(employee) > 0) && <p className="mt-2 text-xs text-muted-foreground">Earned So Far and Projected Net Payable already include commission and allowance. They are not added a second time.</p>}
           {!monthlyMode && <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm">
             <p className="font-semibold text-amber-600">3 Lates = 1 Full-Day Salary Deduction</p>
             <p className="mt-1 text-muted-foreground">
@@ -547,8 +585,9 @@ export function LivePayrollDetailModal({ employee, isOpen, onClose, onPrint }) {
           <div className="flex justify-between gap-4"><span>Monthly Salary</span><span>{fmtPKR(employee.monthlySalary)}</span></div>
           {employee.salaryProration?.applied && <div className="flex justify-between gap-4"><span>Prorated Basic Salary ({employee.salaryProration.salaryDays}/{employee.salaryProration.basisDays} days)</span><span>{fmtPKR(periodBasicFor(employee))}</span></div>}
           <div className="flex justify-between gap-4"><span>Total Deductions</span><span className="text-red-500">− {fmtPKR(employee.deductions)}</span></div>
-          <div className="flex justify-between gap-4"><span>Salary after deductions (minimum zero)</span><span>{fmtPKR(Math.max(0, periodBasicFor(employee) - Number(employee.deductions || 0)))}</span></div>
+          <div className="flex justify-between gap-4"><span>Salary after deductions</span><span>{fmtPKR(periodBasicFor(employee) - Number(employee.deductions || 0))}</span></div>
           <div className="flex justify-between gap-4"><span>Commission</span><span className="text-emerald-600">+ {fmtPKR(commissionTotal)}</span></div>
+          <div className="flex justify-between gap-4"><span>Allowance</span><span className="text-emerald-600">+ {fmtPKR(allowanceTotalFor(employee))}</span></div>
           <div className="flex justify-between gap-4 border-t border-border pt-2 font-bold"><span>Projected Net Payable</span><span className="text-primary">{fmtPKR(employee.netPayable)}</span></div>
         </section>
 
@@ -825,9 +864,9 @@ export default function PayrollListPage() {
 
   function exportLiveCsv() {
     if (!liveRows.length) return toast.error('No live payroll data to export');
-    const headers = ['Employee','Code','Monthly Salary','Period Basic Pay','Salary Days (30-day basis)','Daily Salary','Earned Salary (incl. commission)','Commission','Present','Absent','Half Days','Paid Leave','Sandwich Leave','Late','Deductions','Net Payable'];
+    const headers = ['Employee','Code','Monthly Salary','Period Basic Pay','Salary Days (30-day basis)','Daily Salary','Earned Salary (incl. commission and allowance)','Commission','Allowance','Present','Absent','Half Days','Paid Leave','Sandwich Leave','Late','Deductions','Net Payable'];
     const rows = liveRows.map(row => [
-      row.employeeName, row.employeeCode, row.monthlySalary, periodBasicFor(row), row.salaryProration?.salaryDays ?? 30, row.dailySalary, row.earnedSalary, commissionTotalFor(row), row.present,
+      row.employeeName, row.employeeCode, row.monthlySalary, periodBasicFor(row), row.salaryProration?.salaryDays ?? 30, row.dailySalary, row.earnedSalary, commissionTotalFor(row), allowanceTotalFor(row), row.present,
       Number(row.absent || 0) + Number(row.unpaidLeave || 0), row.halfDay, row.paidLeave, row.sandwichLeave, row.late, row.deductions, row.netPayable,
     ]);
     const csv = [headers, ...rows].map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
@@ -934,13 +973,14 @@ export default function PayrollListPage() {
         salaryProration: source.salaryProration,
         dailySalary: source.dailySalary,
         earnedSalary: source.earnedSalary,
-        grossSalary: periodBasicFor(source) + commissionTotalFor(source),
+        grossSalary: periodBasicFor(source) + commissionTotalFor(source) + allowanceTotalFor(source),
         netPayable: source.netPayable,
         deductions: source.deductions,
         salaryRows: [
           { label: basicPayLabel(source), amount: periodBasicFor(source), group: 'earning' },
           ...(source.commissionItems || []).map((item) => ({ label: item.label || `${item.name} Commission`, amount: item.amount, group: 'earning' })),
           ...(!(source.commissionItems || []).length && commissionTotalFor(source) > 0 ? [{ label: 'Commission', amount: commissionTotalFor(source), group: 'earning' }] : []),
+          ...(allowanceTotalFor(source) > 0 ? [{ label: 'Allowance (HR)', amount: allowanceTotalFor(source), group: 'earning' }] : []),
           ...((source.attendanceRows || []).map((row) => ({ ...row, group: 'deduction' }))),
         ],
         monthlyTargetHours: source.monthlyTargetHours,
@@ -1048,7 +1088,7 @@ export default function PayrollListPage() {
             </Button>
             <Button variant="secondary" size="sm" className="gap-1.5" disabled={isFetching || liveFetching} onClick={() => {
               if (detailPayslip) return handlePrint(detailPayslip);
-              if (livePayrollEmployee) return handlePrint(livePayrollEmployee);
+              if (livePayrollEmployee) return handlePrint(liveRows.find(row => row.employeeId === livePayrollEmployee.employeeId) || livePayrollEmployee);
               if (visibleLiveRows.length > 0) return handlePrint(visibleLiveRows[0]);
               if (payslips.length > 0) return handlePrint(payslips[0]);
               toast.info('No payroll record available to print.');
@@ -1188,7 +1228,7 @@ export default function PayrollListPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1150px] text-sm">
                 <thead className="bg-muted/30 text-xs uppercase text-muted-foreground"><tr>
-                  {['Employee','Monthly','Daily','Earned','Commission','Present','Absent','Half Day','Paid Leave','Sandwich','Late','Attendance Deduction','Fines','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
+                  {['Employee','Monthly','Daily','Earned','Commission','Allowance','Present','Absent','Half Day','Paid Leave','Sandwich','Late','Attendance Deduction','Fines','Net Payable'].map(label => <th key={label} className="px-4 py-3 text-left">{label}</th>)}
                 </tr></thead>
                 <tbody className="divide-y divide-border">{liveRows.map(row => (
                   <tr key={row.employeeId} className="hover:bg-accent/30">
@@ -1197,6 +1237,7 @@ export default function PayrollListPage() {
                     <td className="px-4 py-3"><SensitiveValue value={row.dailySalary} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 font-medium text-emerald-600"><SensitiveValue value={row.earnedSalary} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 text-emerald-600"><SensitiveValue value={row.commissionTotal || 0} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
+                    <td className="px-4 py-3 text-emerald-600"><SensitiveValue value={allowanceTotalFor(row)} formatter={fmtPKR} visible={salaryVisible} showToggle={false} /></td>
                     <td className="px-4 py-3 text-emerald-600">{row.present}</td>
                     <td className="px-4 py-3 text-red-500">{Number(row.absent || 0) + Number(row.unpaidLeave || 0)}</td>
                     <td className="px-4 py-3 text-orange-500">{row.halfDay}</td>
@@ -1354,8 +1395,9 @@ export default function PayrollListPage() {
         />
 
         <LivePayrollDetailModal
-          employee={livePayrollEmployee}
+          employee={liveRows.find(row => row.employeeId === livePayrollEmployee?.employeeId) || livePayrollEmployee}
           isOpen={Boolean(livePayrollEmployee)}
+          canEditAllowance={user?.role === 'hr'}
           onClose={() => setLivePayrollEmployee(null)}
           onPrint={handlePrint}
         />

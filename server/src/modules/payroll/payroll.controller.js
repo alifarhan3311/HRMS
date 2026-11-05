@@ -3,6 +3,7 @@
  */
 
 const service = require('./payroll.service');
+const allowanceService = require('./payrollAllowance.service');
 
 function asyncHandler(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -57,4 +58,10 @@ const clearPeriod = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: result });
 });
 
-module.exports = { generate, bulkGenerate, list, live, getById, update, approve, markPaid, clearPeriod };
+const saveAllowance = asyncHandler(async (req, res) => {
+  const result = await allowanceService.save(req.body, req.user);
+  req.auditContext = { action: 'payroll.allowance_updated', resourceType: 'payroll', resourceId: result.employeeId };
+  res.status(200).json({ success: true, data: result });
+});
+
+module.exports = { generate, bulkGenerate, list, live, getById, update, approve, markPaid, clearPeriod, saveAllowance };

@@ -16,6 +16,7 @@ router.use(authenticate);
 // List & generate
 router.get('/',    authorize(...PAYROLL_VIEWERS), controller.list);
 router.get('/live', authorize(...PAYROLL_VIEWERS), controller.live);
+router.put('/allowance', authorize('hr'), controller.saveAllowance);
 router.post('/',   authorize(...PAYROLL_ADMINS), controller.generate);
 router.post('/bulk', authorize(...PAYROLL_ADMINS), controller.bulkGenerate);
 router.delete('/period', authorize('hr', 'admin'), controller.clearPeriod);

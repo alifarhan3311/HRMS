@@ -15,6 +15,7 @@ const Attendance = require('../attendance/attendance.model');
 const LeaveRequest = require('../leaves/leaves.model');
 const Fine = require('../fines/fine.model');
 const salesCommissionService = require('../training/salesCommission.service');
+const allowanceService = require('./payrollAllowance.service');
 const settingsService = require('../companySettings/companySettings.service');
 const notificationService = require('../notifications/notifications.service');
 const {
@@ -343,7 +344,9 @@ async function generatePayslip(payload, actor) {
   } = attendance;
 
   // Allowances
-  const allowanceTotal = allowanceItems.reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  const monthlyAllowance = await allowanceService.getAmount(employee, month, year);
+  const payrollAllowanceItems = allowanceService.withMonthlyAllowance(allowanceItems, monthlyAllowance);
+  const allowanceTotal = payrollAllowanceItems.reduce((s, a) => s + (Number(a.amount) || 0), 0);
 
   // Deductions
   const settings = await settingsService.getPolicy(actor.companyId);
@@ -413,7 +416,7 @@ async function generatePayslip(payload, actor) {
     salaryProration: period.salaryProration,
     grossSalary: String(grossSalary),
     netSalary: String(netSalary),
-    allowanceItems,
+    allowanceItems: payrollAllowanceItems,
     commissionItems,
     commissionTotal,
     allowances: allowanceTotal,
@@ -623,6 +626,8 @@ async function getLivePayroll(query, actor) {
     const basicSalary = Number(employee.currentSalary) || 0;
     const commissionItems = await salesCommissionService.getPayrollCommissionItems(employee, month, year);
     const commissionTotal = commissionItems.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const allowanceState = await allowanceService.getState(employee, month, year);
+    const allowanceAmount = allowanceState.allowanceAmount;
     const monthlyMode = isMonthlyHourDepartment(employee.department);
     const calculation = monthlyMode
       ? calculateMonthlyHoursDeduction({
@@ -651,8 +656,8 @@ async function getLivePayroll(query, actor) {
       : attendance.present + (attendance.halfDay * 0.5)
         + attendance.paidLeave + attendance.holiday;
     const earnedSalary = monthlyMode
-      ? Math.max(0, period.periodBasicSalary - deductions) + commissionTotal
-      : Math.min(period.periodBasicSalary, Math.round(calculation.perDaySalary * creditedDays)) + commissionTotal;
+      ? Math.max(0, period.periodBasicSalary - deductions) + commissionTotal + allowanceAmount
+      : Math.min(period.periodBasicSalary, Math.round(calculation.perDaySalary * creditedDays)) + commissionTotal + allowanceAmount;
     return {
       employeeId: employee._id,
       employeeName: employee.fullName,
@@ -667,7 +672,8 @@ async function getLivePayroll(query, actor) {
       earnedSalary,
       totalFines,
       deductions,
-      netPayable: Math.max(0, period.periodBasicSalary - deductions) + commissionTotal,
+      netPayable: Math.max(0, period.periodBasicSalary + commissionTotal + allowanceAmount - deductions),
+      ...allowanceState,
       commissionItems,
       commissionTotal,
       month,

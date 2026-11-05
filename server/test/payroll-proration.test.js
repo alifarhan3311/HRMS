@@ -10,6 +10,7 @@ const Leave = require('../src/modules/leaves/leaves.model');
 const Fine = require('../src/modules/fines/fine.model');
 const commissions = require('../src/modules/training/salesCommission.service');
 const settings = require('../src/modules/companySettings/companySettings.service');
+const allowances = require('../src/modules/payroll/payrollAllowance.service');
 
 const employee = { _id: 'employee-one', companyId: 'company-one', fullName: 'Joining-month employee',
   department: 'call center', joiningDate: new Date('2026-10-17'), currentSalary: 25000,
@@ -21,6 +22,8 @@ const rows = ['17', '19', '20', '21', '22', '23', '24', '26', '27', '28', '29', 
 rows.push({ status: 'half_day', shiftDate: '2026-10-30' });
 
 function setup(t, person = employee, records = rows, leaves = []) {
+  t.mock.method(allowances, 'getAmount', async () => 0);
+  t.mock.method(allowances, 'getState', async () => ({ allowanceAmount: 0, allowanceLocked: false }));
   t.mock.method(Employee, 'findOne', () => ({ populate: async () => person }));
   t.mock.method(Employee, 'find', () => ({ populate: () => ({ sort: async () => [person] }) }));
   const attendance = t.mock.method(Attendance, 'find', async () => records);
@@ -131,4 +134,32 @@ test('prorated basic salary is encrypted in saved document storage', () => {
   const slip = new Payslip({ basicSalary: '25000', periodBasicSalary: '12500' });
   assert.notEqual(slip.get('periodBasicSalary', null, { getters: false }), '12500');
   assert.equal(slip.periodBasicSalary, '12500');
+});
+
+test('HR monthly allowance is included once in live salary and generated/bulk payslips', async t => {
+  const { save } = setup(t);
+  allowances.getAmount.mock.mockImplementation(async () => 2500);
+  allowances.getState.mock.mockImplementation(async () => ({ allowanceAmount: 2500, allowanceLocked: false }));
+  const row = (await service.getLivePayroll({ month: 10, year: 2026 }, actor)).items[0];
+  const generated = await service.generatePayslip({ employeeId: employee._id, month: 10, year: 2026, allowanceItems: [{ label: 'Transport', amount: 1000 }] }, actor);
+  assert.equal(row.allowanceAmount, 2500);
+  assert.equal(row.netPayable, 14583);
+  assert.equal(row.earnedSalary, 12917);
+  assert.equal(generated.allowances, 3500);
+  assert.equal(Number(generated.netSalary), 15583);
+  assert.equal(generated.allowanceItems.filter(item => item.source === 'hr_monthly').length, 1);
+  Employee.find.mock.mockImplementation(async () => [employee]);
+  await service.bulkGeneratePayslips({ month: 10, year: 2026 }, actor);
+  assert.equal(save.mock.calls[1].arguments[0].allowances, 2500);
+});
+
+test('deductions above basic pay do not cause allowance to disagree between live and saved payroll', async t => {
+  setup(t);
+  allowances.getAmount.mock.mockImplementation(async () => 2500);
+  allowances.getState.mock.mockImplementation(async () => ({ allowanceAmount: 2500, allowanceLocked: false }));
+  Fine.find.mock.mockImplementation(async () => [{ amount: 13000 }]);
+  const live = (await service.getLivePayroll({ month: 10, year: 2026 }, actor)).items[0];
+  const saved = await service.generatePayslip({ employeeId: employee._id, month: 10, year: 2026 }, actor);
+  assert.equal(live.netPayable, 1583);
+  assert.equal(Number(saved.netSalary), live.netPayable);
 });
