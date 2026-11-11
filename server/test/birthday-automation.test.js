@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 process.env.ENCRYPTION_MASTER_KEY ||= '00'.repeat(32);
 const {
   birthdayDateContext,
+  anniversaryDateContext,
+  anniversaryYears,
+  matchesWorkAnniversary,
   isAttendanceDateAfterReset,
   missedSignOutClosure,
   saturdayMissedSignOutClosure,
@@ -27,6 +30,20 @@ test('birthday date context handles year rollover and does not run outside midni
   const twoHoursBefore = birthdayDateContext(new Date('2026-12-31T17:00:00.000Z'), 'Asia/Karachi');
   assert.equal(twoHoursBefore.isTwoHourReminderMinute, true);
   assert.deepEqual(twoHoursBefore.tomorrow, { year: 2027, month: 1, day: 1 });
+});
+
+test('work anniversary automation schedules one-week and one-day reminders in company time', () => {
+  const context = anniversaryDateContext(new Date('2026-11-11T19:00:00.000Z'), 'Asia/Karachi');
+  assert.equal(context.isMidnightMinute, true);
+  assert.deepEqual(context.today, { year: 2026, month: 11, day: 12, hour: 0, minute: 0 });
+  assert.deepEqual(context.tomorrow, { year: 2026, month: 11, day: 13 });
+  assert.deepEqual(context.nextWeek, { year: 2026, month: 11, day: 19 });
+  assert.equal(anniversaryYears(new Date('2024-11-19T12:00:00.000Z'), context.nextWeek), 2);
+  assert.equal(matchesWorkAnniversary(new Date('2024-11-19T12:00:00.000Z'), context.nextWeek), true);
+});
+
+test('29 February work anniversaries are recognized on 28 February in non-leap years', () => {
+  assert.equal(matchesWorkAnniversary(new Date('2024-02-29T12:00:00.000Z'), { year: 2027, month: 2, day: 28 }), true);
 });
 
 test('attendance reset prevents historical absences from being regenerated', () => {

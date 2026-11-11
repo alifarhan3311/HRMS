@@ -207,7 +207,7 @@ function IssueFineForm({ onSuccess }) {
         {/* Field 1: Employee Selection */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-1.5">
-            Fine kis ko kiya ja raha hai (Employee) <span className="text-destructive">*</span>
+            Employee <span className="text-destructive">*</span>
           </label>
           <EmployeeDropdown
             value={form.employeeId}
@@ -221,7 +221,7 @@ function IssueFineForm({ onSuccess }) {
         {/* Field 2: Amount */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-1.5">
-            Kitnay ka fine kiya ja raha hai (Amount in PKR) <span className="text-destructive">*</span>
+            Fine Amount (PKR) <span className="text-destructive">*</span>
           </label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-semibold">
@@ -243,7 +243,7 @@ function IssueFineForm({ onSuccess }) {
         {/* Field 3: Reason */}
         <div>
           <label className="block text-sm font-medium text-foreground mb-1.5">
-            Fine ki waja (Reason) <span className="text-destructive">*</span>
+            Reason for Fine <span className="text-destructive">*</span>
           </label>
           <textarea
             rows={4}

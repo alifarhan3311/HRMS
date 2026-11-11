@@ -6,6 +6,7 @@ import {
   UserCheck,
   Clock,
   Cake,
+  Award,
   Hourglass,
   UserPlus,
   Users,
@@ -70,6 +71,14 @@ export default function HRDashboard({ data }) {
           value={data.birthdayAlerts?.length ?? 0}
           subtitle="Next 30 days"
           icon={Cake}
+        />
+        <StatCard
+          delay={0.15}
+          title="Work Anniversaries"
+          to="/dashboard/alerts/anniversaries"
+          value={data.workAnniversaryAlerts?.length ?? 0}
+          subtitle="Next 30 days"
+          icon={Award}
         />
         <StatCard
           delay={0.18}
@@ -335,7 +344,7 @@ export default function HRDashboard({ data }) {
         </motion.div>
       </div>
 
-      {((data.birthdayAlerts || []).length > 0 || (data.probationAlerts || []).length > 0 || (data.resignationRequests || []).length > 0) && (
+      {((data.birthdayAlerts || []).length > 0 || (data.workAnniversaryAlerts || []).length > 0 || (data.probationAlerts || []).length > 0 || (data.resignationRequests || []).length > 0) && (
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {(data.birthdayAlerts || []).length > 0 ? (
         <motion.div className="glass-card p-5">
@@ -368,6 +377,38 @@ export default function HRDashboard({ data }) {
               </h3>
               <p className="text-sm text-muted-foreground">No upcoming birthdays in the next 30 days.</p>
               <div className="mt-3"><DashboardDetailsLink to="/dashboard/alerts/birthdays" /></div>
+            </motion.div>
+          )}
+
+          {(data.workAnniversaryAlerts || []).length > 0 ? (
+            <motion.div className="glass-card p-5">
+              <h3 className="mb-3 flex items-center gap-2 font-semibold">
+                <Award className="h-4 w-4 text-primary" />
+                Upcoming Work Anniversaries (Next 30 Days)
+              </h3>
+              <div className="mb-4"><DashboardDetailsLink to="/dashboard/alerts/anniversaries" /></div>
+              <div className="flex flex-wrap gap-2">
+                {data.workAnniversaryAlerts.map((emp) => (
+                  <div key={emp._id} className="rounded-xl border border-primary/25 bg-primary/5 px-3 py-2 text-sm">
+                    <Link to={`/employees?employeeId=${encodeURIComponent(emp._id)}`} className="font-medium hover:text-primary hover:underline">{emp.fullName}</Link>
+                    <p className="text-xs text-muted-foreground">
+                      {emp.daysUntil === 0 ? 'Today' : emp.daysUntil === 1 ? 'Tomorrow' : `In ${emp.daysUntil} days`}
+                      {' · '}{emp.years} {emp.years === 1 ? 'year' : 'years'}
+                      {' · '}{new Date(emp.nextWorkAnniversary).toLocaleDateString('en-PK', { day: 'numeric', month: 'short' })}
+                      {emp.department ? ` · ${emp.department}` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div className="glass-card flex flex-col justify-center p-5">
+              <h3 className="mb-2 flex items-center gap-2 font-semibold text-muted-foreground">
+                <Award className="h-4 w-4 text-primary/70" />
+                Work Anniversaries
+              </h3>
+              <p className="text-sm text-muted-foreground">No work anniversaries in the next 30 days.</p>
+              <div className="mt-3"><DashboardDetailsLink to="/dashboard/alerts/anniversaries" /></div>
             </motion.div>
           )}
 

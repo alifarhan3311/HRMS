@@ -1130,7 +1130,7 @@ export default function PayrollListPage() {
             <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="font-semibold">Live Salary Dashboard · {formatPeriodLabel(filters.month, filters.year)}</h2>
-                <p className="text-xs text-muted-foreground">Attendance aur leave change hote hi earned salary aur deductions automatically update hotay hain.</p>
+                <p className="text-xs text-muted-foreground">Earned salary and deductions update automatically when attendance or leave records change.</p>
               </div>
               <div className="flex flex-col gap-2 sm:items-end">
                 <button
@@ -1173,7 +1173,7 @@ export default function PayrollListPage() {
           {liveLoading ? <div className="p-8 text-center text-sm text-muted-foreground">Calculating payroll for {formatPeriodLabel(filters.month, filters.year)}...</div> : liveError ? (
             <div role="alert" className="p-8 text-center text-sm text-destructive">Could not load payroll for {formatPeriodLabel(filters.month, filters.year)}. Please refresh and try again.</div>
           ) : liveRows.length === 0 ? (
-            <div className="p-10 text-center"><p className="font-medium">No payroll employees available</p><p className="mt-1 text-sm text-muted-foreground">Aapki profile ya reporting team active honi chahiye. Monthly salary missing ho to Employees module se configure karein.</p></div>
+            <div className="p-10 text-center"><p className="font-medium">No payroll employees available</p><p className="mt-1 text-sm text-muted-foreground">Your profile or reporting team must be active. If a monthly salary is missing, configure it in the Employees module.</p></div>
           ) : user?.role === 'hr' ? (
             visibleLiveRows.length === 0 ? (
               <div className="p-10 text-center">

@@ -60,6 +60,25 @@ function upcomingBirthday(dateOfBirth, from = new Date(), windowDays = 30) {
   return { nextBirthday: next, daysUntil };
 }
 
+function upcomingWorkAnniversary(joiningDate, from = new Date(), windowDays = 30) {
+  if (!joiningDate) return null;
+  const joined = new Date(joiningDate);
+  if (Number.isNaN(joined.getTime())) return null;
+
+  const today = startOfDay(from);
+  const isLeapYear = (year) => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const anniversaryDay = (year) => (joined.getMonth() === 1 && joined.getDate() === 29 && !isLeapYear(year) ? 28 : joined.getDate());
+  let next = new Date(today.getFullYear(), joined.getMonth(), anniversaryDay(today.getFullYear()));
+  if (next < today) {
+    const year = today.getFullYear() + 1;
+    next = new Date(year, joined.getMonth(), anniversaryDay(year));
+  }
+  const years = next.getFullYear() - joined.getFullYear();
+  const daysUntil = Math.round((next.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  if (years < 1 || daysUntil < 0 || daysUntil > windowDays) return null;
+  return { nextWorkAnniversary: next, daysUntil, years };
+}
+
 function upcomingProbation(employee, from = new Date(), windowDays = 30) {
   if (!employee || employee.role === 'super_admin') return null;
   if (employee.probationStatus === 'completed') return null;
@@ -231,6 +250,7 @@ async function getHRDashboard(user) {
     pendingLeaveApprovals,
     pendingAttendanceRequests,
     birthdayAlerts,
+    workAnniversaryAlerts,
     probationAlerts,
     newJoinings,
     resignationRequests,
@@ -278,6 +298,20 @@ async function getHRDashboard(user) {
           return upcoming ? { ...emp, ...upcoming } : null;
         })
         .filter((emp) => emp && !isOnProbation(emp, today))
+        .sort((a, b) => a.daysUntil - b.daysUntil)),
+    Employee.find({
+      ...employeeFilter,
+      status: 'active',
+      joiningDate: { $exists: true, $ne: null },
+    })
+      .select('fullName employeeCode joiningDate department designation')
+      .lean()
+      .then((employees) => employees
+        .map((emp) => {
+          const upcoming = upcomingWorkAnniversary(emp.joiningDate, today, 30);
+          return upcoming ? { ...emp, ...upcoming } : null;
+        })
+        .filter(Boolean)
         .sort((a, b) => a.daysUntil - b.daysUntil)),
     Employee.find({
       ...employeeFilter,
@@ -409,6 +443,7 @@ async function getHRDashboard(user) {
     pendingLeaveApprovals,
     pendingAttendanceRequests,
     birthdayAlerts,
+    workAnniversaryAlerts,
     probationAlerts,
     newJoinings,
     resignationRequests,
@@ -557,7 +592,7 @@ async function getDashboardForUser(user) {
       getEmployeeDashboard(user),
       getHRDashboard(user),
     ]);
-    return { role: 'manager', ...employeeDash, teamOverview: hrDash.employeeStatistics, birthdayAlerts: hrDash.birthdayAlerts, probationAlerts: hrDash.probationAlerts, resignationRequests: hrDash.resignationRequests, resignationSummary: hrDash.resignationSummary };
+    return { role: 'manager', ...employeeDash, teamOverview: hrDash.employeeStatistics, birthdayAlerts: hrDash.birthdayAlerts, workAnniversaryAlerts: hrDash.workAnniversaryAlerts, probationAlerts: hrDash.probationAlerts, resignationRequests: hrDash.resignationRequests, resignationSummary: hrDash.resignationSummary };
   }
 
   if (role === 'hr') {

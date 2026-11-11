@@ -107,17 +107,6 @@ const INSURANCE_TRAINING_BLOCKS = [
   { type: 'heading', text: 'Note' },
   { type: 'paragraph', text: 'Coverage depends on the insurance policy.' },
 ];
-const INSURANCE_PREVIOUS_BLOCKS = [
-  { type: 'heading', text: 'Insurance – Basic Training' },
-  { type: 'heading', text: '1. Insurance kya hoti hai?' },
-  { type: 'paragraph', text: 'Insurance ek financial protection hai. Customer premium pay karta hai, aur policy ki conditions ke mutabiq accident, illness, death ya kisi covered loss ki surat mein financial benefit mil sakta hai.' },
-  { type: 'heading', text: '2. Insurance ki main types' },
-  { type: 'numbered', text: 'Life Insurance: Death ki surat mein family ko financial protection deti hai.\nHealth Insurance: Medical aur healthcare expenses cover karne mein madad karti hai.\nAuto Insurance: Car accidents, damage aur liability ke against protection deti hai.\nHome Insurance: Ghar aur belongings ko covered risks se protect karti hai.\nBusiness Insurance: Business ko covered losses aur liabilities se protect karti hai.\nTravel Insurance: Travel ke dauran covered medical emergencies aur doosre risks se protection deti hai.' },
-  { type: 'heading', text: '3. Life Insurance ki 3 main types' },
-  { type: 'bullets', text: 'Term Life: Specific period ke liye coverage, jaise 10, 20 ya 30 years.\nWhole Life: Permanent life coverage, usually cash value ke saath.\nUniversal Life: Permanent life coverage with a cash-value component aur policy ke mutabiq flexible options.' },
-  { type: 'heading', text: 'Yaad rakho' },
-  { type: 'paragraph', text: 'Insurance ka main purpose financial protection dena hai, taake unexpected situations mein financial burden kam ho sake.' },
-];
 const INSURANCE_PREVIOUS_ENGLISH_BLOCKS = [
   { type: 'heading', text: 'Insurance – Basic Training' },
   { type: 'heading', text: '1. What is insurance?' },

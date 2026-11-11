@@ -6,6 +6,7 @@ import DashboardDetailsLink from '../components/DashboardDetailsLink';
 
 const ALERTS = {
   birthdays: { key: 'birthdayAlerts', title: 'Upcoming Birthdays', description: 'Employee birthdays in the next 30 days.', dateKey: 'nextBirthday', dateLabel: 'Birthday' },
+  anniversaries: { key: 'workAnniversaryAlerts', title: 'Upcoming Work Anniversaries', description: 'Employee work anniversaries in the next 30 days.', dateKey: 'nextWorkAnniversary', dateLabel: 'Work anniversary' },
   probation: { key: 'probationAlerts', title: 'Probation Ending Alerts', description: 'Probations ending in the next 30 days, including those that ended in the last 30 days.', dateKey: 'probationEndDate', dateLabel: 'Probation ends' },
   joinings: { key: 'newJoinings', title: 'Recent Joinings', description: 'Latest employees who joined in the last 30 days.', dateKey: 'joiningDate', dateLabel: 'Joining date' },
 };
@@ -45,6 +46,7 @@ export default function DashboardAlertsPage() {
                     <Link to={`/employees?employeeId=${encodeURIComponent(employee._id)}`} className="font-semibold hover:text-primary hover:underline">{employee.fullName}</Link>
                     <p className="text-sm text-muted-foreground">{[employee.employeeCode, employee.department, employee.designation].filter(Boolean).join(' · ')}</p>
                     <p className="mt-2 text-sm">{config.dateLabel}: {employee[config.dateKey] ? new Date(employee[config.dateKey]).toLocaleDateString('en-PK', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not set'}</p>
+                    {kind === 'anniversaries' && <p className="mt-1 text-xs text-primary font-medium">Completing {employee.years} {employee.years === 1 ? 'year' : 'years'} with the company</p>}
                     {typeof employee.daysUntil === 'number' && <p className={`text-xs ${employee.daysUntil < 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>
                       {employee.daysUntil < 0 ? `Ended ${Math.abs(employee.daysUntil)} days ago` : employee.daysUntil === 0 ? 'Today' : `In ${employee.daysUntil} days`}
                     </p>}

@@ -844,7 +844,7 @@ export default function AttendanceListPage() {
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card px-8 py-6 shadow-xl">
             <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
             <p className="font-semibold">Signing out...</p>
-            <p className="text-sm text-muted-foreground">Attendance calculate ho rahi hai</p>
+            <p className="text-sm text-muted-foreground">Calculating attendance...</p>
           </div>
         </div>
       )}

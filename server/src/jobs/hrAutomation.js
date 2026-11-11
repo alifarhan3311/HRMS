@@ -94,7 +94,11 @@ function saturdayMissedSignOutClosure(now = new Date()) {
 }
 
 function addCalendarDay(parts) {
-  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + 1, 12));
+  return addCalendarDays(parts, 1);
+}
+
+function addCalendarDays(parts, amount) {
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + amount, 12));
   return {
     year: date.getUTCFullYear(),
     month: date.getUTCMonth() + 1,
@@ -114,6 +118,16 @@ function birthdayDateContext(now, timeZone) {
   };
 }
 
+function anniversaryDateContext(now, timeZone) {
+  const today = zonedCalendarParts(now, timeZone);
+  return {
+    today,
+    tomorrow: addCalendarDays(today, 1),
+    nextWeek: addCalendarDays(today, 7),
+    isMidnightMinute: today.hour === 0 && today.minute === 0,
+  };
+}
+
 function birthMonthDay(value) {
   const date = new Date(value);
   return { month: date.getUTCMonth() + 1, day: date.getUTCDate() };
@@ -125,7 +139,7 @@ function escapeHtml(value) {
   })[char]);
 }
 
-async function createBirthdayNotification({ data, emailEnabled, email, subject, html }) {
+async function createAutomatedNotification({ data, emailEnabled, email, subject, html }) {
   const notification = await notificationService.createNotification(data);
   if (!emailEnabled || !email) {
     return { notification, emailed: false };
@@ -142,7 +156,7 @@ async function createBirthdayNotification({ data, emailEnabled, email, subject, 
     return { notification: completed || claimed, emailed: true };
   } catch (error) {
     await notificationService.finishEmailDelivery(notification._id, 'failed', error.message);
-    logger.error('[birthday-automation] Email delivery failed', {
+    logger.error('[automation] Email delivery failed', {
       recipientId: String(data.recipientId),
       type: data.type,
       error: error.message,
@@ -182,7 +196,7 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
 
     for (const employee of context.isMidnightMinute || force ? todaysBirthdays : []) {
       const wish = `Wishing you a beautiful birthday filled with happiness, success, and wonderful moments. May the year ahead bring you endless reasons to smile. Have an amazing day!`;
-      await createBirthdayNotification({
+      await createAutomatedNotification({
         data: {
           recipientId: employee._id,
           companyId,
@@ -217,7 +231,7 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
       for (const birthdayEmployee of tomorrowsBirthdays) {
         for (const hr of hrRecipients) {
           const reminder = `${birthdayEmployee.fullName}'s birthday is tomorrow. A thoughtful wish or a small celebration would make their day extra special.`;
-          await createBirthdayNotification({
+          await createAutomatedNotification({
             data: {
               recipientId: hr._id,
               companyId,
@@ -258,7 +272,7 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
       for (const birthdayEmployee of tomorrowsBirthdays) {
         for (const hr of hrRecipients) {
           const reminder = `${birthdayEmployee.fullName}'s birthday starts in 2 hours.`;
-          await createBirthdayNotification({
+          await createAutomatedNotification({
             data: {
               recipientId: hr._id,
               companyId,
@@ -280,6 +294,138 @@ async function processBirthdayNotifications(now = new Date(), { force = false } 
     }
   }
   return { employeeWishes, hrAlerts };
+}
+
+function anniversaryYears(joiningDate, anniversaryDate) {
+  if (!joiningDate || !anniversaryDate) return 0;
+  return Math.max(0, anniversaryDate.year - new Date(joiningDate).getUTCFullYear());
+}
+
+function matchesWorkAnniversary(joiningDate, targetDate) {
+  if (!joiningDate || !targetDate) return false;
+  const joined = birthMonthDay(joiningDate);
+  // A 29 February joining date is celebrated on 28 February in non-leap years.
+  const isLeapYear = targetDate.year % 4 === 0 && (targetDate.year % 100 !== 0 || targetDate.year % 400 === 0);
+  return joined.month === targetDate.month
+    && (joined.day === targetDate.day || (joined.month === 2 && joined.day === 29 && !isLeapYear && targetDate.day === 28));
+}
+
+function formatCalendarDate(parts) {
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12))
+    .toLocaleDateString('en-PK', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+function tenureLabel(years) {
+  return `${years} ${years === 1 ? 'year' : 'years'}`;
+}
+
+async function workAnniversaryHrRecipients(companyId) {
+  let recipients = await Employee.find({
+    companyId,
+    role: 'hr',
+    status: 'active',
+  }).select('_id fullName email');
+  if (!recipients.length) {
+    recipients = await Employee.find({
+      companyId,
+      role: 'super_admin',
+      status: 'active',
+    }).select('_id fullName email');
+  }
+  return recipients;
+}
+
+async function processWorkAnniversaryNotifications(now = new Date(), { force = false } = {}) {
+  const companyIds = await Employee.find({
+    status: 'active',
+    joiningDate: { $exists: true, $ne: null },
+  }).distinct('companyId');
+  let employeeWishes = 0;
+  let hrReminders = 0;
+
+  for (const companyId of companyIds) {
+    const settings = await settingsService.getPolicy(companyId);
+    const context = anniversaryDateContext(now, settings.company?.timezone || 'Asia/Karachi');
+    if (!force && !context.isMidnightMinute) continue;
+
+    const employees = await Employee.find({
+      companyId,
+      status: 'active',
+      joiningDate: { $exists: true, $ne: null },
+    }).select('_id fullName email joiningDate');
+
+    const anniversaryEmployees = (targetDate) => employees.filter((employee) => (
+      anniversaryYears(employee.joiningDate, targetDate) > 0
+      && matchesWorkAnniversary(employee.joiningDate, targetDate)
+    ));
+    const todaysAnniversaries = anniversaryEmployees(context.today);
+    const oneDayAnniversaries = anniversaryEmployees(context.tomorrow);
+    const oneWeekAnniversaries = anniversaryEmployees(context.nextWeek);
+    const emailEnabled = settings.notifications?.emailEnabled === true;
+
+    for (const employee of todaysAnniversaries) {
+      const years = anniversaryYears(employee.joiningDate, context.today);
+      const tenure = tenureLabel(years);
+      await createAutomatedNotification({
+        data: {
+          recipientId: employee._id,
+          companyId,
+          type: 'work_anniversary_wish',
+          title: `🎉 Happy ${tenure} Work Anniversary!`,
+          message: `Congratulations, ${employee.fullName}! Today marks ${tenure} with the company. Thank you for your contribution.`,
+          link: '/profile',
+          metadata: { anniversaryYear: context.today.year, years },
+          dedupeKey: `work-anniversary-wish:${employee._id}:${context.today.year}`,
+        },
+        emailEnabled,
+        email: employee.email,
+        subject: `Happy ${tenure} Work Anniversary, ${employee.fullName}! 🎉`,
+        html: `<div style="font-family:Arial,sans-serif;line-height:1.7;color:#2f2a24"><h2 style="color:#d49a16">Happy Work Anniversary, ${escapeHtml(employee.fullName)}! 🎉</h2><p>Congratulations on completing <strong>${tenure}</strong> with the company.</p><p>Thank you for your commitment and contribution. We wish you continued success ahead.</p><p>Warm wishes,<br><strong>HR Team</strong></p></div>`,
+      });
+      employeeWishes += 1;
+    }
+
+    const reminders = [
+      { employees: oneWeekAnniversaries, targetDate: context.nextWeek, daysBefore: 7, label: 'one week' },
+      { employees: oneDayAnniversaries, targetDate: context.tomorrow, daysBefore: 1, label: 'tomorrow' },
+    ];
+    const hrRecipients = (oneWeekAnniversaries.length || oneDayAnniversaries.length)
+      ? await workAnniversaryHrRecipients(companyId)
+      : [];
+
+    for (const reminderGroup of reminders) {
+      for (const employee of reminderGroup.employees) {
+        const years = anniversaryYears(employee.joiningDate, reminderGroup.targetDate);
+        const tenure = tenureLabel(years);
+        const anniversaryDate = formatCalendarDate(reminderGroup.targetDate);
+        for (const hr of hrRecipients) {
+          await createAutomatedNotification({
+            data: {
+              recipientId: hr._id,
+              companyId,
+              type: 'work_anniversary_upcoming',
+              title: `Work anniversary reminder: ${reminderGroup.label}`,
+              message: `${employee.fullName} completes ${tenure} on ${anniversaryDate}.`,
+              link: '/employees',
+              metadata: {
+                employeeId: employee._id,
+                anniversaryYear: reminderGroup.targetDate.year,
+                years,
+                daysBefore: reminderGroup.daysBefore,
+              },
+              dedupeKey: `work-anniversary-hr-${reminderGroup.daysBefore}d:${employee._id}:${hr._id}:${reminderGroup.targetDate.year}`,
+            },
+            emailEnabled,
+            email: hr.email,
+            subject: `Work anniversary ${reminderGroup.label}: ${employee.fullName}`,
+            html: `<div style="font-family:Arial,sans-serif;line-height:1.7;color:#2f2a24"><h2 style="color:#d49a16">Work anniversary reminder</h2><p>Hello ${escapeHtml(hr.fullName || 'HR Team')},</p><p><strong>${escapeHtml(employee.fullName)}</strong> completes <strong>${tenure}</strong> on <strong>${escapeHtml(anniversaryDate)}</strong>.</p><p>This is a ${reminderGroup.label} reminder.</p><p>Regards,<br><strong>HRMS</strong></p></div>`,
+          });
+          hrReminders += 1;
+        }
+      }
+    }
+  }
+  return { employeeWishes, hrReminders };
 }
 
 async function processCalendarYearLeaveCycles(now = new Date()) {
@@ -947,6 +1093,9 @@ function startHrAutomation() {
   processBirthdayNotifications().catch((error) => {
     logger.error('[birthday-automation] Initial check failed', { error: error.message });
   });
+  processWorkAnniversaryNotifications().catch((error) => {
+    logger.error('[work-anniversary-automation] Initial check failed', { error: error.message });
+  });
 
   const timer = setInterval(() => {
     runHrAutomation().catch((error) => {
@@ -961,9 +1110,15 @@ function startHrAutomation() {
     processBirthdayNotifications().catch((error) => {
       logger.error('[birthday-automation] Scheduled check failed', { error: error.message });
     });
+    processWorkAnniversaryNotifications().catch((error) => {
+      logger.error('[work-anniversary-automation] Scheduled check failed', { error: error.message });
+    });
     birthdayTimer = setInterval(() => {
       processBirthdayNotifications().catch((error) => {
         logger.error('[birthday-automation] Scheduled check failed', { error: error.message });
+      });
+      processWorkAnniversaryNotifications().catch((error) => {
+        logger.error('[work-anniversary-automation] Scheduled check failed', { error: error.message });
       });
     }, BIRTHDAY_CHECK_INTERVAL_MS);
     birthdayTimer.unref();
@@ -984,11 +1139,15 @@ module.exports = {
   repairBiometricAttendanceOverwrittenByLeave,
   sendMissingLeaveApplicationReminders,
   birthdayDateContext,
+  anniversaryDateContext,
+  anniversaryYears,
+  matchesWorkAnniversary,
   isAttendanceDateAfterReset,
   missingPunchStatus,
   missedSignOutClosure,
   saturdayMissedSignOutClosure,
   processBirthdayNotifications,
+  processWorkAnniversaryNotifications,
   runHrAutomation,
   startHrAutomation,
 };
