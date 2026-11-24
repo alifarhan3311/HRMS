@@ -14,18 +14,28 @@ function smtpSecure(port, configuredSecure) {
   return Number(port) === 465 || Boolean(configuredSecure);
 }
 
+const useSes = process.env.SMTP_PROVIDER === 'ses';
+
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT) || 587,
   secure: smtpSecure(process.env.SMTP_PORT || 587, process.env.SMTP_SECURE === 'true'),
+  requireTLS: useSes,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
 });
 
+function assertSesConfigured() {
+  if (useSes && (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS || !process.env.SMTP_FROM)) {
+    throw new Error('Amazon SES requires SMTP_HOST, SMTP_USER, SMTP_PASS, and SMTP_FROM.');
+  }
+}
+
 async function sendMail({ to, subject, html }) {
   try {
+    assertSesConfigured();
     return await transporter.sendMail({
       from: process.env.SMTP_FROM || '"HRMS" <no-reply@hrms.local>',
       to,
@@ -39,6 +49,9 @@ async function sendMail({ to, subject, html }) {
 }
 
 async function sendCompanyMail(companyId, { to, subject, html }) {
+  // SES is deployment-wide: saved company SMTP settings must not override it.
+  if (useSes) return sendMail({ to, subject, html });
+
   const settings = await CompanySettings.findOne({ companyId });
   const smtp = settings?.smtp;
   const password = smtp?.password || (smtp?.user === process.env.SMTP_USER ? process.env.SMTP_PASS : undefined);
